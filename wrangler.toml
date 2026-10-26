@@ -1,0 +1,25 @@
+name = "finance-tracker"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Static PWA is served from the same Worker; API and webhook routes always hit the Worker first.
+[assets]
+directory = "./web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/telegram/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "finance-tracker"
+# Replace with the real id from `wrangler d1 create finance-tracker` before the first remote deploy.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "drizzle"
+
+# One daily run: 04:30 UTC = 10:00 IST.
+[triggers]
+crons = ["30 4 * * *"]
+
+[observability]
+enabled = true

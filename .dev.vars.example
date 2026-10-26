@@ -1,0 +1,14 @@
+# Copy to .dev.vars for local development. Never commit .dev.vars.
+# HMAC key for login codes and session hashing (min 32 chars; generate with: openssl rand -hex 32)
+AUTH_HMAC_KEY=replace-with-a-long-random-string-of-at-least-32-chars
+TELEGRAM_BOT_TOKEN=replace-with-bot-token
+# Value Telegram echoes in X-Telegram-Bot-Api-Secret-Token (A-Z a-z 0-9 _ -)
+TELEGRAM_WEBHOOK_SECRET=replace-with-random-secret
+# Email fallback (dedicated Gmail sender with an app password)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=sender@example.com
+SMTP_PASSWORD=replace-with-app-password
+SMTP_FROM=sender@example.com
+# "console" prints login emails to the log instead of sending (local dev only); "smtp" for real sending
+EMAIL_TRANSPORT=console
