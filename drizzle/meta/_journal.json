@@ -22,6 +22,13 @@
       "when": 1793088191254,
       "tag": "0002_auth_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793088586866,
+      "tag": "0003_accounts_demo_idempotency",
+      "breakpoints": true
     }
   ]
 }

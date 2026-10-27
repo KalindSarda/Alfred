@@ -21,6 +21,7 @@ export interface CallOptions {
   ip?: string;
   csrf?: boolean;
   contentType?: string;
+  headers?: Record<string, string>;
 }
 
 /** App with fake senders and a controllable clock. Each instance gets its own IP so rate limits do not collide. */
@@ -55,6 +56,7 @@ export function makeApp(): TestApp {
       if (options.csrf !== false) headers["X-Requested-With"] = "fin";
       if (options.body !== undefined || method !== "GET") headers["Content-Type"] = options.contentType ?? "application/json";
       if (options.cookie) headers.Cookie = options.cookie;
+      Object.assign(headers, options.headers);
       const init: RequestInit = { method, headers };
       if (options.body !== undefined) {
         init.body = typeof options.body === "string" ? options.body : JSON.stringify(options.body);

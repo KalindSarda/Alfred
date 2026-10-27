@@ -23,11 +23,17 @@ export type NewAccount =
       openingOutstandingPaise?: number;
     };
 
-export async function insertAccount(db: Db, userId: string, input: NewAccount): Promise<AccountRow> {
+export async function insertAccount(
+  db: Db,
+  userId: string,
+  input: NewAccount,
+  options: { isDemo?: boolean } = {},
+): Promise<AccountRow> {
   const row = {
     id: newId(),
     userId,
     createdAt: nowIso(),
+    isDemo: options.isDemo ?? false,
     kind: input.kind,
     name: input.name,
     last4: input.last4 ?? null,

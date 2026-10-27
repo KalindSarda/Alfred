@@ -236,8 +236,13 @@ function toLedgerAccount(row: AccountRow): LedgerAccount {
  * Accounts with derived figures. Loads only the columns the ledger math needs and computes in the
  * domain layer; fine at personal scale (thousands of rows a year), revisit with SQL aggregation if slow.
  */
-export async function listAccountsWithFigures(db: Db, userId: string, today: IstDate): Promise<AccountWithFigures[]> {
-  const [rows, txns] = await Promise.all([listAccounts(db, userId), loadLedgerTxns(db, userId)]);
+export async function listAccountsWithFigures(
+  db: Db,
+  userId: string,
+  today: IstDate,
+  options: { includeArchived?: boolean } = {},
+): Promise<AccountWithFigures[]> {
+  const [rows, txns] = await Promise.all([listAccounts(db, userId, options), loadLedgerTxns(db, userId)]);
   return rows.map((row): AccountWithFigures => {
     const ledger = toLedgerAccount(row);
     if (ledger.kind === "bank") {

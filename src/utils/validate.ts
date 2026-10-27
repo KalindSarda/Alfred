@@ -6,15 +6,18 @@ function issuesOf(error: z.ZodError) {
   return error.issues.map((i) => ({ path: i.path.join("."), message: i.message }));
 }
 
-/** Parses and validates a JSON body; every failure becomes the documented 422 envelope. */
-export async function parseJson<S extends z.ZodType>(c: Context, schema: S): Promise<z.output<S>> {
-  let body: unknown;
+/** Reads the JSON body without validating its shape (for services that validate it themselves). */
+export async function readJson(c: Context): Promise<unknown> {
   try {
-    body = await c.req.json();
+    return await c.req.json();
   } catch {
     throw new ValidationError("Request body must be valid JSON");
   }
-  const result = schema.safeParse(body);
+}
+
+/** Parses and validates a JSON body; every failure becomes the documented 422 envelope. */
+export async function parseJson<S extends z.ZodType>(c: Context, schema: S): Promise<z.output<S>> {
+  const result = schema.safeParse(await readJson(c));
   if (!result.success) throw new ValidationError("Request validation failed", issuesOf(result.error));
   return result.data;
 }

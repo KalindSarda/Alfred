@@ -29,6 +29,8 @@ export const accounts = sqliteTable(
     dueDay: integer("due_day"),
     openingOutstandingPaise: integer("opening_outstanding_paise").notNull().default(0),
     archivedAt: text("archived_at"),
+    /** Demo/seed accounts, removed together by "clear demo data". */
+    isDemo: integer("is_demo", { mode: "boolean" }).notNull().default(false),
     createdAt: text("created_at").notNull(),
   },
   (t) => [
@@ -149,6 +151,18 @@ export const telegramLinkCodes = sqliteTable("telegram_link_codes", {
   expiresAt: text("expires_at").notNull(),
   usedAt: text("used_at"),
 });
+
+/** Lets a retried POST /api/transactions (flaky mobile network) return the original instead of duplicating. */
+export const idempotencyKeys = sqliteTable(
+  "idempotency_keys",
+  {
+    userId: text("user_id").notNull().references(() => users.id),
+    key: text("key").notNull(),
+    transactionId: text("transaction_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("idempotency_user_key_uq").on(t.userId, t.key)],
+);
 
 export const appSettings = sqliteTable("app_settings", {
   userId: text("user_id").primaryKey().references(() => users.id),

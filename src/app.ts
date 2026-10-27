@@ -6,9 +6,14 @@ import { getDb } from "./db/client";
 import { csrfGuard } from "./middleware/csrf";
 import { requestId } from "./middleware/requestId";
 import { requireSession } from "./middleware/session";
+import { accountRoutes } from "./routes/accounts";
 import { authPublic, authSession } from "./routes/auth";
+import { categoryRoutes } from "./routes/categories";
+import { demoRoutes } from "./routes/demo";
 import { health } from "./routes/health";
 import { me } from "./routes/me";
+import { settingsRoutes } from "./routes/settings";
+import { transactionRoutes } from "./routes/transactions";
 import type { AuthDeps } from "./services/auth";
 import { createNotifiers, type Notifiers } from "./services/notifiers";
 import { logger } from "./utils/logger";
@@ -54,6 +59,11 @@ export function createApp(options: AppOptions = {}) {
   app.use("/api/*", requireSession);
   app.route("/api/auth", authSession);
   app.route("/api/me", me);
+  app.route("/api/accounts", accountRoutes);
+  app.route("/api/transactions", transactionRoutes);
+  app.route("/api/categories", categoryRoutes);
+  app.route("/api/settings", settingsRoutes);
+  app.route("/api/demo-data", demoRoutes);
 
   app.notFound((c) => c.json({ error: { code: "not_found", message: "Not found" } }, 404));
 
