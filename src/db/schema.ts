@@ -169,4 +169,6 @@ export const appSettings = sqliteTable("app_settings", {
   nudgeLeadDays: integer("nudge_lead_days").notNull().default(3),
   nudgeTimeIst: text("nudge_time_ist").notNull().default("10:00"),
   sessionDays: integer("session_days").notNull().default(30),
+  /** How Alfred addresses the user; when null a name is derived from the email. */
+  displayName: text("display_name"),
 });

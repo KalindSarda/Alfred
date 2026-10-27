@@ -1,6 +1,6 @@
-# Finance Tracker
+# Alfred
 
-Personal finance app: bank accounts, credit cards, income, expenses and safe-to-spend. One Cloudflare Worker serves the API and the installable web app (PWA). Design docs are in `.claude-sdlc/outputs/`.
+Alfred is a personal ledger and assistant: bank accounts, credit cards, income, expenses and safe-to-spend. One Cloudflare Worker serves the API and the installable web app (PWA). Design docs are in `.claude-sdlc/outputs/`.
 
 ## Try it locally
 

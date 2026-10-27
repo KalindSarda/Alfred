@@ -31,13 +31,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {toast && (
         <div
           role="status"
-          className="fixed inset-x-4 bottom-24 z-[60] mx-auto flex max-w-md items-center justify-between gap-3 rounded-2xl bg-slate-900 px-4 py-3 text-sm text-white shadow-lg md:bottom-6 dark:bg-slate-100 dark:text-slate-900"
+          className="fixed inset-x-4 bottom-24 z-[60] mx-auto flex max-w-md items-center justify-between gap-3 rounded-2xl bg-navy px-4 py-3 text-sm text-white shadow-lg md:bottom-6"
         >
           <span>{toast.message}</span>
           {toast.action && (
             <button
               type="button"
-              className="min-h-11 shrink-0 px-2 font-semibold text-emerald-300 dark:text-emerald-700"
+              className="min-h-11 shrink-0 px-2 font-semibold text-brass"
               onClick={() => {
                 toast.action?.run();
                 setToast(null);

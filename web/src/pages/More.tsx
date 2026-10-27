@@ -3,6 +3,7 @@ import { type Settings, api, describeError } from "../api";
 import { useToast } from "../components/toast";
 import { Button, Card, ErrorText, Field, inputClass, Spinner } from "../components/ui";
 import { useMe, useRefreshMoney } from "../queries";
+import { useState } from "react";
 
 export function More() {
   const client = useQueryClient();
@@ -10,6 +11,17 @@ export function More() {
   const refresh = useRefreshMoney();
   const me = useMe();
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => api.get<Settings>("/api/settings") });
+
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const saveName = useMutation({
+    mutationFn: (displayName: string | null) => api.patch<Settings>("/api/settings", { displayName }),
+    onSuccess: async (data) => {
+      client.setQueryData(["settings"], data);
+      await client.invalidateQueries({ queryKey: ["me"] });
+      setNameDraft(null);
+      toast.show("Saved");
+    },
+  });
 
   const saveLead = useMutation({
     mutationFn: (nudgeLeadDays: number) => api.patch<Settings>("/api/settings", { nudgeLeadDays }),
@@ -45,13 +57,34 @@ export function More() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">More</h1>
+      <h1 className="text-3xl">More</h1>
 
-      <Card>
+      <Card className="space-y-3">
         <h2 className="font-medium">Account</h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{me.data?.email}</p>
-        <p className="mt-1 text-sm text-slate-500">
-          Telegram: {me.data?.telegramLinked ? "linked" : "not linked yet (the bot arrives in an upcoming update)"}
+        <p className="text-sm text-soft">{me.data?.email}</p>
+        <form
+          className="space-y-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const value = (nameDraft ?? me.data?.displayName ?? "").trim();
+            saveName.mutate(value === "" ? null : value);
+          }}
+        >
+          <Field label="What Alfred calls you" hint="He uses it in greetings. Clear it to use the name from your email.">
+            <input
+              className={inputClass}
+              maxLength={40}
+              value={nameDraft ?? me.data?.displayName ?? ""}
+              onChange={(e) => setNameDraft(e.target.value)}
+            />
+          </Field>
+          <Button type="submit" variant="secondary" disabled={nameDraft === null || saveName.isPending}>
+            Save name
+          </Button>
+          <ErrorText>{saveName.isError ? describeError(saveName.error) : ""}</ErrorText>
+        </form>
+        <p className="text-sm text-soft">
+          Telegram: {me.data?.telegramLinked ? "linked" : "not linked yet (Alfred joins you there in an upcoming update)"}
         </p>
       </Card>
 
@@ -79,7 +112,7 @@ export function More() {
 
       <Card className="space-y-3">
         <h2 className="font-medium">Demo data</h2>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-soft">
           Try the app with sample accounts and transactions. Clearing removes only the demo items, never your own entries.
         </p>
         <div className="flex gap-3">

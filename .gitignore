@@ -6,3 +6,7 @@ web/dist/
 .env
 *.log
 .DS_Store
+
+# Local secrets (never commit)
+IMP_Keys.txt
+*.keys.txt

@@ -92,7 +92,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <div role="radiogroup" aria-label="Type" className="grid grid-cols-3 gap-1 rounded-xl bg-slate-200 p-1 dark:bg-slate-800">
+      <div role="radiogroup" aria-label="Type" className="grid grid-cols-3 gap-1 rounded-xl bg-sunk p-1">
         {TYPES.map((t) => (
           <button
             key={t.value}
@@ -104,7 +104,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
               setCategoryId("");
             }}
             className={`min-h-11 rounded-lg text-sm font-medium ${
-              type === t.value ? "bg-white shadow-sm dark:bg-slate-950" : "text-slate-600 dark:text-slate-400"
+              type === t.value ? "bg-card shadow-sm" : "text-soft"
             }`}
           >
             {t.label}

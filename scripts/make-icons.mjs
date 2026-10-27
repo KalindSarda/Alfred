@@ -1,4 +1,4 @@
-// Generates the PWA icons (emerald square with three rising bars) without any image library.
+// Generates the PWA icons (navy square with Alfred's blue orb and a brass ring) without any image library.
 // Run once: node scripts/make-icons.mjs   (outputs are committed in web/public)
 import { mkdirSync, writeFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
@@ -24,26 +24,28 @@ function chunk(type, data) {
 }
 
 function png(size) {
-  const bg = [5, 150, 105]; // emerald-600
-  const fg = [255, 255, 255];
-  const bars = [
-    { x: 0.22, h: 0.3 },
-    { x: 0.42, h: 0.46 },
-    { x: 0.62, h: 0.62 },
-  ];
-  const barWidth = 0.16;
-  const base = 0.78;
+  const navy = [16, 26, 46];
+  const brass = [201, 169, 106];
+  const blue = [43, 108, 222];
+  const light = [143, 184, 255];
   const rows = [];
   for (let y = 0; y < size; y++) {
     const row = Buffer.alloc(1 + size * 3);
     for (let x = 0; x < size; x++) {
-      const fx = x / size;
-      const fy = y / size;
-      const inBar = bars.some((b) => fx >= b.x && fx < b.x + barWidth && fy <= base && fy >= base - b.h);
-      const [r, g, b] = inBar ? fg : bg;
-      row[1 + x * 3] = r;
-      row[2 + x * 3] = g;
-      row[3 + x * 3] = b;
+      const dx = x / size - 0.5;
+      const dy = y / size - 0.5;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      let color = navy;
+      if (d < 0.22) {
+        const hx = x / size - 0.43;
+        const hy = y / size - 0.42;
+        color = Math.sqrt(hx * hx + hy * hy) < 0.07 ? light : blue;
+      } else if (d >= 0.3 && d < 0.32) {
+        color = brass;
+      }
+      row[1 + x * 3] = color[0];
+      row[2 + x * 3] = color[1];
+      row[3 + x * 3] = color[2];
     }
     rows.push(row);
   }

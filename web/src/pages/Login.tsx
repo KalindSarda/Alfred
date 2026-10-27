@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { api, describeError } from "../api";
+import { Orb } from "../components/Alfred";
 import { Button, ErrorText, Field, inputClass } from "../components/ui";
 import type { Me } from "../api";
 
@@ -50,8 +51,9 @@ export function Login() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-6 p-6">
       <header className="text-center">
-        <h1 className="text-2xl font-semibold">Finance Tracker</h1>
-        <p className="mt-1 text-sm text-slate-500">Sign in with a one-time code</p>
+        <Orb className="mx-auto mb-4 size-12" />
+        <h1 className="text-4xl">Alfred</h1>
+        <p className="mt-1 text-sm text-soft">Your personal ledger. Sign in with a one-time code.</p>
       </header>
 
       {step === "email" ? (
@@ -71,7 +73,7 @@ export function Login() {
           <label className="flex min-h-11 items-center gap-3 text-sm">
             <input
               type="checkbox"
-              className="size-5 accent-emerald-600"
+              className="size-5 accent-brand"
               checked={viaEmail}
               onChange={(e) => setViaEmail(e.target.checked)}
             />
@@ -84,7 +86,7 @@ export function Login() {
         </form>
       ) : (
         <form onSubmit={submitCode} className="space-y-4">
-          <p className="text-sm text-slate-600 dark:text-slate-400">
+          <p className="text-sm text-soft">
             If <strong>{email}</strong> is registered, a 6-digit code is on its way. It works once and expires in 5
             minutes.
           </p>

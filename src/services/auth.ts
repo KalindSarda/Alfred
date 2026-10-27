@@ -7,6 +7,7 @@ import { newId } from "../utils/id";
 import { logger } from "../utils/logger";
 import type { Notifiers } from "./notifiers";
 import { enforceRateLimit } from "./rateLimit";
+import { nameFromEmail } from "./settings";
 
 export const CODE_TTL_SECONDS = 5 * 60;
 export const MAX_CODE_ATTEMPTS = 5;
@@ -80,10 +81,10 @@ export async function requestLoginCode(
     }),
   ]);
 
-  const message = `Your Finance Tracker login code is ${code}. It is valid for 5 minutes and can be used once. If you did not ask for it, ignore this message.`;
+  const message = `Your Alfred login code is ${code}. It is valid for 5 minutes and can be used once. If you did not ask for it, ignore this message.`;
   try {
     if (channel === "telegram" && chatId) await notifiers.sendTelegram(chatId, message);
-    else await notifiers.sendEmail(user.email, "Your Finance Tracker login code", message);
+    else await notifiers.sendEmail(user.email, "Your Alfred login code", message);
   } catch (error) {
     // Delivery failure is logged but not reported to the caller, to keep the response uniform.
     logger.error("login_code_delivery_failed", { channel, error: error instanceof Error ? error.message : "unknown" });
@@ -187,6 +188,8 @@ export async function logoutEverywhere(db: Db, userId: string): Promise<void> {
 export interface MeDto {
   id: string;
   email: string;
+  /** What Alfred calls the user: the saved display name, or one derived from the email. */
+  displayName: string;
   telegramLinked: boolean;
   settings: { nudgeLeadDays: number; nudgeTimeIst: string };
 }
@@ -198,6 +201,7 @@ export async function getMe(db: Db, userId: string): Promise<MeDto> {
   return {
     id: user.id,
     email: user.email,
+    displayName: settings?.displayName ?? nameFromEmail(user.email),
     telegramLinked: (await getLinkedChatId(db, userId)) !== undefined,
     settings: { nudgeLeadDays: settings?.nudgeLeadDays ?? 3, nudgeTimeIst: settings?.nudgeTimeIst ?? "10:00" },
   };

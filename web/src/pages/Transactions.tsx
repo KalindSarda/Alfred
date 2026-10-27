@@ -4,6 +4,7 @@ import { TxnForm } from "../components/TxnForm";
 import { Button, Card, Empty, inputClass, Sheet, Spinner } from "../components/ui";
 import { longDate, rupees } from "../format";
 import { useAccounts, useCategories, useTransactions } from "../queries";
+import { amountSign, amountTone, describeTxn } from "../txn";
 
 const TYPE_FILTERS = [
   { value: "", label: "All" },
@@ -32,36 +33,29 @@ function Row({
   categories: Map<string, Category>;
   onOpen: () => void;
 }) {
-  const account = accounts.get(txn.accountId)?.name ?? "Account";
-  const to = txn.toAccountId ? (accounts.get(txn.toAccountId)?.name ?? "Account") : null;
-  const category = txn.categoryId ? categories.get(txn.categoryId)?.name : undefined;
-  const title = txn.type === "transfer" ? `${account} → ${to}` : txn.merchant || category || "Uncategorized";
-  const sub = txn.type === "transfer" ? (txn.note ?? "Transfer") : [category && txn.merchant ? category : null, account].filter(Boolean).join(" · ");
-  const color =
-    txn.type === "income" ? "text-emerald-600 dark:text-emerald-400" : txn.type === "expense" ? "" : "text-slate-500";
-  const sign = txn.type === "income" ? "+" : txn.type === "expense" ? "−" : "";
+  const { title, sub } = describeTxn(txn, accounts, categories);
 
   return (
     <li>
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60"
+        className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-2 text-left hover:bg-hover"
       >
         <span className="min-w-0">
           <span className="block truncate font-medium">{title}</span>
-          <span className="block truncate text-sm text-slate-500">
+          <span className="block truncate text-sm text-soft">
             {sub}
             {txn.status === "draft" && (
-              <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+              <span className="ml-2 rounded bg-warn-bg px-1.5 py-0.5 text-xs text-warn-ink">
                 draft
               </span>
             )}
-            {txn.source === "seed" && <span className="ml-2 text-xs text-slate-400">demo</span>}
+            {txn.source === "seed" && <span className="ml-2 text-xs text-faint">demo</span>}
           </span>
         </span>
-        <span className={`shrink-0 font-semibold tabular-nums ${color}`}>
-          {sign}
+        <span className={`shrink-0 font-semibold tabular-nums ${amountTone(txn.type)}`}>
+          {amountSign(txn.type)}
           {rupees(txn.amountPaise)}
         </span>
       </button>
@@ -93,7 +87,7 @@ export function Transactions() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Transactions</h1>
+      <h1 className="text-3xl">Transactions</h1>
 
       <div className="space-y-3">
         <input
@@ -122,8 +116,8 @@ export function Transactions() {
                 onClick={() => setType(f.value)}
                 className={`min-h-11 rounded-full px-3 text-sm font-medium ${
                   type === f.value
-                    ? "bg-emerald-600 text-white"
-                    : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                    ? "bg-brand text-white"
+                    : "bg-sunk text-ink"
                 }`}
               >
                 {f.label}
@@ -144,11 +138,11 @@ export function Transactions() {
       ) : (
         <>
           {groups.map(([date, items]) => (
-            <Card key={date} className="p-0">
-              <h2 className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-500 dark:border-slate-800">
+            <Card key={date} pad="p-0">
+              <h2 className="border-b border-line px-4 py-2 text-sm font-medium text-soft">
                 {longDate(date)}
               </h2>
-              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+              <ul className="divide-y divide-line">
                 {items.map((txn) => (
                   <Row key={txn.id} txn={txn} accounts={accountMap} categories={categoryMap} onOpen={() => setEditing(txn)} />
                 ))}

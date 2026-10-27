@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { loginCodes, sessions } from "../src/db/schema";
 import { CODE_TTL_SECONDS } from "../src/services/auth";
+import { nameFromEmail } from "../src/services/settings";
 import { cookieFrom, extractCode, linkTelegram, login, makeApp, registeredUser, uniqueEmail } from "./api-helpers";
 import { db } from "./helpers";
 
@@ -225,6 +226,7 @@ describe("sessions", () => {
     expect(await json(res)).toEqual({
       id: user.id,
       email: user.email,
+      displayName: nameFromEmail(user.email),
       telegramLinked: false,
       settings: { nudgeLeadDays: 3, nudgeTimeIst: "10:00" },
     });

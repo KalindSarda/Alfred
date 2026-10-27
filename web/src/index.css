@@ -1,10 +1,121 @@
 @import "tailwindcss";
 
+/*
+  Ledger and Alfred: ivory paper and ink for the data, a dark navy panel with a blue orb for Alfred.
+  Screens use only these semantic tokens, so dark mode (follows the phone) is a value swap here.
+*/
 :root {
   color-scheme: light dark;
+  --paper: #f5f1e8;
+  --card: #fffdf8;
+  --ink: #1b2433;
+  --soft: #5b6372;
+  --faint: #7c8290;
+  --line: #ddd6c6;
+  --hover: #f0ebdf;
+  --sunk: #e8e2d3;
+  --brand: #1f5d4a;
+  --brand-strong: #17493a;
+  --good: #1f6b4f;
+  --bad: #b3372f;
+  --bad-bg: #f8e4e1;
+  --warn-bg: #f6ecd2;
+  --warn-ink: #6b4a0e;
+  --brass: #c9a96a;
+  --navy: #101a2e;
+  --navy-soft: #1a2748;
+  --on-navy: #dce8ff;
+  --navy-muted: #9fb4da;
+  --orb: #2b6cde;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0b101a;
+    --card: #131a27;
+    --ink: #ece6d8;
+    --soft: #a3a9b5;
+    --faint: #7b8290;
+    --line: #263042;
+    --hover: #1a2332;
+    --sunk: #1b2433;
+    --brand: #2f8566;
+    --brand-strong: #3a9c78;
+    --good: #5bc29b;
+    --bad: #f08b80;
+    --bad-bg: #3a1d1b;
+    --warn-bg: #3a2f14;
+    --warn-ink: #f1d79a;
+    --navy: #142040;
+    --navy-soft: #1d2d57;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-soft: var(--soft);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-hover: var(--hover);
+  --color-sunk: var(--sunk);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
+  --color-bad-bg: var(--bad-bg);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-ink: var(--warn-ink);
+  --color-brass: var(--brass);
+  --color-navy: var(--navy);
+  --color-navy-soft: var(--navy-soft);
+  --color-on-navy: var(--on-navy);
+  --color-navy-muted: var(--navy-muted);
+  --color-orb: var(--orb);
+  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+}
+
+@layer base {
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 500;
+  }
 }
 
 body {
-  @apply bg-slate-100 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Alfred's orb: a soft blue sphere that breathes slowly. */
+.orb {
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 30%, #8fb8ff 0%, #2b6cde 45%, #16327a 100%);
+  box-shadow:
+    0 0 0 3px rgba(43, 108, 222, 0.18),
+    0 0 18px 2px rgba(43, 108, 222, 0.45);
+  animation: orb-breathe 5s ease-in-out infinite;
+}
+
+@keyframes orb-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 3px rgba(43, 108, 222, 0.18),
+      0 0 16px 2px rgba(43, 108, 222, 0.4);
+  }
+  50% {
+    box-shadow:
+      0 0 0 5px rgba(43, 108, 222, 0.12),
+      0 0 26px 6px rgba(43, 108, 222, 0.55);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orb {
+    animation: none;
+  }
 }

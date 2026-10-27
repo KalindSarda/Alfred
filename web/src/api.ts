@@ -18,7 +18,7 @@ export class ApiError extends Error {
 async function request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}): Promise<T> {
   const res = await fetch(path, {
     method,
-    credentials: "same-origin",
+    // fetch sends same-origin cookies by default, which is all the session needs.
     headers: { "X-Requested-With": "fin", "Content-Type": "application/json", ...headers },
     ...(body !== undefined && { body: JSON.stringify(body) }),
   });
@@ -64,6 +64,8 @@ export function describeError(error: unknown): string {
 export interface Me {
   id: string;
   email: string;
+  /** What Alfred calls the user. */
+  displayName: string;
   telegramLinked: boolean;
   settings: { nudgeLeadDays: number; nudgeTimeIst: string };
 }
@@ -129,6 +131,7 @@ export interface Summary {
   incomePaise: number;
   expensePaise: number;
   netPaise: number;
+  previousExpensePaise: number;
   reviewCount: number;
 }
 
@@ -136,4 +139,5 @@ export interface Settings {
   nudgeLeadDays: number;
   nudgeTimeIst: string;
   sessionDays: number;
+  displayName: string | null;
 }

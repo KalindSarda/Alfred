@@ -317,14 +317,26 @@ describe("categories", () => {
 describe("settings", () => {
   it("returns defaults, patches partially and validates", async () => {
     const { api } = await session();
-    expect((await api("GET", "/api/settings")).json).toEqual({ nudgeLeadDays: 3, nudgeTimeIst: "10:00", sessionDays: 30 });
-    expect((await api("PATCH", "/api/settings", { nudgeLeadDays: 2 })).json).toEqual({ nudgeLeadDays: 2, nudgeTimeIst: "10:00", sessionDays: 30 });
+    expect((await api("GET", "/api/settings")).json).toEqual({ nudgeLeadDays: 3, nudgeTimeIst: "10:00", sessionDays: 30, displayName: null });
+    expect((await api("PATCH", "/api/settings", { nudgeLeadDays: 2 })).json).toEqual({ nudgeLeadDays: 2, nudgeTimeIst: "10:00", sessionDays: 30, displayName: null });
     expect((await api("GET", "/api/settings")).json.nudgeLeadDays).toBe(2);
     expect((await api("PATCH", "/api/settings", { nudgeLeadDays: 0 })).status).toBe(422);
     expect((await api("PATCH", "/api/settings", { nudgeLeadDays: 8 })).status).toBe(422);
     expect((await api("PATCH", "/api/settings", { nudgeTimeIst: "25:00" })).status).toBe(422);
     expect((await api("PATCH", "/api/settings", { sessionDays: 91 })).status).toBe(422);
     expect((await api("PATCH", "/api/settings", { surprise: true })).status).toBe(422);
+  });
+
+  it("stores a display name, trims it, can clear it, and /api/me reflects it", async () => {
+    const { api } = await session();
+    const before = (await api("GET", "/api/me")).json.displayName as string;
+    expect(before).toMatch(/^[A-Z]/);
+    expect((await api("PATCH", "/api/settings", { displayName: "  Kalind  " })).json.displayName).toBe("Kalind");
+    expect((await api("GET", "/api/me")).json.displayName).toBe("Kalind");
+    expect((await api("PATCH", "/api/settings", { displayName: "" })).status).toBe(422);
+    expect((await api("PATCH", "/api/settings", { displayName: "x".repeat(41) })).status).toBe(422);
+    expect((await api("PATCH", "/api/settings", { displayName: null })).json.displayName).toBeNull();
+    expect((await api("GET", "/api/me")).json.displayName).toBe(before);
   });
 });
 

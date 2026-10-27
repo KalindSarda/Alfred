@@ -42,6 +42,8 @@ describe("GET /api/dashboard/summary", () => {
     expect(res.json.incomePaise).toBe(80_000_00);
     expect(res.json.expensePaise).toBe(5_000_00);
     expect(res.json.netPaise).toBe(75_000_00);
+    // previous 30 days (29 Aug - 27 Sep) hold the 15 Sep expense of 500
+    expect(res.json.previousExpensePaise).toBe(500_00);
     // HDFC 10,000 + 80,000 - 2,000 - 500 - 3,000 transfer = 84,500; card owed 3,000 - 3,000 = 0; reserve excluded
     expect(res.json.safeToSpendPaise).toBe(84_500_00);
   });

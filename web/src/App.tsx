@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Orb } from "./components/Alfred";
 import { QuickAddSheet } from "./components/QuickAddSheet";
 import { Icon, Spinner } from "./components/ui";
 import { Accounts } from "./pages/Accounts";
@@ -41,7 +42,7 @@ export function App() {
   if (me.isPending) return <Spinner label="Starting" />;
   if (me.isError) {
     return (
-      <p role="alert" className="p-6 text-center text-slate-600">
+      <p role="alert" className="p-6 text-center text-soft">
         Could not reach the server. Check your connection and reload.
       </p>
     );
@@ -50,12 +51,14 @@ export function App() {
 
   return (
     <div className="min-h-dvh md:flex">
-      <aside className="hidden w-64 shrink-0 flex-col gap-1 border-r border-slate-200 p-4 md:flex dark:border-slate-800">
-        <p className="mb-4 px-3 text-lg font-semibold">Finance Tracker</p>
+      <aside className="hidden w-64 shrink-0 flex-col gap-1 border-r border-line p-4 md:flex">
+        <p className="mb-5 flex items-center gap-3 px-3 font-display text-2xl">
+          <Orb className="size-7" /> Alfred
+        </p>
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="mb-3 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 font-medium text-white hover:bg-emerald-700"
+          className="mb-3 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand font-medium text-white hover:bg-brand-strong"
         >
           <Icon name="plus" className="size-5" /> New
         </button>
@@ -66,8 +69,8 @@ export function App() {
             aria-current={path === item.to ? "page" : undefined}
             className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium ${
               path === item.to
-                ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                ? "bg-sunk text-brand"
+                : "text-soft hover:bg-hover"
             }`}
           >
             <Icon name={item.icon} className="size-5" />
@@ -76,22 +79,24 @@ export function App() {
         ))}
       </aside>
 
-      <main className="mx-auto w-full max-w-3xl flex-1 p-4 pb-28 md:p-8 md:pb-8">
-        <Page path={path} />
+      <main className="mx-auto w-full max-w-5xl flex-1 p-4 pb-28 md:p-8 md:pb-8">
+        <div className={path === "/" ? "" : "max-w-3xl"}>
+          <Page path={path} />
+        </div>
       </main>
 
       <button
         type="button"
         onClick={() => setAdding(true)}
         aria-label="New transaction"
-        className="fixed right-4 bottom-20 z-40 flex size-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg hover:bg-emerald-700 md:hidden"
+        className="fixed right-4 bottom-20 z-40 flex size-14 items-center justify-center rounded-full bg-brand text-white shadow-lg hover:bg-brand-strong md:hidden"
       >
         <Icon name="plus" className="size-7" />
       </button>
 
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden dark:border-slate-800 dark:bg-slate-950"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-card pb-[env(safe-area-inset-bottom)] md:hidden"
       >
         {NAV.map((item) => (
           <Link
@@ -99,7 +104,7 @@ export function App() {
             to={item.to}
             aria-current={path === item.to ? "page" : undefined}
             className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${
-              path === item.to ? "text-emerald-700 dark:text-emerald-400" : "text-slate-500"
+              path === item.to ? "text-brand" : "text-soft"
             }`}
           >
             <Icon name={item.icon} className="size-6" />

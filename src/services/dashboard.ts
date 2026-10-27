@@ -1,7 +1,7 @@
 import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { transactions } from "../db/schema";
-import { type DateRange, type IstDate, type PeriodKey, resolvePeriod } from "../domain/dates";
+import { addDays, type DateRange, type IstDate, type PeriodKey, resolvePeriod } from "../domain/dates";
 import { getSafeToSpend } from "./ledger";
 
 export interface SummaryDto {
@@ -10,6 +10,8 @@ export interface SummaryDto {
   incomePaise: number;
   expensePaise: number;
   netPaise: number;
+  /** Expenses in the period of equal length immediately before this one, for the "vs before" comparison. */
+  previousExpensePaise: number;
   reviewCount: number;
 }
 
@@ -37,6 +39,12 @@ export async function periodTotals(
   return { incomePaise: sum("income"), expensePaise: sum("expense") };
 }
 
+/** The period of the same number of days that ends the day before `range` starts. */
+export function previousRange(range: DateRange): DateRange {
+  const days = Math.round((Date.parse(`${range.to}T00:00:00Z`) - Date.parse(`${range.from}T00:00:00Z`)) / 86_400_000) + 1;
+  return { from: addDays(range.from, -days), to: addDays(range.from, -1) };
+}
+
 /** Drafts plus confirmed income/expense entries that still have no category. */
 export async function reviewCount(db: Db, userId: string): Promise<number> {
   const [row] = await db
@@ -54,8 +62,9 @@ export async function reviewCount(db: Db, userId: string): Promise<number> {
 
 export async function getSummary(db: Db, userId: string, key: PeriodKey, today: IstDate): Promise<SummaryDto> {
   const range = resolvePeriod(key, today);
-  const [totals, safeToSpendPaise, review] = await Promise.all([
+  const [totals, previous, safeToSpendPaise, review] = await Promise.all([
     periodTotals(db, userId, range),
+    periodTotals(db, userId, previousRange(range)),
     getSafeToSpend(db, userId, today),
     reviewCount(db, userId),
   ]);
@@ -64,6 +73,7 @@ export async function getSummary(db: Db, userId: string, key: PeriodKey, today: 
     safeToSpendPaise,
     ...totals,
     netPaise: totals.incomePaise - totals.expensePaise,
+    previousExpensePaise: previous.expensePaise,
     reviewCount: review,
   };
 }

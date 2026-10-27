@@ -76,7 +76,7 @@ export function AccountForm({ initial, onDone }: { initial?: Account; onDone: ()
   return (
     <form onSubmit={submit} className="space-y-4">
       {!initial && (
-        <div role="radiogroup" aria-label="Account type" className="grid grid-cols-2 gap-1 rounded-xl bg-slate-200 p-1 dark:bg-slate-800">
+        <div role="radiogroup" aria-label="Account type" className="grid grid-cols-2 gap-1 rounded-xl bg-sunk p-1">
           {(["bank", "card"] as const).map((k) => (
             <button
               key={k}
@@ -84,7 +84,7 @@ export function AccountForm({ initial, onDone }: { initial?: Account; onDone: ()
               role="radio"
               aria-checked={kind === k}
               onClick={() => setKind(k)}
-              className={`min-h-11 rounded-lg text-sm font-medium ${kind === k ? "bg-white shadow-sm dark:bg-slate-950" : "text-slate-600 dark:text-slate-400"}`}
+              className={`min-h-11 rounded-lg text-sm font-medium ${kind === k ? "bg-card shadow-sm" : "text-soft"}`}
             >
               {k === "bank" ? "Bank account" : "Credit card"}
             </button>
@@ -106,7 +106,7 @@ export function AccountForm({ initial, onDone }: { initial?: Account; onDone: ()
             <input className={inputClass} inputMode="decimal" placeholder="0" value={opening} onChange={(e) => setOpening(e.target.value)} />
           </Field>
           <label className="flex min-h-11 items-center gap-3 text-sm">
-            <input type="checkbox" className="size-5 accent-emerald-600" checked={counts} onChange={(e) => setCounts(e.target.checked)} />
+            <input type="checkbox" className="size-5 accent-brand" checked={counts} onChange={(e) => setCounts(e.target.checked)} />
             Count this account toward safe-to-spend
           </label>
         </>
@@ -123,7 +123,7 @@ export function AccountForm({ initial, onDone }: { initial?: Account; onDone: ()
               <input className={inputClass} type="number" min={1} max={31} required value={dueDay} onChange={(e) => setDueDay(e.target.value)} />
             </Field>
           </div>
-          <p className="-mt-2 text-xs text-slate-500">
+          <p className="-mt-2 text-xs text-soft">
             If the due day is later than the statement day it falls in the same month; otherwise in the next month.
           </p>
           <Field label="Outstanding right now (₹)" hint="Leave empty if you are starting fresh.">

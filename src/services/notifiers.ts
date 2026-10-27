@@ -30,7 +30,7 @@ async function sendSmtpEmail(config: Config, to: string, subject: string, text: 
       credentials: { username: config.SMTP_USER, password: config.SMTP_PASSWORD },
       logLevel: LogLevel.ERROR,
     },
-    { from: { name: "Finance Tracker", email: config.SMTP_FROM }, to, subject, text },
+    { from: { name: "Alfred", email: config.SMTP_FROM }, to, subject, text },
   );
 }
 
