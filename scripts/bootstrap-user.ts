@@ -15,9 +15,14 @@ import {
 } from "../src/db/defaultCategories.ts";
 import { newId } from "../src/utils/id.ts";
 
-const email = (process.argv[2] ?? "").trim().toLowerCase();
+import { spawnSync } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
+
+const args = process.argv.slice(2);
+const target = args.includes("--remote") ? "--remote" : args.includes("--local") ? "--local" : null;
+const email = (args.find((a) => !a.startsWith("--")) ?? "").trim().toLowerCase();
 if (!/^[^\s@'"]+@[^\s@'"]+\.[^\s@'"]+$/.test(email) || email.length > 254) {
-  console.error("Usage: node scripts/bootstrap-user.ts <email>");
+  console.error("Usage: node scripts/bootstrap-user.ts <email> [--local|--remote]");
   process.exit(1);
 }
 
@@ -38,4 +43,18 @@ const addCategory = (name: string, kind: "expense" | "income", isSystem: boolean
 for (const name of DEFAULT_EXPENSE_CATEGORIES) addCategory(name, "expense", false);
 for (const name of DEFAULT_INCOME_CATEGORIES) addCategory(name, "income", name === CASHBACK_CATEGORY);
 
-console.log(lines.join("\n"));
+const sql = lines.join("\n");
+
+if (!target) {
+  console.log(sql);
+} else {
+  // Run it against D1 directly: the SQL goes through a temp file under .wrangler (git-ignored).
+  mkdirSync(".wrangler", { recursive: true });
+  const file = ".wrangler/bootstrap.sql";
+  writeFileSync(file, sql);
+  const result = spawnSync("npx", ["wrangler", "d1", "execute", "finance-tracker", target, `--file=${file}`], {
+    stdio: "inherit",
+    shell: true,
+  });
+  process.exit(result.status ?? 1);
+}

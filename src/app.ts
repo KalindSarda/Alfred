@@ -9,6 +9,7 @@ import { requireSession } from "./middleware/session";
 import { accountRoutes } from "./routes/accounts";
 import { authPublic, authSession } from "./routes/auth";
 import { categoryRoutes } from "./routes/categories";
+import { dashboardRoutes } from "./routes/dashboard";
 import { demoRoutes } from "./routes/demo";
 import { health } from "./routes/health";
 import { me } from "./routes/me";
@@ -64,6 +65,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/categories", categoryRoutes);
   app.route("/api/settings", settingsRoutes);
   app.route("/api/demo-data", demoRoutes);
+  app.route("/api/dashboard", dashboardRoutes);
 
   app.notFound((c) => c.json({ error: { code: "not_found", message: "Not found" } }, 404));
 

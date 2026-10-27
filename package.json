@@ -12,7 +12,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json",
     "db:generate": "drizzle-kit generate",
     "migrate:local": "wrangler d1 migrations apply finance-tracker --local",
-    "migrate:remote": "wrangler d1 migrations apply finance-tracker --remote"
+    "migrate:remote": "wrangler d1 migrations apply finance-tracker --remote",
+    "start": "npm run build && wrangler dev",
+    "setup:local": "npm run migrate:local && node scripts/bootstrap-user.ts --local"
   },
   "dependencies": {
     "@hono/zod-validator": "0.9.1",

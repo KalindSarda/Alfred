@@ -1,0 +1,151 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { type FormEvent, useState } from "react";
+import { parsePaise } from "../../../src/domain/money";
+import { type Account, api, describeError } from "../api";
+import { paiseToInput, parseSignedPaise } from "../format";
+import { useRefreshMoney } from "../queries";
+import { useToast } from "./toast";
+import { Button, ErrorText, Field, inputClass } from "./ui";
+
+export function AccountForm({ initial, onDone }: { initial?: Account; onDone: () => void }) {
+  const refresh = useRefreshMoney();
+  const client = useQueryClient();
+  const toast = useToast();
+  const [kind, setKind] = useState<"bank" | "card">(initial?.kind ?? "bank");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [last4, setLast4] = useState(initial?.last4 ?? "");
+  const [opening, setOpening] = useState(initial?.kind === "bank" ? paiseToInput(initial.openingBalancePaise) : "");
+  const [counts, setCounts] = useState(initial?.kind === "bank" ? initial.countsTowardSafeToSpend : true);
+  const [limit, setLimit] = useState(initial?.kind === "card" ? paiseToInput(initial.creditLimitPaise) : "");
+  const [statementDay, setStatementDay] = useState(initial?.kind === "card" ? String(initial.statementDay) : "");
+  const [dueDay, setDueDay] = useState(initial?.kind === "card" ? String(initial.dueDay) : "");
+  const [outstanding, setOutstanding] = useState(
+    initial?.kind === "card" ? paiseToInput(initial.openingOutstandingPaise) : "",
+  );
+  const [localError, setLocalError] = useState("");
+
+  const save = useMutation({
+    mutationFn: () => {
+      const common = { name: name.trim(), last4: last4.trim() || null };
+      let body: Record<string, unknown>;
+      if (kind === "bank") {
+        const openingBalancePaise = parseSignedPaise(opening);
+        if (openingBalancePaise === null) throw new LocalError("Opening balance looks wrong. Use a number like 25000 or -1500.");
+        body = { ...common, openingBalancePaise, countsTowardSafeToSpend: counts };
+      } else {
+        const creditLimitPaise = parsePaise(limit);
+        const openingOutstandingPaise = parseSignedPaise(outstanding);
+        if (creditLimitPaise === null) throw new LocalError("Enter the credit limit, for example 200000.");
+        if (openingOutstandingPaise === null || openingOutstandingPaise < 0) {
+          throw new LocalError("Outstanding amount must be zero or more.");
+        }
+        body = {
+          ...common,
+          creditLimitPaise,
+          statementDay: Number(statementDay),
+          dueDay: Number(dueDay),
+          openingOutstandingPaise,
+        };
+      }
+      return initial ? api.patch(`/api/accounts/${initial.id}`, body) : api.post("/api/accounts", { kind, ...body });
+    },
+    onSuccess: async () => {
+      await refresh();
+      toast.show(initial ? "Saved" : "Account added");
+      onDone();
+    },
+  });
+
+  const archive = useMutation({
+    mutationFn: () => api.post(`/api/accounts/${initial?.id}/${initial?.archived ? "unarchive" : "archive"}`),
+    onSuccess: async () => {
+      await refresh();
+      await client.invalidateQueries({ queryKey: ["accounts"] });
+      onDone();
+    },
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    setLocalError("");
+    save.mutate();
+  };
+
+  const error = save.error instanceof LocalError ? save.error.message : save.isError ? describeError(save.error) : "";
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      {!initial && (
+        <div role="radiogroup" aria-label="Account type" className="grid grid-cols-2 gap-1 rounded-xl bg-slate-200 p-1 dark:bg-slate-800">
+          {(["bank", "card"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="radio"
+              aria-checked={kind === k}
+              onClick={() => setKind(k)}
+              className={`min-h-11 rounded-lg text-sm font-medium ${kind === k ? "bg-white shadow-sm dark:bg-slate-950" : "text-slate-600 dark:text-slate-400"}`}
+            >
+              {k === "bank" ? "Bank account" : "Credit card"}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <Field label="Name">
+        <input className={inputClass} required maxLength={40} value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "bank" ? "HDFC Bank" : "HDFC Millennia"} />
+      </Field>
+
+      <Field label="Last 4 digits (optional)" hint="Only the last four digits are ever stored. Never enter a full card or account number.">
+        <input className={inputClass} inputMode="numeric" maxLength={4} pattern="\d{4}|" value={last4} onChange={(e) => setLast4(e.target.value.replace(/\D/g, ""))} />
+      </Field>
+
+      {kind === "bank" ? (
+        <>
+          <Field label="Opening balance (₹)" hint="What the account holds right now. You can change it later.">
+            <input className={inputClass} inputMode="decimal" placeholder="0" value={opening} onChange={(e) => setOpening(e.target.value)} />
+          </Field>
+          <label className="flex min-h-11 items-center gap-3 text-sm">
+            <input type="checkbox" className="size-5 accent-emerald-600" checked={counts} onChange={(e) => setCounts(e.target.checked)} />
+            Count this account toward safe-to-spend
+          </label>
+        </>
+      ) : (
+        <>
+          <Field label="Credit limit (₹)">
+            <input className={inputClass} inputMode="decimal" required value={limit} onChange={(e) => setLimit(e.target.value)} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Statement day">
+              <input className={inputClass} type="number" min={1} max={31} required value={statementDay} onChange={(e) => setStatementDay(e.target.value)} />
+            </Field>
+            <Field label="Payment due day">
+              <input className={inputClass} type="number" min={1} max={31} required value={dueDay} onChange={(e) => setDueDay(e.target.value)} />
+            </Field>
+          </div>
+          <p className="-mt-2 text-xs text-slate-500">
+            If the due day is later than the statement day it falls in the same month; otherwise in the next month.
+          </p>
+          <Field label="Outstanding right now (₹)" hint="Leave empty if you are starting fresh.">
+            <input className={inputClass} inputMode="decimal" placeholder="0" value={outstanding} onChange={(e) => setOutstanding(e.target.value)} />
+          </Field>
+        </>
+      )}
+
+      <ErrorText>{localError || error || (archive.isError ? describeError(archive.error) : "")}</ErrorText>
+
+      <div className="flex gap-3">
+        <Button type="submit" className="flex-1" disabled={save.isPending}>
+          {save.isPending ? "Saving…" : initial ? "Save changes" : "Add account"}
+        </Button>
+        {initial && (
+          <Button type="button" variant="secondary" disabled={archive.isPending} onClick={() => archive.mutate()}>
+            {initial.archived ? "Unarchive" : "Archive"}
+          </Button>
+        )}
+      </div>
+    </form>
+  );
+}
+
+class LocalError extends Error {}
