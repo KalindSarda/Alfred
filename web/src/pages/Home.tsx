@@ -1,10 +1,14 @@
 import { useMemo, useState } from "react";
-import { buildBriefing, cardsByDue, daysBetween, greeting, inDays } from "../alfred";
+import { daysBetween, inDays } from "../../../src/alfred/voice";
+import type { CardAccount } from "../api";
 import { AlfredPanel } from "../components/Alfred";
+import { Breakdown } from "../components/Breakdown";
+import { CashflowCard } from "../components/CashflowCard";
 import { Card, Empty, Spinner } from "../components/ui";
 import { rupees, shortDate, today } from "../format";
 import { emptyFilters } from "../filters";
-import { useAccounts, useCategories, useMe, useSummary, useTransactions } from "../queries";
+import { NetWorthStrip } from "../components/NetWorth";
+import { useAccounts, useBalanceOverview, useBriefing, useCategories, useSummary, useTransactions } from "../queries";
 import { Link } from "../router";
 import { amountSign, amountTone, describeTxn } from "../txn";
 
@@ -42,46 +46,37 @@ function SectionTitle({ children, to, action }: { children: string; to?: string;
 
 export function Home() {
   const [period, setPeriod] = useState("30d");
-  const me = useMe();
+  const briefing = useBriefing();
   const summary = useSummary(period);
-  const briefingSummary = useSummary("30d");
   const accounts = useAccounts();
+  const overview = useBalanceOverview();
   const categories = useCategories();
   const recent = useTransactions(emptyFilters);
 
   const accountMap = useMemo(() => new Map((accounts.data ?? []).map((a) => [a.id, a])), [accounts.data]);
   const categoryMap = useMemo(() => new Map((categories.data ?? []).map((c) => [c.id, c])), [categories.data]);
 
-  if (summary.isPending || accounts.isPending || briefingSummary.isPending) return <Spinner />;
-  if (summary.isError || accounts.isError || briefingSummary.isError) {
+  if (summary.isPending || accounts.isPending || briefing.isPending) return <Spinner />;
+  if (summary.isError || accounts.isError || briefing.isError) {
     return <Empty title="Could not load your dashboard">Check your connection and reload.</Empty>;
   }
 
-  if ((accounts.data ?? []).length === 0) {
-    return (
-      <div className="space-y-5">
-        <AlfredPanel
-          greeting={greeting(me.data?.displayName ?? "there", new Date())}
-          lines={[
-            { key: "start", text: "Nothing is recorded yet. Add a bank account or credit card and I will take it from there.", to: "/accounts" },
-            { key: "demo", text: "Or try me with sample data first, from More.", to: "/more" },
-          ]}
-        />
-      </div>
-    );
-  }
+  const b = briefing.data;
+  const panel = <AlfredPanel greeting={b.greeting} subline={b.subline} lines={b.lines} footer={b.footer} />;
+  if ((accounts.data ?? []).length === 0) return <div className="space-y-5">{panel}</div>;
 
   const s = summary.data;
   const todayDate = today();
-  const lines = buildBriefing(briefingSummary.data, accounts.data ?? [], todayDate, shortDate);
-  const dueCards = cardsByDue(accounts.data ?? []);
+  const dueCards = (accounts.data ?? [])
+    .filter((a): a is CardAccount => a.kind === "card" && !a.archived)
+    .sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate));
   const latest = (recent.data?.pages[0]?.items ?? []).slice(0, 6);
 
   return (
     <div className="space-y-6">
       <h1 className="sr-only">Cash flow</h1>
 
-      <AlfredPanel greeting={greeting(me.data?.displayName ?? "there", new Date())} lines={lines} />
+      {panel}
 
       <section aria-label="Cash flow summary" className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">
@@ -112,10 +107,16 @@ export function Home() {
         </div>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <CashflowCard period={period} />
+
+      <Breakdown period={period} />
+
+      {overview.data && <NetWorthStrip overview={overview.data} />}
+
+      <div className="grid items-start gap-6 lg:grid-cols-2">
         <Card>
           <SectionTitle to="/accounts" action="All accounts">
-            Coming up
+            Upcoming payments
           </SectionTitle>
           {dueCards.length === 0 ? (
             <p className="text-sm text-soft">No credit cards added yet.</p>
@@ -168,13 +169,6 @@ export function Home() {
           )}
         </Card>
       </div>
-
-      <Card>
-        <SectionTitle>Where the money went</SectionTitle>
-        <p className="text-sm text-soft">
-          The cash flow chart and the Profit and loss table arrive in the next update. The totals above are already live.
-        </p>
-      </Card>
     </div>
   );
 }

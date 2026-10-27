@@ -86,7 +86,7 @@ export function App() {
         ))}
       </aside>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 p-4 pb-28 md:p-8 md:pb-8">
+      <main className="mx-auto w-full min-w-0 max-w-5xl flex-1 p-4 pb-28 md:p-8 md:pb-8">
         <div className={path === "/" ? "" : "max-w-3xl"}>
           <Page path={path} />
         </div>

@@ -8,8 +8,7 @@ import { parseJson, parseQuery } from "../utils/validate";
 export const accountRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const { includeArchived } = parseQuery(c, ListAccountsQuery);
-    const items = await listAccountDtos(c.var.auth.db, c.var.userId, requestToday(c.var.auth), { includeArchived });
-    return c.json({ items });
+    return c.json(await listAccountDtos(c.var.auth.db, c.var.userId, requestToday(c.var.auth), { includeArchived }));
   })
   .post("/", async (c) => {
     const body = await parseJson(c, CreateAccount);

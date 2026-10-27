@@ -101,6 +101,15 @@ export interface CardAccount {
 
 export type Account = BankAccount | CardAccount;
 
+export interface BalanceOverview {
+  totalInBanksPaise: number;
+  countedPaise: number;
+  setAsidePaise: number;
+  cardsOwedPaise: number;
+  netWorthPaise: number;
+  safeToSpendPaise: number;
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -134,6 +143,39 @@ export interface Summary {
   previousExpensePaise: number;
   uncategorizedCount: number;
   draftCount: number;
+}
+
+export interface CashflowRow {
+  key: string;
+  categoryId: string | null;
+  name: string;
+  amountPaise: number;
+  pctOfIncome: number;
+}
+
+export interface Cashflow {
+  period: { key: string; from: string; to: string };
+  groupBy: "category" | "merchant";
+  incomePaise: number;
+  expensePaise: number;
+  surplusPaise: number;
+  income: CashflowRow[];
+  expenses: CashflowRow[];
+}
+
+export interface BriefingLine {
+  key: string;
+  text: string;
+  to?: string;
+}
+
+export interface Briefing {
+  greeting: string;
+  subline: string;
+  lines: BriefingLine[];
+  source: "template" | "ai";
+  generatedAt: string;
+  footer: string;
 }
 
 export interface Settings {

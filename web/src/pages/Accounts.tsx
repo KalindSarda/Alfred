@@ -3,7 +3,8 @@ import type { Account, CardAccount } from "../api";
 import { AccountForm } from "../components/AccountForm";
 import { Button, Card, Empty, Sheet, Spinner } from "../components/ui";
 import { rupees, shortDate } from "../format";
-import { useAccounts } from "../queries";
+import { NetWorthCard } from "../components/NetWorth";
+import { useAccounts, useBalanceOverview } from "../queries";
 
 function CardRow({ card, onOpen }: { card: CardAccount; onOpen: () => void }) {
   const pct = Math.min(100, Math.max(0, card.utilizationPct));
@@ -43,6 +44,7 @@ function CardRow({ card, onOpen }: { card: CardAccount; onOpen: () => void }) {
 export function Accounts() {
   const [showArchived, setShowArchived] = useState(false);
   const accounts = useAccounts(showArchived);
+  const overview = useBalanceOverview();
   const [editing, setEditing] = useState<Account | "new" | null>(null);
 
   const banks = (accounts.data ?? []).filter((a) => a.kind === "bank");
@@ -65,6 +67,7 @@ export function Accounts() {
         </Empty>
       ) : (
         <>
+          {overview.data && <NetWorthCard overview={overview.data} />}
           {banks.length > 0 && (
             <Card pad="p-0">
               <h2 className="border-b border-line px-4 py-2 text-sm font-medium text-soft">Bank accounts</h2>

@@ -282,3 +282,14 @@ POST /api/auth/verify-code   { "email": "me@example.com", "code": "123456" }
 - `userId` must come from the session middleware only; reviewers should flag any query lacking it.
 - Webhook and auth routes need their own rate-limit and secret checks, since they sit outside normal session middleware.
 - Open items: exact bot command grammar (dev-prompt/spec stage), default category list, OpenAPI exposure policy.
+
+## Revision history
+- 2026-10-27, after first user testing. Changes to the contract above (the code is the source of truth where they differ):
+  - **New transaction type `bill_payment`.** Types are now `expense | income | transfer | bill_payment`. A transfer is bank to bank only; a bill payment is bank (accountId) to credit card (toAccountId). Both are "movements": no category, never counted as income or expense, excluded from cash flow and budgets. Transfers with a card on either side are rejected with 422 (`accountId` or `toAccountId` detail). Existing bank-to-card transfers were migrated to `bill_payment`.
+  - **`GET /api/transactions`** adds filters `minAmountPaise`, `maxAmountPaise` (422 if min > max), and `categoryId` now accepts a comma-separated list plus `none`. `q` also matches category name and account names. The response gains `totals: { count, incomePaise, expensePaise }` for everything the filters match (ignores paging; sums only confirmed income and expense).
+  - **`GET /api/accounts`** now returns `{ items, overview }`. `overview` = `{ totalInBanksPaise, countedPaise, setAsidePaise, cardsOwedPaise, netWorthPaise, safeToSpendPaise }` over active accounts (net worth = banks minus cards).
+  - **`GET /api/dashboard/summary`**: `reviewCount` replaced by `uncategorizedCount` and `draftCount`; adds `previousExpensePaise` (equal-length period before).
+  - **`GET /api/dashboard/review`** (new): `{ uncategorizedCount, draftCount }`, for the navigation badge.
+  - **`GET /api/dashboard/cashflow?period=&groupBy=category|merchant`** (new): `{ period, groupBy, incomePaise, expensePaise, surplusPaise, income: Row[], expenses: Row[] }` with `Row = { key, categoryId, name, amountPaise, pctOfIncome }`. Replaces the `sources`/`pnl` shape sketched earlier; one payload feeds the Sankey, Profit and loss and breakdown cards.
+  - **`GET /api/alfred/briefing`** (new): `{ greeting, subline, lines: [{ key, text, to? }], source: "template" | "ai", generatedAt, footer }`, built server-side from recorded facts by `src/alfred/voice.ts`. `source` becomes `"ai"` when the model phrases it.
+  - **`/api/settings`** and **`/api/me`** add `displayName` (what Alfred calls the user; `null` in settings falls back to a name derived from the email).

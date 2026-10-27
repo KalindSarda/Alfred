@@ -6,5 +6,11 @@ export default defineConfig({
   root: __dirname,
   plugins: [react(), tailwindcss()],
   build: { outDir: "dist", emptyOutDir: true },
-  server: { proxy: { "/api": "http://localhost:8787", "/telegram": "http://localhost:8787" } },
+  server: {
+    // Point the dev server at a running Worker: API_ORIGIN=http://localhost:8792 npm run dev:web
+    proxy: {
+      "/api": process.env.API_ORIGIN ?? "http://localhost:8787",
+      "/telegram": process.env.API_ORIGIN ?? "http://localhost:8787",
+    },
+  },
 });

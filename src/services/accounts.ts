@@ -71,13 +71,52 @@ export function toAccountDto(account: AccountWithFigures): AccountDto {
   };
 }
 
+export interface BalanceOverview {
+  /** Everything held in active bank accounts. */
+  totalInBanksPaise: number;
+  /** The part of it that counts toward safe-to-spend. */
+  countedPaise: number;
+  /** The part set aside (accounts not counted toward safe-to-spend, such as a reserve). */
+  setAsidePaise: number;
+  /** What all active credit cards currently owe. */
+  cardsOwedPaise: number;
+  /** Banks minus cards. Investments and loans will join this once they are tracked. */
+  netWorthPaise: number;
+  safeToSpendPaise: number;
+}
+
+/** Totals across active accounts, computed from figures already loaded (no extra query). */
+export function balanceOverview(figures: readonly AccountWithFigures[]): BalanceOverview {
+  let totalInBanksPaise = 0;
+  let countedPaise = 0;
+  let cardsOwedPaise = 0;
+  for (const a of figures) {
+    if (a.archivedAt) continue;
+    if (a.kind === "bank") {
+      totalInBanksPaise += a.balancePaise;
+      if (a.countsTowardSafeToSpend) countedPaise += a.balancePaise;
+    } else {
+      cardsOwedPaise += a.summary.owedPaise;
+    }
+  }
+  return {
+    totalInBanksPaise,
+    countedPaise,
+    setAsidePaise: totalInBanksPaise - countedPaise,
+    cardsOwedPaise,
+    netWorthPaise: totalInBanksPaise - cardsOwedPaise,
+    safeToSpendPaise: countedPaise - cardsOwedPaise,
+  };
+}
+
 export async function listAccountDtos(
   db: Db,
   userId: string,
   today: IstDate,
   options: { includeArchived?: boolean } = {},
-): Promise<AccountDto[]> {
-  return (await listAccountsWithFigures(db, userId, today, options)).map(toAccountDto);
+): Promise<{ items: AccountDto[]; overview: BalanceOverview }> {
+  const figures = await listAccountsWithFigures(db, userId, today, options);
+  return { items: figures.map(toAccountDto), overview: balanceOverview(figures) };
 }
 
 async function accountDto(db: Db, userId: string, id: string, today: IstDate): Promise<AccountDto> {

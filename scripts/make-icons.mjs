@@ -1,4 +1,4 @@
-// Generates the PWA icons (navy square with Alfred's blue orb and a brass ring) without any image library.
+// Generates Alfred's icons without any image library: a shaded blue orb with a soft glow on navy.
 // Run once: node scripts/make-icons.mjs   (outputs are committed in web/public)
 import { mkdirSync, writeFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
@@ -23,29 +23,51 @@ function chunk(type, data) {
   return out;
 }
 
-function png(size) {
-  const navy = [16, 26, 46];
-  const brass = [201, 169, 106];
-  const blue = [43, 108, 222];
-  const light = [143, 184, 255];
+const NAVY = [16, 26, 46];
+const BLUE = [43, 108, 222];
+const DEEP = [22, 50, 122];
+const GLOW = [60, 120, 235];
+
+const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
+
+/** Colour of one pixel: navy background, a halo around the orb, then a lit sphere with a specular highlight. */
+function pixel(x, y, size, radius) {
+  const dx = (x + 0.5) / size - 0.5;
+  const dy = (y + 0.5) / size - 0.5;
+  const d = Math.hypot(dx, dy);
+
+  // Halo: soft blue light falling off outside the sphere.
+  const halo = d > radius ? Math.exp(-(((d - radius) / 0.1) ** 2)) * 0.55 : 0;
+  let color = mix(NAVY, GLOW, halo);
+
+  // Sphere with antialiased edge.
+  const coverage = clamp((radius - d) * size + 0.5);
+  if (coverage > 0) {
+    const nx = dx / radius;
+    const ny = dy / radius;
+    const nz = Math.sqrt(clamp(1 - nx * nx - ny * ny));
+    const light = [-0.35, -0.42, 0.84];
+    const diffuse = clamp(nx * light[0] + ny * light[1] + nz * light[2]);
+    let sphere = mix(DEEP, BLUE, clamp(diffuse * 1.15));
+    const half = [light[0], light[1], light[2] + 1];
+    const hl = Math.hypot(...half);
+    const spec = clamp((nx * half[0] + ny * half[1] + nz * half[2]) / hl) ** 36;
+    sphere = mix(sphere, [235, 244, 255], spec * 0.75);
+    color = mix(color, sphere, coverage);
+  }
+  return color.map((v) => Math.round(clamp(v, 0, 255)));
+}
+
+function png(size, radius) {
   const rows = [];
   for (let y = 0; y < size; y++) {
     const row = Buffer.alloc(1 + size * 3);
     for (let x = 0; x < size; x++) {
-      const dx = x / size - 0.5;
-      const dy = y / size - 0.5;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      let color = navy;
-      if (d < 0.22) {
-        const hx = x / size - 0.43;
-        const hy = y / size - 0.42;
-        color = Math.sqrt(hx * hx + hy * hy) < 0.07 ? light : blue;
-      } else if (d >= 0.3 && d < 0.32) {
-        color = brass;
-      }
-      row[1 + x * 3] = color[0];
-      row[2 + x * 3] = color[1];
-      row[3 + x * 3] = color[2];
+      const [r, g, b] = pixel(x, y, size, radius);
+      row[1 + x * 3] = r;
+      row[2 + x * 3] = g;
+      row[3 + x * 3] = b;
     }
     rows.push(row);
   }
@@ -63,11 +85,30 @@ function png(size) {
 }
 
 mkdirSync("web/public", { recursive: true });
-for (const [name, size] of [
-  ["icon-192.png", 192],
-  ["icon-512.png", 512],
-  ["apple-touch-icon.png", 180],
+for (const [name, size, radius] of [
+  ["icon-192.png", 192, 0.27],
+  ["icon-512.png", 512, 0.27], // also the Telegram bot's profile picture
+  ["apple-touch-icon.png", 180, 0.27],
+  ["favicon-32.png", 32, 0.36],
 ]) {
-  writeFileSync(`web/public/${name}`, png(size));
+  writeFileSync(`web/public/${name}`, png(size, radius));
   console.log(`wrote web/public/${name}`);
 }
+
+// The browser-tab icon is vector so it stays crisp at any size: the orb alone on a transparent background.
+writeFileSync(
+  "web/public/favicon.svg",
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="orb" cx="36%" cy="30%" r="78%">
+      <stop offset="0" stop-color="#9cc2ff"/>
+      <stop offset="0.45" stop-color="#2b6cde"/>
+      <stop offset="1" stop-color="#16327a"/>
+    </radialGradient>
+  </defs>
+  <circle cx="32" cy="32" r="30" fill="url(#orb)"/>
+  <ellipse cx="24" cy="20" rx="8" ry="5" fill="#ffffff" opacity="0.35" transform="rotate(-25 24 20)"/>
+</svg>
+`,
+);
+console.log("wrote web/public/favicon.svg");

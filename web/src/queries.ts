@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type Category, type Me, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Cashflow, type Category, type Me, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -17,12 +17,16 @@ export const useMe = () =>
     retry: false,
   });
 
+const accountsQuery = (includeArchived: boolean) => ({
+  queryKey: ["accounts", { includeArchived }],
+  queryFn: () => api.get<{ items: Account[]; overview: BalanceOverview }>(`/api/accounts?includeArchived=${includeArchived}`),
+});
+
 export const useAccounts = (includeArchived = false) =>
-  useQuery({
-    queryKey: ["accounts", { includeArchived }],
-    queryFn: async () =>
-      (await api.get<{ items: Account[] }>(`/api/accounts?includeArchived=${includeArchived}`)).items,
-  });
+  useQuery({ ...accountsQuery(includeArchived), select: (r) => r.items });
+
+/** Totals across active accounts: banks, cards owed, net worth. Shares the accounts request. */
+export const useBalanceOverview = () => useQuery({ ...accountsQuery(false), select: (r) => r.overview });
 
 export const useCategories = () =>
   useQuery({
@@ -36,6 +40,15 @@ export const useSummary = (period: string) =>
     queryKey: ["summary", period],
     queryFn: () => api.get<Summary>(`/api/dashboard/summary?period=${period}`),
   });
+
+export const useCashflow = (period: string, groupBy: "category" | "merchant" = "category") =>
+  useQuery({
+    queryKey: ["cashflow", period, groupBy],
+    queryFn: () => api.get<Cashflow>(`/api/dashboard/cashflow?period=${period}&groupBy=${groupBy}`),
+  });
+
+export const useBriefing = () =>
+  useQuery({ queryKey: ["briefing"], queryFn: () => api.get<Briefing>("/api/alfred/briefing"), staleTime: 60_000 });
 
 export interface ReviewCounts {
   uncategorizedCount: number;
@@ -78,6 +91,8 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["transactions"] }),
       client.invalidateQueries({ queryKey: ["accounts"] }),
       client.invalidateQueries({ queryKey: ["summary"] }),
+      client.invalidateQueries({ queryKey: ["cashflow"] }),
+      client.invalidateQueries({ queryKey: ["briefing"] }),
       client.invalidateQueries({ queryKey: ["review"] }),
     ]);
 }

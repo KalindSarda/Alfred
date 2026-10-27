@@ -60,7 +60,7 @@ export function Card({
   /** Padding utilities. Passed separately because two padding classes on one element conflict by CSS order. */
   pad?: string;
 }) {
-  return <section className={`rounded-2xl ${pad} ${surface ? surfaceClass : ""} ${className}`}>{children}</section>;
+  return <section className={`min-w-0 rounded-2xl ${pad} ${surface ? surfaceClass : ""} ${className}`}>{children}</section>;
 }
 
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {

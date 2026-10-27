@@ -1,40 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { buildBriefing, cardsByDue, dayPart, daysBetween, greeting, inDays } from "../web/src/alfred";
-import type { Account, CardAccount, Summary } from "../web/src/api";
+import { type BriefingCard, type BriefingFacts, buildBriefingLines, dayPart, daysBetween, greeting, inDays, subline } from "../src/alfred/voice";
+import { login, makeApp, registeredUser } from "./api-helpers";
 
-const card = (over: Partial<CardAccount>): CardAccount => ({
-  id: "c1",
-  kind: "card",
+const card = (over: Partial<BriefingCard> = {}): BriefingCard => ({
   name: "HDFC Millennia",
-  last4: null,
-  creditLimitPaise: 2_00_000_00,
-  statementDay: 23,
-  dueDay: 12,
-  openingOutstandingPaise: 0,
-  archived: false,
-  outstandingPaise: 0,
-  unbilledPaise: 0,
-  statementOutstandingPaise: 0,
-  utilizationPct: 0,
-  nextStatementDate: "2026-11-23",
   nextDueDate: "2026-11-12",
+  statementOutstandingPaise: 0,
   ...over,
 });
 
-const summary = (over: Partial<Summary> = {}): Summary => ({
-  period: { key: "30d", from: "2026-09-28", to: "2026-10-27" },
+const facts = (over: Partial<BriefingFacts> = {}): BriefingFacts => ({
+  today: "2026-10-27",
+  periodKey: "30d",
   safeToSpendPaise: 1_71_922_00,
-  incomePaise: 0,
   expensePaise: 0,
-  netPaise: 0,
   previousExpensePaise: 0,
   uncategorizedCount: 0,
   draftCount: 0,
+  cards: [],
   ...over,
 });
 
 const fmt = (d: string) => d;
-const TODAY = "2026-10-27";
+const lines = (over: Partial<BriefingFacts> = {}) => buildBriefingLines(facts(over), fmt);
+const find = (over: Partial<BriefingFacts>, key: string) => lines(over).find((l) => l.key === key);
 
 describe("greeting", () => {
   it("follows IST, not the machine's timezone", () => {
@@ -57,9 +46,12 @@ describe("greeting", () => {
     expect(greeting("Kalind", new Date("2026-10-14T04:00:00Z"))).toBe("Good morning, sir.");
   });
 
-  it("is stable for the same moment", () => {
-    const now = new Date("2026-10-27T10:00:00Z");
+  it("is stable for the same moment, and the subline varies across days", () => {
+    const now = new Date("2026-10-27T14:00:00Z");
     expect(greeting("Kalind", now)).toBe(greeting("Kalind", now));
+    expect(subline(now)).toBe(subline(now));
+    const seen = new Set([0, 1, 2, 3].map((d) => subline(new Date(Date.UTC(2026, 9, 27 + d, 14)))));
+    expect(seen.size).toBeGreaterThan(1);
   });
 });
 
@@ -78,70 +70,113 @@ describe("date phrases", () => {
   });
 });
 
-describe("buildBriefing", () => {
+describe("briefing lines", () => {
   it("states safe-to-spend as recorded", () => {
-    const lines = buildBriefing(summary(), [], TODAY, fmt);
-    expect(lines[0]?.text).toBe("₹1,71,922 is available to spend, as recorded.");
+    expect(lines()[0]?.text).toBe("₹1,71,922 is available to spend, as recorded.");
   });
 
   it("explains a shortfall without blame", () => {
-    const lines = buildBriefing(summary({ safeToSpendPaise: -2_500_00 }), [], TODAY, fmt);
-    expect(lines[0]?.text).toBe("Your recorded balances are ₹2,500 short of what your cards currently owe.");
+    expect(lines({ safeToSpendPaise: -2_500_00 })[0]?.text).toBe("Your recorded balances are ₹2,500 short of what your cards currently owe.");
   });
 
   it("names the soonest card with money due and counts the rest", () => {
-    const accounts: Account[] = [
-      card({ id: "a", name: "Amazon Pay", nextDueDate: "2026-10-30", statementOutstandingPaise: 5_000_00 }),
-      card({ id: "b", name: "OneCard", nextDueDate: "2026-11-07", statementOutstandingPaise: 1_200_00 }),
-      card({ id: "c", name: "Paid card", nextDueDate: "2026-10-29", statementOutstandingPaise: 0 }),
+    const cards = [
+      card({ name: "Amazon Pay", nextDueDate: "2026-10-30", statementOutstandingPaise: 5_000_00 }),
+      card({ name: "OneCard", nextDueDate: "2026-11-07", statementOutstandingPaise: 1_200_00 }),
+      card({ name: "Paid card", nextDueDate: "2026-10-29", statementOutstandingPaise: 0 }),
     ];
-    const due = buildBriefing(summary(), accounts, TODAY, fmt).find((l) => l.key === "due");
-    expect(due?.text).toBe("Amazon Pay: ₹5,000 is due on 2026-10-30 (in 3 days), with 1 more card to follow.");
+    expect(find({ cards }, "due")?.text).toBe("Amazon Pay: ₹5,000 is due on 2026-10-30 (in 3 days), with 1 more card to follow.");
   });
 
   it("says so when nothing is pending, and omits the line when there are no cards", () => {
-    const paid = [card({ statementOutstandingPaise: 0 })];
-    expect(buildBriefing(summary(), paid, TODAY, fmt).find((l) => l.key === "due")?.text).toBe("No card payments are pending.");
-    expect(buildBriefing(summary(), [], TODAY, fmt).some((l) => l.key === "due")).toBe(false);
-  });
-
-  it("ignores archived cards", () => {
-    expect(cardsByDue([card({ archived: true, statementOutstandingPaise: 9_000_00 })])).toHaveLength(0);
+    expect(find({ cards: [card()] }, "due")?.text).toBe("No card payments are pending.");
+    expect(lines().some((l) => l.key === "due")).toBe(false);
   });
 
   it("compares spending with the period before, neutrally", () => {
-    const more = buildBriefing(summary({ expensePaise: 44_318_00, previousExpensePaise: 40_000_00 }), [], TODAY, fmt);
-    expect(more.find((l) => l.key === "spend")?.text).toBe(
+    expect(find({ expensePaise: 44_318_00, previousExpensePaise: 40_000_00 }, "spend")?.text).toBe(
       "You have spent ₹44,318 over the last 30 days. That is ₹4,318 more than the period before.",
     );
-    const less = buildBriefing(summary({ expensePaise: 10_000_00, previousExpensePaise: 12_000_00 }), [], TODAY, fmt);
-    expect(less.find((l) => l.key === "spend")?.text).toContain("₹2,000 less than the period before");
-    const same = buildBriefing(summary({ expensePaise: 5_000_00, previousExpensePaise: 5_000_00 }), [], TODAY, fmt);
-    expect(same.find((l) => l.key === "spend")?.text).toContain("That matches the period before.");
-    const first = buildBriefing(summary({ expensePaise: 5_000_00 }), [], TODAY, fmt);
-    expect(first.find((l) => l.key === "spend")?.text).toContain("no earlier spending to compare with");
+    expect(find({ expensePaise: 10_000_00, previousExpensePaise: 11_000_00 }, "spend")?.text).toContain("₹1,000 less than the period before");
+    expect(find({ expensePaise: 5_000_00, previousExpensePaise: 5_000_00 }, "spend")?.text).toContain("That matches the period before.");
+    expect(find({ expensePaise: 5_000_00 }, "spend")?.text).toContain("no earlier spending to compare with");
+  });
+
+  it("allows a dry aside only for a clear swing, and never a scolding one", () => {
+    expect(find({ expensePaise: 13_000_00, previousExpensePaise: 10_000_00 }, "spend")?.text).toContain("Your money has been rather busy.");
+    expect(find({ expensePaise: 7_000_00, previousExpensePaise: 10_000_00 }, "spend")?.text).toContain("A restrained stretch.");
+    expect(find({ expensePaise: 11_000_00, previousExpensePaise: 10_000_00 }, "spend")?.text).not.toMatch(/busy|restrained/);
+    expect(find({ expensePaise: 5_000_00 }, "spend")?.text).not.toMatch(/busy|restrained/);
+    const words = lines({ expensePaise: 50_000_00, previousExpensePaise: 10_000_00 }).map((l) => l.text).join(" ");
+    expect(words).not.toMatch(/overspen|too much|should|careful|waste/i);
   });
 
   it("omits the spending line when there is nothing to say", () => {
-    expect(buildBriefing(summary(), [], TODAY, fmt).some((l) => l.key === "spend")).toBe(false);
+    expect(lines().some((l) => l.key === "spend")).toBe(false);
   });
 
   it("reports entries needing a category and drafts as separate lines with correct grammar", () => {
-    const find = (over: Partial<Summary>, key: string) => buildBriefing(summary(over), [], TODAY, fmt).find((l) => l.key === key);
     expect(find({ uncategorizedCount: 1 }, "uncategorized")?.text).toBe("1 entry needs a category.");
     expect(find({ uncategorizedCount: 2 }, "uncategorized")?.text).toBe("2 entries need a category.");
     expect(find({ draftCount: 1 }, "drafts")?.text).toBe("1 entry is waiting for your confirmation.");
     expect(find({ draftCount: 3 }, "drafts")?.text).toBe("3 entries are waiting for your confirmation.");
   });
 
-  it("shows both lines when both apply, each linking to its own filtered list", () => {
-    const lines = buildBriefing(summary({ uncategorizedCount: 2, draftCount: 1 }), [], TODAY, fmt);
-    expect(lines.find((l) => l.key === "uncategorized")?.to).toBe("/transactions?category=none");
-    expect(lines.find((l) => l.key === "drafts")?.to).toBe("/transactions?status=draft");
+  it("each review line links to its own filtered list", () => {
+    const l = lines({ uncategorizedCount: 2, draftCount: 1 });
+    expect(l.find((x) => x.key === "uncategorized")?.to).toBe("/transactions?category=none");
+    expect(l.find((x) => x.key === "drafts")?.to).toBe("/transactions?status=draft");
   });
 
-  it("shows neither line when nothing needs attention", () => {
-    const lines = buildBriefing(summary(), [], TODAY, fmt);
-    expect(lines.some((l) => l.key === "uncategorized" || l.key === "drafts")).toBe(false);
+  it("shows neither review line when nothing needs attention", () => {
+    expect(lines().some((l) => l.key === "uncategorized" || l.key === "drafts")).toBe(false);
+  });
+});
+
+describe("GET /api/alfred/briefing", () => {
+  async function session() {
+    const app = makeApp();
+    const user = await registeredUser();
+    const cookie = await login(app, user.email);
+    const api = async (method: string, path: string, body?: unknown) => {
+      const res = await app.call(method, path, { cookie, ...(body !== undefined && { body }) });
+      const text = await res.text();
+      return { status: res.status, json: (text ? JSON.parse(text) : null) as Record<string, any> };
+    };
+    return { api };
+  }
+
+  it("greets by name and invites you to set up when nothing is recorded", async () => {
+    const { api } = await session();
+    const res = await api("GET", "/api/alfred/briefing");
+    expect(res.status).toBe(200);
+    expect(res.json.greeting).toMatch(/^Good (morning|afternoon|evening), \S+\.$/);
+    expect(res.json.source).toBe("template");
+    expect(res.json.lines.map((l: { key: string }) => l.key)).toEqual(["start", "demo"]);
+    expect(res.json.footer).toContain("recorded transactions");
+  });
+
+  it("builds the briefing from the user's recorded figures", async () => {
+    const { api } = await session();
+    const bank = (await api("POST", "/api/accounts", { kind: "bank", name: "Main", openingBalancePaise: 10_000_00 })).json;
+    await api("POST", "/api/accounts", { kind: "card", name: "Millennia", creditLimitPaise: 2_00_000_00, statementDay: 23, dueDay: 12 });
+    await api("POST", "/api/transactions", { type: "expense", amountPaise: 1_000_00, txnDate: "2026-10-20", accountId: bank.id });
+    const res = (await api("GET", "/api/alfred/briefing")).json;
+    const byKey = Object.fromEntries(res.lines.map((l: { key: string; text: string }) => [l.key, l.text]));
+    expect(byKey.safe).toBe("₹9,000 is available to spend, as recorded.");
+    expect(byKey.due).toBe("No card payments are pending.");
+    expect(byKey.spend).toContain("You have spent ₹1,000 over the last 30 days.");
+    expect(byKey.uncategorized).toBe("1 entry needs a category.");
+  });
+
+  it("uses the saved display name", async () => {
+    const { api } = await session();
+    await api("PATCH", "/api/settings", { displayName: "Kalind" });
+    const greetingText = (await api("GET", "/api/alfred/briefing")).json.greeting as string;
+    expect(greetingText).toMatch(/Kalind\.|sir\./);
+  });
+
+  it("requires a session", async () => {
+    expect((await makeApp().call("GET", "/api/alfred/briefing")).status).toBe(401);
   });
 });

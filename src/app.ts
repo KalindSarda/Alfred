@@ -7,6 +7,7 @@ import { csrfGuard } from "./middleware/csrf";
 import { requestId } from "./middleware/requestId";
 import { requireSession } from "./middleware/session";
 import { accountRoutes } from "./routes/accounts";
+import { alfredRoutes } from "./routes/alfred";
 import { authPublic, authSession } from "./routes/auth";
 import { categoryRoutes } from "./routes/categories";
 import { dashboardRoutes } from "./routes/dashboard";
@@ -66,6 +67,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/settings", settingsRoutes);
   app.route("/api/demo-data", demoRoutes);
   app.route("/api/dashboard", dashboardRoutes);
+  app.route("/api/alfred", alfredRoutes);
 
   app.notFound((c) => c.json({ error: { code: "not_found", message: "Not found" } }, 404));
 

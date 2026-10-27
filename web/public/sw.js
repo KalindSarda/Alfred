@@ -1,6 +1,6 @@
 // Caches static app files only. API responses and the Telegram webhook are never cached or intercepted,
 // so money data always comes fresh from the server.
-const CACHE = "fin-static-v1";
+const CACHE = "fin-static-v2";
 const SHELL = ["/", "/manifest.webmanifest", "/icon-192.png"];
 
 self.addEventListener("install", (event) => {

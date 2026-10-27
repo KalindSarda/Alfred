@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { type BriefingLine } from "../alfred";
+import type { BriefingLine } from "../api";
 import { Link } from "../router";
 
 export function Orb({ className = "size-8" }: { className?: string }) {
@@ -7,14 +7,14 @@ export function Orb({ className = "size-8" }: { className?: string }) {
 }
 
 /** Alfred's briefing: the greeting and the facts that matter now, plus a reserved spot for conversation. */
-export function AlfredPanel({ greeting, lines, footer }: { greeting: string; lines: BriefingLine[]; footer?: ReactNode }) {
+export function AlfredPanel({ greeting, subline, lines, footer }: { greeting: string; subline?: string; lines: BriefingLine[]; footer?: ReactNode }) {
   return (
     <section aria-label="Alfred's briefing" className="rounded-3xl bg-navy p-5 text-on-navy md:p-6">
       <div className="flex items-center gap-3">
         <Orb className="size-9" />
         <div>
           <h2 className="font-display text-xl leading-tight text-white">{greeting}</h2>
-          <p className="text-xs text-navy-muted">Here is where things stand.</p>
+          <p className="text-xs text-navy-muted">{subline ?? "Here is where things stand."}</p>
         </div>
       </div>
 

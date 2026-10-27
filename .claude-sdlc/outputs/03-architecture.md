@@ -82,7 +82,7 @@ All tables carry `user_id` and all access goes through user-scoped helpers. Mone
 - **telegram_links**: user_id, chat_id (unique), linked_at; **telegram_link_codes**: user_id, code_hash, expires_at, used_at.
 - **accounts**: id, user_id, kind (`bank`|`card`), name, last4 (nullable), opening_balance_paise (bank) / opening_outstanding_paise (card), counts_toward_safe_to_spend (bank, default true), credit_limit_paise, statement_day, due_day (card only), archived_at.
 - **categories**: id, user_id, name, kind (expense|income), archived_at. Seed includes income category **Cashback**.
-- **transactions**: id, user_id, type (`expense`|`income`|`transfer`), amount_paise (>0), txn_date, account_id, to_account_id (transfers only), category_id (nullable → "Uncategorized" node), merchant, note, status (`draft`|`confirmed`), source (`web`|`telegram`|`seed`|`ai-later`), created_at, updated_at, deleted_at. One row per transfer. Card bill payment = transfer bank → card.
+- **transactions**: id, user_id, type (`expense`|`income`|`transfer`), amount_paise (>0), txn_date, account_id, to_account_id (transfers only), category_id (nullable → "Uncategorized" node), merchant, note, status (`draft`|`confirmed`), source (`web`|`telegram`|`seed`|`ai-later`), created_at, updated_at, deleted_at. One row per transfer or bill payment. Transfer = bank → bank; bill payment = bank → card (own type since 2026-10-27).
 - **merchant_aliases**: user_id, alias, canonical merchant, default_category_id (for later AI layer).
 - **budgets**: user_id, category_id, month (`YYYY-MM`), limit_paise.
 - **nudge_log**: user_id, card_account_id, due_date, sent_at (unique on card + due_date).
@@ -149,3 +149,6 @@ Confirmed by the user on 2026-10-26 and unchanged from `02-feasibility.md`. The 
 
 ## Revision history
 - Initial version. Stack confirmed as TypeScript on Cloudflare Workers; scheduled Telegram backup declined; Gmail SMTP kept for email fallback.
+
+## Revision history (addendum)
+- 2026-10-27: added the `bill_payment` type; transfers are bank-to-bank only. Added an Alfred voice module (`src/alfred/voice.ts`) that owns all wording of recorded facts, shared by the web briefing and the future Telegram bot; AI will phrase the same facts later and its numbers will be validated against them. Cash flow (Sankey, Profit and loss, breakdown) and net worth are derived in SQL/domain from confirmed transactions, never stored.

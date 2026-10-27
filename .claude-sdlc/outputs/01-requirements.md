@@ -55,7 +55,7 @@ Salary usually arrives on the 30th of each month, very rarely earlier or later b
 8. The system shall support credit cards as a distinct account type with: credit limit, statement day, payment due day and opening outstanding.
 9. The system shall support three transaction types, expense, income and transfer, with amounts stored as integer paise in INR.
 10. The system shall let the user set date (IST), account, category, merchant and note, and shall edit and soft-delete transactions.
-11. The system shall treat a credit card bill payment as a transfer from a bank account to the card, never as an expense.
+11. The system shall treat a credit card bill payment as its own transaction type (bank account to card), never as an expense. Transfers are between bank accounts only. *(Changed 2026-10-27: previously a bill payment was a transfer.)*
 12. The system shall allow an income-type entry on a credit card account, which reduces that card's outstanding (for cashback redeemed as a statement credit).
 13. The system shall ship a standard set of categories, including a dedicated income category named Cashback, that the user can add to, edit and archive, plus a searchable, filterable transaction list.
 14. The system shall support a seed or demo-data mode (zero data or dummy data) so the app can be used before real balances are entered, and dummy data can be cleared in one action.
