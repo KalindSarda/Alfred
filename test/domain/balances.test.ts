@@ -65,10 +65,10 @@ describe("cardOwed", () => {
     expect(cardOwed({ ...millennia, openingOutstandingPaise: 12_000_00 }, [])).toBe(12_000_00);
   });
 
-  it("a bill payment transfer lowers owed", () => {
+  it("a bill payment lowers owed", () => {
     const txns = [
       txn({ type: "expense", amountPaise: 4_500_00, accountId: "millennia", txnDate: "2026-10-20" }),
-      txn({ type: "transfer", amountPaise: 4_500_00, accountId: "hdfc", toAccountId: "millennia", txnDate: "2026-11-10" }),
+      txn({ type: "bill_payment", amountPaise: 4_500_00, accountId: "hdfc", toAccountId: "millennia", txnDate: "2026-11-10" }),
     ];
     expect(cardOwed(millennia, txns)).toBe(0);
   });
@@ -81,9 +81,10 @@ describe("cardOwed", () => {
     expect(cardOwed(millennia, txns)).toBe(950_00);
   });
 
-  it("a transfer out of the card raises owed (cash advance)", () => {
-    const txns = [txn({ type: "transfer", amountPaise: 2_000_00, accountId: "millennia", toAccountId: "hdfc", txnDate: "2026-10-20" })];
-    expect(cardOwed(millennia, txns)).toBe(2_000_00);
+  it("a bill payment moves the bank and the card balances in step", () => {
+    const payment = [txn({ type: "bill_payment", amountPaise: 1_000_00, accountId: "hdfc", toAccountId: "millennia", txnDate: "2026-10-20" })];
+    expect(bankBalance(hdfcBank, payment)).toBe(9_000_00);
+    expect(cardOwed(millennia, payment)).toBe(-1_000_00);
   });
 });
 
@@ -105,7 +106,7 @@ describe("safeToSpend", () => {
     const purchase = txn({ type: "expense", amountPaise: 4_500_00, accountId: "millennia", txnDate: "2026-10-20" });
     const before = safeToSpend(accounts, [purchase]);
     for (const payDate of ["2026-10-21", "2026-11-05", "2026-11-12", "2026-11-30"]) {
-      const payment = txn({ type: "transfer", amountPaise: 4_500_00, accountId: "hdfc", toAccountId: "millennia", txnDate: payDate });
+      const payment = txn({ type: "bill_payment", amountPaise: 4_500_00, accountId: "hdfc", toAccountId: "millennia", txnDate: payDate });
       expect(safeToSpend(accounts, [purchase, payment])).toBe(before);
     }
   });
@@ -150,7 +151,7 @@ describe("utilizationPct and cardSummary", () => {
     const txns = [
       txn({ type: "expense", amountPaise: 12_000_00, accountId: "millennia", txnDate: "2026-10-10" }),
       txn({ type: "expense", amountPaise: 700_00, accountId: "millennia", txnDate: "2026-10-25" }),
-      txn({ type: "transfer", amountPaise: 5_000_00, accountId: "hdfc", toAccountId: "millennia", txnDate: "2026-10-26" }),
+      txn({ type: "bill_payment", amountPaise: 5_000_00, accountId: "hdfc", toAccountId: "millennia", txnDate: "2026-10-26" }),
     ];
     const s = cardSummary(millennia, txns, "2026-10-26");
     expect(s.statementOutstandingPaise).toBe(7_000_00);
@@ -161,7 +162,7 @@ describe("utilizationPct and cardSummary", () => {
   it("overpaying never produces a negative statement outstanding", () => {
     const txns = [
       txn({ type: "expense", amountPaise: 1_000_00, accountId: "millennia", txnDate: "2026-10-10" }),
-      txn({ type: "transfer", amountPaise: 3_000_00, accountId: "hdfc", toAccountId: "millennia", txnDate: "2026-10-26" }),
+      txn({ type: "bill_payment", amountPaise: 3_000_00, accountId: "hdfc", toAccountId: "millennia", txnDate: "2026-10-26" }),
     ];
     expect(cardSummary(millennia, txns, "2026-10-26").statementOutstandingPaise).toBe(0);
   });

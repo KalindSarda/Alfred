@@ -20,6 +20,7 @@ import {
   safeToSpend,
 } from "../domain/balances";
 import { type IstDate, isValidIstDate } from "../domain/dates";
+import { isMovement } from "../domain/txnTypes";
 import {
   checkTransactionShape,
   CreateTransaction,
@@ -63,11 +64,26 @@ async function requireUsableAccount(db: Db, userId: string, id: string): Promise
   return account;
 }
 
+/**
+ * Transfers move money between two bank accounts. Paying a card is a bill payment (bank -> card), so a card
+ * cannot appear in a transfer and a bill payment must go from a bank to a card.
+ */
+function assertAccountKinds(v: Resolved, fromKind: "bank" | "card", toKind: "bank" | "card" | undefined): void {
+  if (v.type === "transfer") {
+    if (fromKind === "card") failShape([{ path: "accountId", message: "Transfers are between bank accounts. Use a bill payment to pay a card" }]);
+    if (toKind === "card") failShape([{ path: "toAccountId", message: "Transfers are between bank accounts. Use a bill payment to pay a card" }]);
+  } else if (v.type === "bill_payment") {
+    if (fromKind !== "bank") failShape([{ path: "accountId", message: "A bill payment is paid from a bank account" }]);
+    if (toKind !== "card") failShape([{ path: "toAccountId", message: "A bill payment is paid to a credit card" }]);
+  }
+}
+
 /** Enforces the cross-record rules that Zod alone cannot: ownership, archived accounts, category kind. */
 async function validateReferences(db: Db, userId: string, v: Resolved): Promise<void> {
   assertValidDate(v.txnDate);
-  await requireUsableAccount(db, userId, v.accountId);
-  if (v.toAccountId) await requireUsableAccount(db, userId, v.toAccountId);
+  const from = await requireUsableAccount(db, userId, v.accountId);
+  const to = v.toAccountId ? await requireUsableAccount(db, userId, v.toAccountId) : undefined;
+  assertAccountKinds(v, from.kind, to?.kind);
   if (v.categoryId) {
     const category = await getCategory(db, userId, v.categoryId);
     if (!category) throw new NotFoundError("Category not found");
@@ -80,7 +96,7 @@ async function validateReferences(db: Db, userId: string, v: Resolved): Promise<
 
 /**
  * The single create contract shared by the web routes and the Telegram bot.
- * Card bill payments are transfers (bank -> card), never expenses.
+ * Card bill payments are their own type (bank -> card), never expenses.
  */
 export async function createTransaction(
   db: Db,
@@ -155,9 +171,9 @@ export async function updateTransaction(
     note: p.note === undefined ? existing.note : p.note,
     status: p.status ?? existing.status,
   };
-  // Changing a transaction to a transfer clears its category, and away from a transfer clears the destination.
-  if (merged.type === "transfer" && p.categoryId === undefined) merged.categoryId = null;
-  if (merged.type !== "transfer" && p.toAccountId === undefined) merged.toAccountId = null;
+  // Changing to a movement (transfer or bill payment) clears the category; changing away clears the destination.
+  if (isMovement(merged.type) && p.categoryId === undefined) merged.categoryId = null;
+  if (!isMovement(merged.type) && p.toAccountId === undefined) merged.toAccountId = null;
 
   const issues = checkTransactionShape(merged);
   if (issues.length) failShape(issues);

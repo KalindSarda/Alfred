@@ -1,11 +1,12 @@
 import { z } from "zod";
 import type { ErrorDetail } from "../config/errors";
+import { isMovement, TXN_TYPES } from "../domain/txnTypes";
 
 export const Paise = z.number().int().positive();
 export const IstDateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD");
 export const Id = z.string().min(1);
 
-export const TransactionType = z.enum(["expense", "income", "transfer"]);
+export const TransactionType = z.enum(TXN_TYPES);
 export const TxnStatus = z.enum(["draft", "confirmed"]);
 export const TxnSource = z.enum(["web", "telegram", "seed", "ai"]);
 
@@ -28,13 +29,14 @@ export function checkTransactionShape(v: {
   categoryId?: string | null | undefined;
 }): ErrorDetail[] {
   const issues: ErrorDetail[] = [];
-  if (v.type === "transfer") {
+  if (isMovement(v.type)) {
+    const label = v.type === "transfer" ? "Transfer" : "Bill payment";
     if (!v.toAccountId || v.toAccountId === v.accountId) {
-      issues.push({ path: "toAccountId", message: "Transfer needs a different destination account" });
+      issues.push({ path: "toAccountId", message: `${label} needs a different destination account` });
     }
-    if (v.categoryId) issues.push({ path: "categoryId", message: "Transfers have no category" });
+    if (v.categoryId) issues.push({ path: "categoryId", message: `${label}s have no category` });
   } else if (v.toAccountId) {
-    issues.push({ path: "toAccountId", message: "Only transfers have a destination" });
+    issues.push({ path: "toAccountId", message: "Only transfers and bill payments have a destination" });
   }
   return issues;
 }

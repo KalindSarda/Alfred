@@ -11,7 +11,10 @@ const TYPES: { value: TxnType; label: string }[] = [
   { value: "expense", label: "Expense" },
   { value: "income", label: "Income" },
   { value: "transfer", label: "Transfer" },
+  { value: "bill_payment", label: "Pay bill" },
 ];
+
+const isMovement = (type: TxnType) => type === "transfer" || type === "bill_payment";
 
 export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: () => void }) {
   const accountsQuery = useAccounts(true);
@@ -38,7 +41,13 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
     () => (categoriesQuery.data ?? []).filter((c) => c.kind === type && (!c.archived || c.id === initial?.categoryId)),
     [categoriesQuery.data, type, initial],
   );
-  const effectiveAccount = accountId || accounts[0]?.id || "";
+  // Transfers are bank to bank; a bill payment goes from a bank to a credit card.
+  const fromOptions = useMemo(() => accounts.filter((a) => !isMovement(type) || a.kind === "bank"), [accounts, type]);
+  const toOptions = useMemo(
+    () => accounts.filter((a) => (type === "bill_payment" ? a.kind === "card" : a.kind === "bank") && a.id !== accountId),
+    [accounts, type, accountId],
+  );
+  const effectiveAccount = fromOptions.find((a) => a.id === accountId)?.id ?? fromOptions[0]?.id ?? "";
 
   const save = useMutation({
     mutationFn: () => {
@@ -49,8 +58,8 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
         amountPaise: paise,
         txnDate: date,
         accountId: effectiveAccount,
-        toAccountId: type === "transfer" ? toAccountId : null,
-        categoryId: type === "transfer" || !categoryId ? null : categoryId,
+        toAccountId: isMovement(type) ? toAccountId : null,
+        categoryId: isMovement(type) || !categoryId ? null : categoryId,
         merchant: merchant.trim() || null,
         note: note.trim() || null,
       };
@@ -84,7 +93,9 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
     event.preventDefault();
     setLocalError("");
     if (!effectiveAccount) return setLocalError("Add an account first (Accounts and cards tab).");
-    if (type === "transfer" && !toAccountId) return setLocalError("Choose the account the money goes to.");
+    if (isMovement(type) && !toAccountId) {
+      return setLocalError(type === "bill_payment" ? "Choose the credit card you are paying." : "Choose the account the money goes to.");
+    }
     save.mutate();
   };
 
@@ -92,7 +103,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <div role="radiogroup" aria-label="Type" className="grid grid-cols-3 gap-1 rounded-xl bg-sunk p-1">
+      <div role="radiogroup" aria-label="Type" className="grid grid-cols-4 gap-1 rounded-xl bg-sunk p-1">
         {TYPES.map((t) => (
           <button
             key={t.value}
@@ -102,8 +113,9 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
             onClick={() => {
               setType(t.value);
               setCategoryId("");
+              setToAccountId("");
             }}
-            className={`min-h-11 rounded-lg text-sm font-medium ${
+            className={`min-h-11 rounded-lg text-[13px] font-medium ${
               type === t.value ? "bg-card shadow-sm" : "text-soft"
             }`}
           >
@@ -124,9 +136,9 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
         />
       </Field>
 
-      <Field label={type === "transfer" ? "From account" : "Account"}>
+      <Field label={isMovement(type) ? "Pay from" : "Account"}>
         <select className={inputClass} value={effectiveAccount} onChange={(e) => setAccountId(e.target.value)} required>
-          {accounts.map((a) => (
+          {fromOptions.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
               {a.kind === "card" ? " (card)" : ""}
@@ -135,23 +147,29 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
         </select>
       </Field>
 
-      {type === "transfer" && (
-        <Field label="To account" hint="Paying a card bill? Pick the card here. It is a transfer, not an expense.">
+      {isMovement(type) && (
+        <Field
+          label={type === "bill_payment" ? "Credit card" : "To account"}
+          hint={
+            type === "bill_payment"
+              ? "Pays down what the card owes. It is not an expense."
+              : "Moves money between two of your bank accounts. To pay a card, use Pay bill."
+          }
+        >
           <select className={inputClass} value={toAccountId} onChange={(e) => setToAccountId(e.target.value)} required>
             <option value="">Choose…</option>
-            {accounts
+            {toOptions
               .filter((a) => a.id !== effectiveAccount)
               .map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
-                  {a.kind === "card" ? " (card)" : ""}
                 </option>
               ))}
           </select>
         </Field>
       )}
 
-      {type !== "transfer" && (
+      {!isMovement(type) && (
         <Field label="Category">
           <select className={inputClass} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
             <option value="">Uncategorized</option>
@@ -168,7 +186,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
         <input className={inputClass} type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
       </Field>
 
-      {type !== "transfer" && (
+      {!isMovement(type) && (
         <Field label="Merchant">
           <input className={inputClass} maxLength={80} value={merchant} onChange={(e) => setMerchant(e.target.value)} />
         </Field>

@@ -1,7 +1,8 @@
-import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { transactions } from "../db/schema";
 import { addDays, type DateRange, type IstDate, type PeriodKey, resolvePeriod } from "../domain/dates";
+import { FLOW_TYPES } from "../domain/txnTypes";
 import { getSafeToSpend } from "./ledger";
 
 export interface SummaryDto {
@@ -29,7 +30,7 @@ export async function periodTotals(
         eq(transactions.userId, userId),
         eq(transactions.status, "confirmed"),
         isNull(transactions.deletedAt),
-        ne(transactions.type, "transfer"),
+        inArray(transactions.type, [...FLOW_TYPES]),
         sql`${transactions.txnDate} >= ${range.from}`,
         sql`${transactions.txnDate} <= ${range.to}`,
       ),
@@ -54,7 +55,7 @@ export async function reviewCount(db: Db, userId: string): Promise<number> {
       and(
         eq(transactions.userId, userId),
         isNull(transactions.deletedAt),
-        or(eq(transactions.status, "draft"), and(ne(transactions.type, "transfer"), isNull(transactions.categoryId))),
+        or(eq(transactions.status, "draft"), and(inArray(transactions.type, [...FLOW_TYPES]), isNull(transactions.categoryId))),
       ),
     );
   return Number(row?.n ?? 0);

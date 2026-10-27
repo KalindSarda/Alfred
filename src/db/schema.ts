@@ -58,7 +58,7 @@ export const transactions = sqliteTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull().references(() => users.id),
-    type: text("type", { enum: ["expense", "income", "transfer"] }).notNull(),
+    type: text("type", { enum: ["expense", "income", "transfer", "bill_payment"] }).notNull(),
     amountPaise: integer("amount_paise").notNull(),
     txnDate: text("txn_date").notNull(),
     accountId: text("account_id").notNull().references(() => accounts.id),
@@ -80,7 +80,7 @@ export const transactions = sqliteTable(
     check("txn_amount_positive", sql`${t.amountPaise} > 0`),
     check(
       "txn_transfer_shape",
-      sql`(${t.type} = 'transfer' AND ${t.toAccountId} IS NOT NULL AND ${t.toAccountId} <> ${t.accountId} AND ${t.categoryId} IS NULL) OR (${t.type} <> 'transfer' AND ${t.toAccountId} IS NULL)`,
+      sql`(${t.type} IN ('transfer', 'bill_payment') AND ${t.toAccountId} IS NOT NULL AND ${t.toAccountId} <> ${t.accountId} AND ${t.categoryId} IS NULL) OR (${t.type} NOT IN ('transfer', 'bill_payment') AND ${t.toAccountId} IS NULL)`,
     ),
   ],
 );

@@ -71,11 +71,11 @@ export async function createDemoData(db: Db, userId: string, today: IstDate): Pr
     );
     created++;
   }
-  // A card bill payment: a transfer from the salary account, never an expense.
+  // A card bill payment: from the salary account to the card, never an expense.
   await createTransaction(
     db,
     userId,
-    { type: "transfer", amountPaise: 3_450_00, txnDate: addDays(today, -4), accountId: salary.id, toAccountId: card.id, note: "Card bill" },
+    { type: "bill_payment", amountPaise: 3_450_00, txnDate: addDays(today, -4), accountId: salary.id, toAccountId: card.id, note: "Card bill" },
     ctx,
   );
   created++;

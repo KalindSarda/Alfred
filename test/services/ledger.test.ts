@@ -157,7 +157,7 @@ describe("createTransaction", () => {
 });
 
 describe("balances through the service", () => {
-  it("a card bill payment is a transfer: safe-to-spend unchanged, both balances move", async () => {
+  it("a card bill payment: safe-to-spend unchanged, both balances move", async () => {
     const f = await createFixture();
     await createTransaction(db, f.userId, { type: "expense", amountPaise: 4_500_00, txnDate: "2026-10-20", accountId: f.millennia.id }, web);
     const before = await getSafeToSpend(db, f.userId, TODAY);
@@ -166,7 +166,7 @@ describe("balances through the service", () => {
     await createTransaction(
       db,
       f.userId,
-      { type: "transfer", amountPaise: 4_500_00, txnDate: "2026-10-25", accountId: f.hdfc.id, toAccountId: f.millennia.id },
+      { type: "bill_payment", amountPaise: 4_500_00, txnDate: "2026-10-25", accountId: f.hdfc.id, toAccountId: f.millennia.id },
       web,
     );
     expect(await getSafeToSpend(db, f.userId, TODAY)).toBe(before);
@@ -333,12 +333,12 @@ describe("listTransactions", () => {
     expect((await listTransactions(db, f.userId, { q: "Organic?S" })).items).toHaveLength(0);
   });
 
-  it("filtering by account includes transfers into it", async () => {
+  it("filtering by account includes movements into it", async () => {
     const f = await createFixture();
     await createTransaction(
       db,
       f.userId,
-      { type: "transfer", amountPaise: 100, txnDate: "2026-10-05", accountId: f.hdfc.id, toAccountId: f.millennia.id },
+      { type: "bill_payment", amountPaise: 100, txnDate: "2026-10-05", accountId: f.hdfc.id, toAccountId: f.millennia.id },
       web,
     );
     expect((await listTransactions(db, f.userId, { accountId: f.millennia.id })).items).toHaveLength(1);

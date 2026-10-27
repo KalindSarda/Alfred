@@ -109,7 +109,7 @@ export interface Category {
   isSystem: boolean;
 }
 
-export type TxnType = "expense" | "income" | "transfer";
+export type TxnType = "expense" | "income" | "transfer" | "bill_payment";
 
 export interface Transaction {
   id: string;

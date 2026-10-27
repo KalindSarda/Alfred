@@ -112,7 +112,7 @@ describe("accounts", () => {
     const refused = await api("POST", `/api/accounts/${c.id}/archive`);
     expect(refused.status).toBe(409);
 
-    await api("POST", "/api/transactions", { type: "transfer", amountPaise: 500_00, txnDate: "2026-10-27", accountId: b.id, toAccountId: c.id });
+    await api("POST", "/api/transactions", { type: "bill_payment", amountPaise: 500_00, txnDate: "2026-10-27", accountId: b.id, toAccountId: c.id });
     expect((await api("POST", `/api/accounts/${c.id}/archive`)).status).toBe(200);
 
     await api("POST", `/api/accounts/${b.id}/archive`);
@@ -166,11 +166,11 @@ describe("transactions", () => {
     expect((await api("GET", `/api/transactions/${id}`)).status).toBe(200);
   });
 
-  it("a card bill payment is a transfer and the balances move accordingly", async () => {
+  it("a bill payment moves both balances and is not an expense", async () => {
     const { api, hdfc, millennia } = await withAccounts();
     await api("POST", "/api/transactions", { type: "expense", amountPaise: 4_500_00, txnDate: "2026-10-20", accountId: millennia.id });
     const pay = await api("POST", "/api/transactions", {
-      type: "transfer",
+      type: "bill_payment",
       amountPaise: 4_500_00,
       txnDate: "2026-10-25",
       accountId: hdfc.id,
@@ -186,7 +186,7 @@ describe("transactions", () => {
 
   it("returns 422 with details for invalid bodies and 422 for non-JSON", async () => {
     const { api, hdfc, app, cookie } = await withAccounts();
-    const bad = await api("POST", "/api/transactions", { type: "transfer", amountPaise: 100, txnDate: "2026-10-26", accountId: hdfc.id });
+    const bad = await api("POST", "/api/transactions", { type: "bill_payment", amountPaise: 100, txnDate: "2026-10-26", accountId: hdfc.id });
     expect(bad.status).toBe(422);
     expect(bad.json.error.details[0].path).toBe("toAccountId");
     const notJson = await app.call("POST", "/api/transactions", { cookie, body: "{nope" });

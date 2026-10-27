@@ -11,6 +11,7 @@ const TYPE_FILTERS = [
   { value: "expense", label: "Expenses" },
   { value: "income", label: "Income" },
   { value: "transfer", label: "Transfers" },
+  { value: "bill_payment", label: "Bill payments" },
 ];
 
 function useDebounced<T>(value: T, ms = 300): T {

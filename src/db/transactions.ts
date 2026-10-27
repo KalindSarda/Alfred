@@ -1,7 +1,8 @@
-import { and, desc, eq, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import type { LedgerTxn } from "../domain/balances";
 import type { ListTransactionsData, TransactionDto } from "../schemas/transaction";
 import { ValidationError } from "../config/errors";
+import { FLOW_TYPES } from "../domain/txnTypes";
 import type { Db } from "./client";
 import { transactions } from "./schema";
 
@@ -121,7 +122,7 @@ export async function listTransactionRows(
     conditions.push(or(eq(transactions.accountId, query.accountId), eq(transactions.toAccountId, query.accountId)));
   }
   if (query.categoryId === "none") {
-    conditions.push(isNull(transactions.categoryId), ne(transactions.type, "transfer"));
+    conditions.push(isNull(transactions.categoryId), inArray(transactions.type, [...FLOW_TYPES]));
   } else if (query.categoryId) {
     conditions.push(eq(transactions.categoryId, query.categoryId));
   }

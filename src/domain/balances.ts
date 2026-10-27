@@ -6,7 +6,9 @@ import type { IstDate } from "./dates";
  * Only confirmed, non-deleted transactions count; drafts and soft-deleted rows are ignored.
  */
 
-export type TxnType = "expense" | "income" | "transfer";
+import { isMovement, type TxnType } from "./txnTypes";
+
+export type { TxnType };
 
 export interface LedgerTxn {
   type: TxnType;
@@ -47,7 +49,7 @@ function netInflow(accountId: string, txns: readonly LedgerTxn[]): number {
   for (const t of txns) {
     if (t.type === "income" && t.accountId === accountId) total += t.amountPaise;
     else if (t.type === "expense" && t.accountId === accountId) total -= t.amountPaise;
-    else if (t.type === "transfer") {
+    else if (isMovement(t.type)) {
       if (t.accountId === accountId) total -= t.amountPaise;
       if (t.toAccountId === accountId) total += t.amountPaise;
     }
@@ -61,8 +63,7 @@ export function bankBalance(account: BankLedgerAccount, txns: readonly LedgerTxn
 
 /**
  * Amount currently owed on a card. Purchases raise it the moment they are logged; income on the card
- * (statement-credit cashback) and transfers into it (bill payments) lower it; a transfer out of a card
- * (cash advance) raises it. Same sign convention as a bank, flipped.
+ * (statement-credit cashback) and bill payments into it lower it. Same sign convention as a bank, flipped.
  */
 export function cardOwed(account: CardLedgerAccount, txns: readonly LedgerTxn[], asOf?: IstDate): number {
   return account.openingOutstandingPaise - netInflow(account.id, countedTxns(txns, asOf));
@@ -96,7 +97,7 @@ export function cardSummary(account: CardLedgerAccount, txns: readonly LedgerTxn
   // Statement outstanding: what is still unpaid from the last statement.
   // Payments and credits since the statement date reduce it; new purchases do not.
   const paidSince = after
-    .filter((t) => (t.type === "income" && t.accountId === account.id) || (t.type === "transfer" && t.toAccountId === account.id))
+    .filter((t) => (t.type === "income" && t.accountId === account.id) || (isMovement(t.type) && t.toAccountId === account.id))
     .reduce((sum, t) => sum + t.amountPaise, 0);
   const statementOutstandingPaise = Math.max(0, statementBalance - paidSince);
 

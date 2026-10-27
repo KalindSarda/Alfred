@@ -29,8 +29,8 @@ describe("GET /api/dashboard/summary", () => {
     await add({ type: "expense", amountPaise: 2_000_00, txnDate: "2026-10-05", accountId: hdfc.id, categoryId: groceries });
     await add({ type: "expense", amountPaise: 3_000_00, txnDate: "2026-10-20", accountId: card.id, categoryId: groceries });
     await add({ type: "expense", amountPaise: 500_00, txnDate: "2026-09-15", accountId: hdfc.id, categoryId: groceries });
-    // transfers never count as income or expense
-    await add({ type: "transfer", amountPaise: 3_000_00, txnDate: "2026-10-25", accountId: hdfc.id, toAccountId: card.id });
+    // bill payments and transfers never count as income or expense
+    await add({ type: "bill_payment", amountPaise: 3_000_00, txnDate: "2026-10-25", accountId: hdfc.id, toAccountId: card.id });
     return { api, hdfc, reserve, card };
   }
 
@@ -44,7 +44,7 @@ describe("GET /api/dashboard/summary", () => {
     expect(res.json.netPaise).toBe(75_000_00);
     // previous 30 days (29 Aug - 27 Sep) hold the 15 Sep expense of 500
     expect(res.json.previousExpensePaise).toBe(500_00);
-    // HDFC 10,000 + 80,000 - 2,000 - 500 - 3,000 transfer = 84,500; card owed 3,000 - 3,000 = 0; reserve excluded
+    // HDFC 10,000 + 80,000 - 2,000 - 500 - 3,000 bill payment = 84,500; card owed 3,000 - 3,000 = 0; reserve excluded
     expect(res.json.safeToSpendPaise).toBe(84_500_00);
   });
 
@@ -71,7 +71,7 @@ describe("GET /api/dashboard/summary", () => {
     expect(((await api("GET", "/api/dashboard/summary?period=this_month")).json).expensePaise).toBe(5_900_00);
   });
 
-  it("counts drafts and uncategorized entries for review, but not transfers", async () => {
+  it("counts drafts and uncategorized entries for review, but not transfers or bill payments", async () => {
     const { api, hdfc } = await session().then(async ({ api }) => {
       const hdfc = (await api("POST", "/api/accounts", { kind: "bank", name: "HDFC", openingBalancePaise: 0 })).json;
       return { api, hdfc };
