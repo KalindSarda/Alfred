@@ -28,7 +28,8 @@ const summary = (over: Partial<Summary> = {}): Summary => ({
   expensePaise: 0,
   netPaise: 0,
   previousExpensePaise: 0,
-  reviewCount: 0,
+  uncategorizedCount: 0,
+  draftCount: 0,
   ...over,
 });
 
@@ -125,11 +126,22 @@ describe("buildBriefing", () => {
     expect(buildBriefing(summary(), [], TODAY, fmt).some((l) => l.key === "spend")).toBe(false);
   });
 
-  it("mentions entries needing review, with correct grammar", () => {
-    const one = buildBriefing(summary({ reviewCount: 1 }), [], TODAY, fmt).find((l) => l.key === "review");
-    expect(one?.text).toBe("1 entry needs a category or confirmation.");
-    const many = buildBriefing(summary({ reviewCount: 3 }), [], TODAY, fmt).find((l) => l.key === "review");
-    expect(many?.text).toBe("3 entries need a category or confirmation.");
-    expect(buildBriefing(summary({ reviewCount: 0 }), [], TODAY, fmt).some((l) => l.key === "review")).toBe(false);
+  it("reports entries needing a category and drafts as separate lines with correct grammar", () => {
+    const find = (over: Partial<Summary>, key: string) => buildBriefing(summary(over), [], TODAY, fmt).find((l) => l.key === key);
+    expect(find({ uncategorizedCount: 1 }, "uncategorized")?.text).toBe("1 entry needs a category.");
+    expect(find({ uncategorizedCount: 2 }, "uncategorized")?.text).toBe("2 entries need a category.");
+    expect(find({ draftCount: 1 }, "drafts")?.text).toBe("1 entry is waiting for your confirmation.");
+    expect(find({ draftCount: 3 }, "drafts")?.text).toBe("3 entries are waiting for your confirmation.");
+  });
+
+  it("shows both lines when both apply, each linking to its own filtered list", () => {
+    const lines = buildBriefing(summary({ uncategorizedCount: 2, draftCount: 1 }), [], TODAY, fmt);
+    expect(lines.find((l) => l.key === "uncategorized")?.to).toBe("/transactions?category=none");
+    expect(lines.find((l) => l.key === "drafts")?.to).toBe("/transactions?status=draft");
+  });
+
+  it("shows neither line when nothing needs attention", () => {
+    const lines = buildBriefing(summary(), [], TODAY, fmt);
+    expect(lines.some((l) => l.key === "uncategorized" || l.key === "drafts")).toBe(false);
   });
 });

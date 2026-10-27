@@ -5,6 +5,8 @@ import { getCategory } from "../db/categories";
 import {
   getTransactionRow,
   insertTransactionRow,
+  listTotals,
+  type ListTotals,
   listTransactionRows,
   loadLedgerTxns,
   toDto,
@@ -213,7 +215,7 @@ export async function listTransactions(
   db: Db,
   userId: string,
   rawQuery: unknown,
-): Promise<{ items: TransactionDto[]; nextCursor: string | null }> {
+): Promise<{ items: TransactionDto[]; nextCursor: string | null; totals: ListTotals }> {
   const parsed = ListTransactionsQuery.safeParse(rawQuery);
   if (!parsed.success) {
     throw new ValidationError(
@@ -221,8 +223,11 @@ export async function listTransactions(
       parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
     );
   }
-  const { rows, nextCursor } = await listTransactionRows(db, userId, parsed.data);
-  return { items: rows.map(toDto), nextCursor };
+  const [{ rows, nextCursor }, totals] = await Promise.all([
+    listTransactionRows(db, userId, parsed.data),
+    listTotals(db, userId, parsed.data),
+  ]);
+  return { items: rows.map(toDto), nextCursor, totals };
 }
 
 export type AccountWithFigures =

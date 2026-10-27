@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Account, ApiError, type Category, type Me, type Summary, type Transaction, api } from "./api";
+import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
   useQuery({
@@ -36,10 +37,24 @@ export const useSummary = (period: string) =>
     queryFn: () => api.get<Summary>(`/api/dashboard/summary?period=${period}`),
   });
 
-export interface TxnFilters {
-  q: string;
-  accountId: string;
-  type: string;
+export interface ReviewCounts {
+  uncategorizedCount: number;
+  draftCount: number;
+}
+
+/** Entries needing attention; drives the badge on the Transactions navigation item. */
+export const useReviewCounts = (enabled = true) =>
+  useQuery({
+    queryKey: ["review"],
+    queryFn: () => api.get<ReviewCounts>("/api/dashboard/review"),
+    enabled,
+    staleTime: 15_000,
+  });
+
+export interface TransactionPage {
+  items: Transaction[];
+  nextCursor: string | null;
+  totals: { count: number; incomePaise: number; expensePaise: number };
 }
 
 export const useTransactions = (filters: TxnFilters) =>
@@ -47,12 +62,10 @@ export const useTransactions = (filters: TxnFilters) =>
     queryKey: ["transactions", filters],
     initialPageParam: "",
     queryFn: ({ pageParam }) => {
-      const params = new URLSearchParams({ limit: "30" });
+      const params = toApiParams(filters);
+      params.set("limit", "30");
       if (pageParam) params.set("cursor", pageParam);
-      if (filters.q) params.set("q", filters.q);
-      if (filters.accountId) params.set("accountId", filters.accountId);
-      if (filters.type) params.set("type", filters.type);
-      return api.get<{ items: Transaction[]; nextCursor: string | null }>(`/api/transactions?${params}`);
+      return api.get<TransactionPage>(`/api/transactions?${params}`);
     },
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
@@ -65,5 +78,6 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["transactions"] }),
       client.invalidateQueries({ queryKey: ["accounts"] }),
       client.invalidateQueries({ queryKey: ["summary"] }),
+      client.invalidateQueries({ queryKey: ["review"] }),
     ]);
 }

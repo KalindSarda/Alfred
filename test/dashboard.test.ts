@@ -66,7 +66,8 @@ describe("GET /api/dashboard/summary", () => {
     await api("DELETE", `/api/transactions/${doomed.id}`);
     const res = (await api("GET", "/api/dashboard/summary?period=this_month")).json;
     expect(res.expensePaise).toBe(5_000_00);
-    expect(res.reviewCount).toBeGreaterThanOrEqual(1);
+    expect(res.draftCount).toBe(1);
+    expect(res.uncategorizedCount).toBe(1);
     await api("POST", `/api/transactions/${draft.id}/confirm`);
     expect(((await api("GET", "/api/dashboard/summary?period=this_month")).json).expensePaise).toBe(5_900_00);
   });
@@ -76,9 +77,9 @@ describe("GET /api/dashboard/summary", () => {
       const hdfc = (await api("POST", "/api/accounts", { kind: "bank", name: "HDFC", openingBalancePaise: 0 })).json;
       return { api, hdfc };
     });
-    expect((await api("GET", "/api/dashboard/summary")).json.reviewCount).toBe(0);
+    expect((await api("GET", "/api/dashboard/summary")).json.uncategorizedCount).toBe(0);
     await api("POST", "/api/transactions", { type: "expense", amountPaise: 100, txnDate: "2026-10-26", accountId: hdfc.id });
-    expect((await api("GET", "/api/dashboard/summary")).json.reviewCount).toBe(1);
+    expect((await api("GET", "/api/dashboard/summary")).json.uncategorizedCount).toBe(1);
   });
 
   it("validates the period and requires a session", async () => {
@@ -95,7 +96,8 @@ describe("GET /api/dashboard/summary", () => {
       incomePaise: 0,
       expensePaise: 0,
       netPaise: 0,
-      reviewCount: 0,
+      uncategorizedCount: 0,
+      draftCount: 0,
     });
   });
 });

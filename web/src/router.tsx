@@ -12,16 +12,29 @@ function subscribe(callback: () => void): () => void {
 }
 
 const getPath = () => window.location.pathname;
+const getSearch = () => window.location.search;
 
 export function usePath(): string {
   return useSyncExternalStore(subscribe, getPath, () => "/");
 }
 
+/** The query string including the leading "?" (or an empty string). */
+export function useSearch(): string {
+  return useSyncExternalStore(subscribe, getSearch, () => "");
+}
+
 export function navigate(to: string): void {
-  if (to === window.location.pathname) return;
+  if (to === window.location.pathname + window.location.search) return;
   window.history.pushState({}, "", to);
   window.dispatchEvent(new Event(NAV_EVENT));
   window.scrollTo(0, 0);
+}
+
+/** Changes only the query string of the current page, without adding a history entry per keystroke. */
+export function replaceSearch(search: string): void {
+  if (search === window.location.search) return;
+  window.history.replaceState({}, "", window.location.pathname + search);
+  window.dispatchEvent(new Event(NAV_EVENT));
 }
 
 export function useNavigate(): (to: string) => void {

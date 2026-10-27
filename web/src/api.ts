@@ -132,7 +132,8 @@ export interface Summary {
   expensePaise: number;
   netPaise: number;
   previousExpensePaise: number;
-  reviewCount: number;
+  uncategorizedCount: number;
+  draftCount: number;
 }
 
 export interface Settings {

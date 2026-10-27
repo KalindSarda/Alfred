@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { transactions } from "../db/schema";
 import { addDays, type DateRange, type IstDate, type PeriodKey, resolvePeriod } from "../domain/dates";
@@ -13,7 +13,10 @@ export interface SummaryDto {
   netPaise: number;
   /** Expenses in the period of equal length immediately before this one, for the "vs before" comparison. */
   previousExpensePaise: number;
-  reviewCount: number;
+  /** Income/expense entries with no category. */
+  uncategorizedCount: number;
+  /** Entries waiting for confirmation. */
+  draftCount: number;
 }
 
 /** Income and expense totals for a range. Transfers, drafts and deleted rows never count. */
@@ -46,19 +49,21 @@ export function previousRange(range: DateRange): DateRange {
   return { from: addDays(range.from, -days), to: addDays(range.from, -1) };
 }
 
-/** Drafts plus confirmed income/expense entries that still have no category. */
-export async function reviewCount(db: Db, userId: string): Promise<number> {
+export interface ReviewCounts {
+  uncategorizedCount: number;
+  draftCount: number;
+}
+
+/** Entries that need attention: income/expense without a category, and drafts waiting for confirmation. */
+export async function reviewCounts(db: Db, userId: string): Promise<ReviewCounts> {
   const [row] = await db
-    .select({ n: sql<number>`COUNT(*)` })
+    .select({
+      uncategorized: sql<number>`COALESCE(SUM(CASE WHEN ${inArray(transactions.type, [...FLOW_TYPES])} AND ${transactions.categoryId} IS NULL THEN 1 ELSE 0 END), 0)`,
+      drafts: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.status} = 'draft' THEN 1 ELSE 0 END), 0)`,
+    })
     .from(transactions)
-    .where(
-      and(
-        eq(transactions.userId, userId),
-        isNull(transactions.deletedAt),
-        or(eq(transactions.status, "draft"), and(inArray(transactions.type, [...FLOW_TYPES]), isNull(transactions.categoryId))),
-      ),
-    );
-  return Number(row?.n ?? 0);
+    .where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt)));
+  return { uncategorizedCount: Number(row?.uncategorized ?? 0), draftCount: Number(row?.drafts ?? 0) };
 }
 
 export async function getSummary(db: Db, userId: string, key: PeriodKey, today: IstDate): Promise<SummaryDto> {
@@ -67,7 +72,7 @@ export async function getSummary(db: Db, userId: string, key: PeriodKey, today: 
     periodTotals(db, userId, range),
     periodTotals(db, userId, previousRange(range)),
     getSafeToSpend(db, userId, today),
-    reviewCount(db, userId),
+    reviewCounts(db, userId),
   ]);
   return {
     period: { key, ...range },
@@ -75,6 +80,6 @@ export async function getSummary(db: Db, userId: string, key: PeriodKey, today: 
     ...totals,
     netPaise: totals.incomePaise - totals.expensePaise,
     previousExpensePaise: previous.expensePaise,
-    reviewCount: review,
+    ...review,
   };
 }

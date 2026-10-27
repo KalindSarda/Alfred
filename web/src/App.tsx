@@ -8,7 +8,7 @@ import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { More } from "./pages/More";
 import { Transactions } from "./pages/Transactions";
-import { useMe } from "./queries";
+import { useMe, useReviewCounts } from "./queries";
 import { Link, usePath } from "./router";
 
 const NAV = [
@@ -38,6 +38,8 @@ export function App() {
   const me = useMe();
   const path = usePath();
   const [adding, setAdding] = useState(false);
+  const review = useReviewCounts(Boolean(me.data));
+  const reviewTotal = (review.data?.uncategorizedCount ?? 0) + (review.data?.draftCount ?? 0);
 
   if (me.isPending) return <Spinner label="Starting" />;
   if (me.isError) {
@@ -75,6 +77,11 @@ export function App() {
           >
             <Icon name={item.icon} className="size-5" />
             {item.label}
+            {item.to === "/transactions" && reviewTotal > 0 && (
+              <span className="ml-auto rounded-full bg-warn-bg px-2 py-0.5 text-xs text-warn-ink" aria-label={`${reviewTotal} entries need attention`}>
+                {reviewTotal}
+              </span>
+            )}
           </Link>
         ))}
       </aside>
@@ -107,7 +114,17 @@ export function App() {
               path === item.to ? "text-brand" : "text-soft"
             }`}
           >
-            <Icon name={item.icon} className="size-6" />
+            <span className="relative">
+              <Icon name={item.icon} className="size-6" />
+              {item.to === "/transactions" && reviewTotal > 0 && (
+                <span
+                  className="absolute -top-1 -right-3 min-w-4 rounded-full bg-brass px-1 text-center text-[10px] leading-4 font-semibold text-navy"
+                  aria-label={`${reviewTotal} entries need attention`}
+                >
+                  {reviewTotal}
+                </span>
+              )}
+            </span>
             {"short" in item ? item.short : item.label}
           </Link>
         ))}

@@ -111,12 +111,20 @@ export function buildBriefing(
     });
   }
 
-  if (summary.reviewCount > 0) {
-    const n = summary.reviewCount;
+  if (summary.uncategorizedCount > 0) {
+    const n = summary.uncategorizedCount;
     lines.push({
-      key: "review",
-      text: `${n} ${n === 1 ? "entry needs" : "entries need"} a category or confirmation.`,
-      to: "/transactions",
+      key: "uncategorized",
+      text: `${n} ${n === 1 ? "entry needs" : "entries need"} a category.`,
+      to: "/transactions?category=none",
+    });
+  }
+  if (summary.draftCount > 0) {
+    const n = summary.draftCount;
+    lines.push({
+      key: "drafts",
+      text: `${n} ${n === 1 ? "entry is" : "entries are"} waiting for your confirmation.`,
+      to: "/transactions?status=draft",
     });
   }
 

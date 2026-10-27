@@ -21,6 +21,9 @@ export function describeTxn(
 
 const isMovement = (type: Transaction["type"]) => type === "transfer" || type === "bill_payment";
 
+/** Income or expense with no category: needs one before it shows properly in cash flow. */
+export const needsCategory = (txn: Transaction): boolean => !isMovement(txn.type) && txn.categoryId === null;
+
 export const amountTone = (type: Transaction["type"]): string =>
   type === "income" ? "text-good" : isMovement(type) ? "text-soft" : "";
 

@@ -3,6 +3,7 @@ import { buildBriefing, cardsByDue, daysBetween, greeting, inDays } from "../alf
 import { AlfredPanel } from "../components/Alfred";
 import { Card, Empty, Spinner } from "../components/ui";
 import { rupees, shortDate, today } from "../format";
+import { emptyFilters } from "../filters";
 import { useAccounts, useCategories, useMe, useSummary, useTransactions } from "../queries";
 import { Link } from "../router";
 import { amountSign, amountTone, describeTxn } from "../txn";
@@ -46,7 +47,7 @@ export function Home() {
   const briefingSummary = useSummary("30d");
   const accounts = useAccounts();
   const categories = useCategories();
-  const recent = useTransactions({ q: "", accountId: "", type: "" });
+  const recent = useTransactions(emptyFilters);
 
   const accountMap = useMemo(() => new Map((accounts.data ?? []).map((a) => [a.id, a])), [accounts.data]);
   const categoryMap = useMemo(() => new Map((categories.data ?? []).map((c) => [c.id, c])), [categories.data]);

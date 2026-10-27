@@ -109,39 +109,57 @@ function escapeLike(text: string): string {
   return text.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
-export async function listTransactionRows(
-  db: Db,
-  userId: string,
-  query: ListTransactionsData,
-): Promise<{ rows: TransactionRow[]; nextCursor: string | null }> {
+/** The WHERE conditions shared by the list and its totals (everything except the paging cursor). */
+function filterConditions(userId: string, query: ListTransactionsData): (SQL | undefined)[] {
   const conditions: (SQL | undefined)[] = [eq(transactions.userId, userId), isNull(transactions.deletedAt)];
 
   if (query.from) conditions.push(sql`${transactions.txnDate} >= ${query.from}`);
   if (query.to) conditions.push(sql`${transactions.txnDate} <= ${query.to}`);
+  if (query.minAmountPaise !== undefined) conditions.push(sql`${transactions.amountPaise} >= ${query.minAmountPaise}`);
+  if (query.maxAmountPaise !== undefined) conditions.push(sql`${transactions.amountPaise} <= ${query.maxAmountPaise}`);
   if (query.accountId) {
     conditions.push(or(eq(transactions.accountId, query.accountId), eq(transactions.toAccountId, query.accountId)));
   }
-  if (query.categoryId === "none") {
-    conditions.push(isNull(transactions.categoryId), inArray(transactions.type, [...FLOW_TYPES]));
-  } else if (query.categoryId) {
-    conditions.push(eq(transactions.categoryId, query.categoryId));
+
+  // categoryId is a comma-separated list of category ids; "none" means entries without a category.
+  const categoryIds = (query.categoryId ?? "").split(",").map((c) => c.trim()).filter(Boolean);
+  if (categoryIds.length > 0) {
+    const ids = categoryIds.filter((c) => c !== "none");
+    const parts: (SQL | undefined)[] = [];
+    if (ids.length > 0) parts.push(inArray(transactions.categoryId, ids));
+    if (categoryIds.includes("none")) {
+      parts.push(and(isNull(transactions.categoryId), inArray(transactions.type, [...FLOW_TYPES])));
+    }
+    conditions.push(or(...parts));
   }
+
   if (query.type) conditions.push(eq(transactions.type, query.type));
   if (query.status) conditions.push(eq(transactions.status, query.status));
+
   if (query.q) {
+    // Matches merchant, note, the category's name and the names of the accounts involved.
     const pattern = `%${escapeLike(query.q.toLowerCase())}%`;
     conditions.push(
       or(
         sql`lower(${transactions.merchant}) LIKE ${pattern} ESCAPE '\\'`,
         sql`lower(${transactions.note}) LIKE ${pattern} ESCAPE '\\'`,
+        sql`EXISTS (SELECT 1 FROM categories c WHERE c.id = ${transactions.categoryId} AND lower(c.name) LIKE ${pattern} ESCAPE '\\')`,
+        sql`EXISTS (SELECT 1 FROM accounts a WHERE (a.id = ${transactions.accountId} OR a.id = ${transactions.toAccountId}) AND lower(a.name) LIKE ${pattern} ESCAPE '\\')`,
       ),
     );
   }
+  return conditions;
+}
+
+export async function listTransactionRows(
+  db: Db,
+  userId: string,
+  query: ListTransactionsData,
+): Promise<{ rows: TransactionRow[]; nextCursor: string | null }> {
+  const conditions = filterConditions(userId, query);
   if (query.cursor) {
     const c = decodeCursor(query.cursor);
-    conditions.push(
-      or(lt(transactions.txnDate, c.d), and(eq(transactions.txnDate, c.d), lt(transactions.id, c.i))),
-    );
+    conditions.push(or(lt(transactions.txnDate, c.d), and(eq(transactions.txnDate, c.d), lt(transactions.id, c.i))));
   }
 
   const rows = await db
@@ -154,4 +172,25 @@ export async function listTransactionRows(
   const page = rows.slice(0, query.limit);
   const last = page[page.length - 1];
   return { rows: page, nextCursor: rows.length > query.limit && last ? encodeCursor(last) : null };
+}
+
+export interface ListTotals {
+  count: number;
+  /** Confirmed income and expense only; drafts, transfers and bill payments are counted but not summed. */
+  incomePaise: number;
+  expensePaise: number;
+}
+
+/** Count and in/out sums for everything the filters match, ignoring paging. */
+export async function listTotals(db: Db, userId: string, query: ListTransactionsData): Promise<ListTotals> {
+  const confirmed = sql`${transactions.status} = 'confirmed'`;
+  const [row] = await db
+    .select({
+      count: sql<number>`COUNT(*)`,
+      income: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.type} = 'income' AND ${confirmed} THEN ${transactions.amountPaise} ELSE 0 END), 0)`,
+      expense: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.type} = 'expense' AND ${confirmed} THEN ${transactions.amountPaise} ELSE 0 END), 0)`,
+    })
+    .from(transactions)
+    .where(and(...filterConditions(userId, query)));
+  return { count: Number(row?.count ?? 0), incomePaise: Number(row?.income ?? 0), expensePaise: Number(row?.expense ?? 0) };
 }

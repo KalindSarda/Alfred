@@ -78,9 +78,17 @@ export const ListTransactionsQuery = z.object({
   from: IstDateString.optional(),
   to: IstDateString.optional(),
   accountId: Id.optional(),
-  categoryId: z.string().optional(), // a category id, or "none" for uncategorized
+  /** One or more category ids separated by commas; "none" means entries without a category. */
+  categoryId: z.string().max(400).optional(),
   type: TransactionType.optional(),
   status: TxnStatus.optional(),
+  minAmountPaise: z.coerce.number().int().min(0).optional(),
+  maxAmountPaise: z.coerce.number().int().min(0).optional(),
+  /** Matches merchant, note, category name and account name. */
   q: z.string().trim().max(80).optional(),
+}).superRefine((v, ctx) => {
+  if (v.minAmountPaise !== undefined && v.maxAmountPaise !== undefined && v.minAmountPaise > v.maxAmountPaise) {
+    ctx.addIssue({ code: "custom", path: ["minAmountPaise"], message: "Minimum amount is higher than the maximum" });
+  }
 });
 export type ListTransactionsData = z.output<typeof ListTransactionsQuery>;

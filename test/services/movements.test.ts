@@ -55,7 +55,7 @@ describe("transfers and bill payments", () => {
     const f = await createFixture();
     await createTransaction(db, f.userId, { ...base, type: "bill_payment", accountId: f.hdfc.id, toAccountId: f.millennia.id }, web);
     const summary = await getSummary(db, f.userId, "30d", "2026-10-27");
-    expect(summary).toMatchObject({ incomePaise: 0, expensePaise: 0, reviewCount: 0 });
+    expect(summary).toMatchObject({ incomePaise: 0, expensePaise: 0, uncategorizedCount: 0, draftCount: 0 });
     const none = await listTransactions(db, f.userId, { categoryId: "none" });
     expect(none.items).toHaveLength(0);
   });
