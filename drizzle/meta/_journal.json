@@ -15,6 +15,13 @@
       "when": 1793088019963,
       "tag": "0001_tighten_card_check",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793088191254,
+      "tag": "0002_auth_tables",
+      "breakpoints": true
     }
   ]
 }

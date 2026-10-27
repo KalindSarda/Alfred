@@ -95,6 +95,61 @@ export const merchantAliases = sqliteTable(
   (t) => [uniqueIndex("merchant_aliases_user_alias_uq").on(t.userId, t.alias)],
 );
 
+/** Only the HMAC of the session token is stored, never the token itself. */
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    createdAt: text("created_at").notNull(),
+    lastSeenAt: text("last_seen_at").notNull(),
+  },
+  (t) => [uniqueIndex("sessions_token_hash_uq").on(t.tokenHash), index("sessions_user_idx").on(t.userId)],
+);
+
+/** One-time login codes; only a keyed hash of the code is stored. */
+export const loginCodes = sqliteTable(
+  "login_codes",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    codeHash: text("code_hash").notNull(),
+    channel: text("channel", { enum: ["telegram", "email"] }).notNull(),
+    expiresAt: text("expires_at").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    usedAt: text("used_at"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("login_codes_user_idx").on(t.userId, t.createdAt)],
+);
+
+/** Fixed-window counters. The key is a hash, so arbitrary emails or IPs are never stored in clear. */
+export const rateLimits = sqliteTable("rate_limits", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull(),
+  windowStart: integer("window_start").notNull(),
+});
+
+export const telegramLinks = sqliteTable(
+  "telegram_links",
+  {
+    userId: text("user_id").primaryKey().references(() => users.id),
+    chatId: text("chat_id").notNull(),
+    linkedAt: text("linked_at").notNull(),
+  },
+  (t) => [uniqueIndex("telegram_links_chat_uq").on(t.chatId)],
+);
+
+export const telegramLinkCodes = sqliteTable("telegram_link_codes", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  codeHash: text("code_hash").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  usedAt: text("used_at"),
+});
+
 export const appSettings = sqliteTable("app_settings", {
   userId: text("user_id").primaryKey().references(() => users.id),
   nudgeLeadDays: integer("nudge_lead_days").notNull().default(3),

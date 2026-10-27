@@ -1,32 +1,13 @@
-import type { Db } from "./client";
-import { categories } from "./schema";
 import { newId, nowIso } from "../utils/id";
+import type { Db } from "./client";
+import {
+  CASHBACK_CATEGORY,
+  DEFAULT_EXPENSE_CATEGORIES,
+  DEFAULT_INCOME_CATEGORIES,
+} from "./defaultCategories";
+import { categories } from "./schema";
 
-/** Name of the system income category used for cashback received. It can be archived but not renamed. */
-export const CASHBACK_CATEGORY = "Cashback";
-
-export const DEFAULT_EXPENSE_CATEGORIES = [
-  "Groceries",
-  "Food & Dining",
-  "Transport",
-  "Fuel",
-  "Shopping",
-  "Bills & Utilities",
-  "Rent",
-  "Home & Maintenance",
-  "Health",
-  "Insurance",
-  "Entertainment",
-  "Subscriptions",
-  "Travel",
-  "Education",
-  "Personal Care",
-  "Gifts & Donations",
-  "Fees & Charges",
-  "Other",
-] as const;
-
-export const DEFAULT_INCOME_CATEGORIES = ["Salary", CASHBACK_CATEGORY, "Interest", "Refunds", "Other income"] as const;
+export { CASHBACK_CATEGORY, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES };
 
 export async function seedDefaultCategories(db: Db, userId: string): Promise<void> {
   const createdAt = nowIso();
@@ -38,6 +19,7 @@ export async function seedDefaultCategories(db: Db, userId: string): Promise<voi
       isSystem: name === CASHBACK_CATEGORY,
     })),
   ].map((row) => ({ id: newId(), userId, createdAt, ...row }));
+
   // D1 allows at most 100 bound variables per statement (7 columns here), so insert in small chunks, atomically.
   const CHUNK = 10;
   const statements = [];

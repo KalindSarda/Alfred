@@ -4,7 +4,7 @@ import { createApp } from "../src/app";
 import { AppError, ConflictError } from "../src/config/errors";
 
 describe("app skeleton", () => {
-  it("health check reaches D1", async () => {
+  it("health check reaches D1 without a session", async () => {
     const res = await createApp().request("/api/health", {}, env);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
@@ -31,8 +31,8 @@ describe("app skeleton", () => {
     expect(JSON.stringify(await res.json())).not.toContain("leaked");
   });
 
-  it("returns the error envelope for unknown routes", async () => {
-    const res = await createApp().request("/api/nope", {}, env);
+  it("unknown routes outside /api return the not-found envelope", async () => {
+    const res = await createApp().request("/nope", {}, env);
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: { code: "not_found", message: "Not found" } });
   });
