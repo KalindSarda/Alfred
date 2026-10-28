@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Orb } from "./components/Alfred";
 import { QuickAddSheet } from "./components/QuickAddSheet";
 import { Icon, Spinner } from "./components/ui";
 import { Accounts } from "./pages/Accounts";
@@ -54,9 +53,7 @@ export function App() {
   return (
     <div className="min-h-dvh md:flex">
       <aside className="hidden w-64 shrink-0 flex-col gap-1 border-r border-line p-4 md:flex">
-        <p className="mb-5 flex items-center gap-3 px-3 font-display text-2xl">
-          <Orb className="size-7" /> Alfred
-        </p>
+        <p className="mb-5 px-3 font-display text-3xl tracking-tight">Alfred</p>
         <button
           type="button"
           onClick={() => setAdding(true)}
