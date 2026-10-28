@@ -15,7 +15,15 @@ import { logger } from "../utils/logger";
 export const telegramWebhook = new Hono<AppEnv>().post("/webhook", async (c) => {
   const config = getConfig(c.env);
   const given = c.req.header("X-Telegram-Bot-Api-Secret-Token") ?? "";
-  if (!timingSafeEqual(given, config.TELEGRAM_WEBHOOK_SECRET)) throw new UnauthenticatedError("Invalid secret");
+  if (!timingSafeEqual(given, config.TELEGRAM_WEBHOOK_SECRET)) {
+    // Lengths only, never the secret itself: enough to tell "header missing" from "app has a different secret".
+    logger.warn("telegram_webhook_rejected", {
+      reason: given === "" ? "header missing" : "does not match this app's configured value",
+      receivedChars: given.length,
+      expectedChars: config.TELEGRAM_WEBHOOK_SECRET.length,
+    });
+    throw new UnauthenticatedError("Invalid secret");
+  }
 
   const body: unknown = await c.req.json().catch(() => null);
   const parsed = TelegramUpdate.safeParse(body);
