@@ -20,6 +20,7 @@ const facts = (over: Partial<BriefingFacts> = {}): BriefingFacts => ({
   uncategorizedCount: 0,
   draftCount: 0,
   cards: [],
+  budgets: [],
   ...over,
 });
 
@@ -161,6 +162,47 @@ describe("briefing lines", () => {
 
   it("shows neither review line when nothing needs attention", () => {
     expect(lines().some((l) => l.key === "uncategorized" || l.key === "drafts")).toBe(false);
+  });
+});
+
+describe("budgets in the briefing", () => {
+  const budget = (over: Partial<BriefingFacts["budgets"][number]>): BriefingFacts["budgets"][number] => ({
+    categoryName: "Food & Dining",
+    pct: 50,
+    remainingPaise: 3_000_00,
+    status: "ok",
+    ...over,
+  });
+
+  it("stays quiet when every budget is fine, or there are none", () => {
+    expect(lines().some((l) => l.key === "budget")).toBe(false);
+    expect(lines({ budgets: [budget({}), budget({ categoryName: "Fuel" })] }).some((l) => l.key === "budget")).toBe(false);
+  });
+
+  it("mentions a budget that is near its limit", () => {
+    expect(find({ budgets: [budget({ status: "near", pct: 85.4 })] }, "budget")?.text).toBe("Food & Dining is at 85% of its budget.");
+  });
+
+  it("mentions a budget that is over, plainly", () => {
+    expect(find({ budgets: [budget({ status: "over", pct: 120, remainingPaise: -200_00 })] }, "budget")?.text).toBe("Food & Dining is ₹200 over its budget.");
+  });
+
+  it("puts over before near, names at most two, and counts the rest", () => {
+    const text = find(
+      {
+        budgets: [
+          budget({ categoryName: "Fuel", status: "near", pct: 90 }),
+          budget({ categoryName: "Rent", status: "over", pct: 110, remainingPaise: -1_000_00 }),
+          budget({ categoryName: "Shopping", status: "near", pct: 81 }),
+        ],
+      },
+      "budget",
+    )?.text;
+    expect(text).toBe("Rent is ₹1,000 over its budget, and Fuel is at 90% of its budget, with 1 more to watch.");
+  });
+
+  it("links to the Budgets page", () => {
+    expect(find({ budgets: [budget({ status: "over", remainingPaise: -1 })] }, "budget")?.to).toBe("/budgets");
   });
 });
 

@@ -88,6 +88,13 @@ export interface BriefingCard {
   statementOutstandingPaise: number;
 }
 
+export interface BriefingBudget {
+  categoryName: string;
+  pct: number;
+  remainingPaise: number;
+  status: "ok" | "near" | "over";
+}
+
 /** Everything the briefing may say, already verified by the ledger. */
 export interface BriefingFacts {
   today: string;
@@ -103,6 +110,8 @@ export interface BriefingFacts {
   draftCount: number;
   /** Active credit cards. */
   cards: BriefingCard[];
+  /** Budgets with this month's progress. */
+  budgets: BriefingBudget[];
 }
 
 export interface BriefingLine {
@@ -167,6 +176,18 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
       text: `You have spent ${rupees(facts.expensePaise)} ${phrase}. ${comparison}${aside}`,
       to: "/transactions",
     });
+  }
+
+  // Budgets only get a line when one needs attention, and over comes before near.
+  const over = facts.budgets.filter((b) => b.status === "over");
+  const near = facts.budgets.filter((b) => b.status === "near");
+  const pressed = [...over, ...near].slice(0, 2);
+  if (pressed.length > 0) {
+    const parts = pressed.map((b) =>
+      b.status === "over" ? `${b.categoryName} is ${rupees(-b.remainingPaise)} over its budget` : `${b.categoryName} is at ${Math.round(b.pct)}% of its budget`,
+    );
+    const more = over.length + near.length - pressed.length;
+    lines.push({ key: "budget", text: `${parts.join(", and ")}${more > 0 ? `, with ${more} more to watch` : ""}.`, to: "/budgets" });
   }
 
   if (facts.uncategorizedCount > 0) {

@@ -12,6 +12,7 @@ import { accounts } from "../db/schema";
 import { type IstDate, parseIstDate } from "../domain/dates";
 import { balanceOverview } from "./accounts";
 import { getMe } from "./auth";
+import { listBudgets } from "./budgets";
 import { getSummary } from "./dashboard";
 import { listAccountsWithFigures } from "./ledger";
 import { getSettings } from "./settings";
@@ -37,10 +38,11 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
   const base = { greeting: greeting(me.displayName, now), subline: subline(now), source: "template" as const, generatedAt: now.toISOString(), footer: BRIEFING_FOOTER };
   if (!anyAccount) return { ...base, lines: emptyBriefingLines() };
 
-  const [summary, figures, settings] = await Promise.all([
+  const [summary, figures, settings, budgetOverview] = await Promise.all([
     getSummary(db, userId, "cycle", today),
     listAccountsWithFigures(db, userId, today),
     getSettings(db, userId),
+    listBudgets(db, userId, today),
   ]);
   const cards = figures.flatMap((a) =>
     a.kind === "card"
@@ -60,6 +62,7 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
       uncategorizedCount: summary.uncategorizedCount,
       draftCount: summary.draftCount,
       cards,
+      budgets: budgetOverview.items.map((b) => ({ categoryName: b.categoryName, pct: b.pct, remainingPaise: b.remainingPaise, status: b.status })),
     },
     shortDate,
   );

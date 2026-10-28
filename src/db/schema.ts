@@ -179,6 +179,36 @@ export const telegramUpdates = sqliteTable("telegram_updates", {
   receivedAt: text("received_at").notNull(),
 });
 
+/**
+ * One recurring monthly limit per expense category. "Monthly" means the user's own month (their start day),
+ * so a budget always reads against the cycle they are living in.
+ */
+export const budgets = sqliteTable(
+  "budgets",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    categoryId: text("category_id").notNull().references(() => categories.id),
+    limitPaise: integer("limit_paise").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("budgets_user_category_uq").on(t.userId, t.categoryId), check("budgets_limit_positive", sql`${t.limitPaise} > 0`)],
+);
+
+/** One row per card payment announced, so Alfred mentions each due date once however often the job runs. */
+export const nudgeLog = sqliteTable(
+  "nudge_log",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    cardAccountId: text("card_account_id").notNull().references(() => accounts.id),
+    dueDate: text("due_date").notNull(),
+    sentAt: text("sent_at").notNull(),
+  },
+  (t) => [uniqueIndex("nudge_log_card_due_uq").on(t.userId, t.cardAccountId, t.dueDate)],
+);
+
 /** Lets a retried POST /api/transactions (flaky mobile network) return the original instead of duplicating. */
 export const idempotencyKeys = sqliteTable(
   "idempotency_keys",

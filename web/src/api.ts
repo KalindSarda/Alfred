@@ -43,6 +43,7 @@ export const api = {
   post: <T>(path: string, body?: unknown, headers?: Record<string, string>) =>
     request<T>("POST", path, body ?? {}, headers),
   patch: <T>(path: string, body: unknown) => request<T>("PATCH", path, body),
+  put: <T>(path: string, body: unknown) => request<T>("PUT", path, body),
   del: <T>(path: string) => request<T>("DELETE", path),
 };
 
@@ -161,6 +162,23 @@ export interface Cashflow {
   surplusPaise: number;
   income: CashflowRow[];
   expenses: CashflowRow[];
+}
+
+export interface BudgetItem {
+  categoryId: string;
+  categoryName: string;
+  limitPaise: number;
+  spentPaise: number;
+  remainingPaise: number;
+  pct: number;
+  status: "ok" | "near" | "over";
+}
+
+export interface Budgets {
+  period: { from: string; to: string };
+  totalLimitPaise: number;
+  totalSpentPaise: number;
+  items: BudgetItem[];
 }
 
 export interface BriefingLine {

@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type BalanceOverview, type Briefing, type Cashflow, type Category, type Me, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type Me, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -50,6 +50,8 @@ export const useCashflow = (period: string, groupBy: "category" | "merchant" = "
 export const useBriefing = () =>
   useQuery({ queryKey: ["briefing"], queryFn: () => api.get<Briefing>("/api/alfred/briefing"), staleTime: 60_000 });
 
+export const useBudgets = () => useQuery({ queryKey: ["budgets"], queryFn: () => api.get<Budgets>("/api/budgets") });
+
 export interface ReviewCounts {
   uncategorizedCount: number;
   draftCount: number;
@@ -93,6 +95,7 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["summary"] }),
       client.invalidateQueries({ queryKey: ["cashflow"] }),
       client.invalidateQueries({ queryKey: ["briefing"] }),
+      client.invalidateQueries({ queryKey: ["budgets"] }),
       client.invalidateQueries({ queryKey: ["review"] }),
     ]);
 }

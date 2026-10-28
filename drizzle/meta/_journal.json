@@ -57,6 +57,13 @@
       "when": 1793180300114,
       "tag": "0007_telegram_bot",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793183821144,
+      "tag": "0008_budgets_nudges",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { askAccount, botVoice, describeEntry, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
+import { askAccount, botVoice, budgetNote, budgetsReply, describeEntry, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
 import { AppError, RateLimitedError } from "../config/errors";
 import type { Db } from "../db/client";
@@ -13,6 +13,7 @@ import { type IstDate, todayIst } from "../domain/dates";
 import { getMe } from "../services/auth";
 import { balanceOverview, toAccountDto } from "../services/accounts";
 import { getCashflow } from "../services/cashflow";
+import { budgetFor, listBudgets } from "../services/budgets";
 import { getSummary } from "../services/dashboard";
 import { createTransaction, getTransaction, listAccountsWithFigures, listTransactions, softDeleteTransaction, updateTransaction } from "../services/ledger";
 import { enforceRateLimit } from "../services/rateLimit";
@@ -194,14 +195,19 @@ async function recordEntry(deps: BotDeps, who: Actor, entry: ParsedEntry, c: Bot
   );
 
   const summary = describeEntry(factsOf(entry, c));
-  let extra: string | undefined;
+  const notes: string[] = [];
   if (entry.type === "bill_payment" && target) {
     const figures = await listAccountsWithFigures(deps.db, who.userId, c.today);
     const card = figures.find((a) => a.id === target);
-    if (card?.kind === "card") extra = botVoice.cardOwes(card.name, card.summary.owedPaise);
+    if (card?.kind === "card") notes.push(botVoice.cardOwes(card.name, card.summary.owedPaise));
   } else if (!movement && !entry.categoryId) {
-    extra = botVoice.uncategorized;
+    notes.push(botVoice.uncategorized);
+  } else if (entry.type === "expense" && entry.categoryId) {
+    // A budget on this category? Say what is left, now that this spend is counted.
+    const budget = await budgetFor(deps.db, who.userId, entry.categoryId, c.today);
+    if (budget) notes.push(budgetNote(budget.categoryName, budget.remainingPaise, budget.status));
   }
+  const extra = notes.length > 0 ? notes.join(" ") : undefined;
 
   const buttons: Button[] = [{ text: "Undo", data: `u:${txn.id}` }];
   if (!movement && !entry.categoryId) buttons.push({ text: "Set category", data: `c:${txn.id}` });
@@ -349,6 +355,11 @@ async function cmdSummary(deps: BotDeps, who: Actor, arg: string, today: IstDate
   await deps.telegram.sendMessage(who.chatId, lines.join("\n"));
 }
 
+async function cmdBudget(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
+  const overview = await listBudgets(deps.db, who.userId, today);
+  await deps.telegram.sendMessage(who.chatId, budgetsReply(overview.period, overview.items, overview.totalSpentPaise, overview.totalLimitPaise));
+}
+
 async function cmdSettings(deps: BotDeps, who: Actor): Promise<void> {
   const [settings, me] = await Promise.all([getSettings(deps.db, who.userId), getMe(deps.db, who.userId)]);
   await deps.telegram.sendMessage(
@@ -451,6 +462,9 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
         return await cmdDue(deps, who, today);
       case "summary":
         return await cmdSummary(deps, who, arg, today);
+      case "budget":
+      case "budgets":
+        return await cmdBudget(deps, who, today);
       case "settings":
         return await cmdSettings(deps, who);
       default:

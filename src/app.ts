@@ -8,6 +8,7 @@ import { requestId } from "./middleware/requestId";
 import { requireSession } from "./middleware/session";
 import { accountRoutes } from "./routes/accounts";
 import { alfredRoutes } from "./routes/alfred";
+import { budgetRoutes } from "./routes/budgets";
 import { authPublic, authSession } from "./routes/auth";
 import { categoryRoutes } from "./routes/categories";
 import { dashboardRoutes } from "./routes/dashboard";
@@ -74,6 +75,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/demo-data", demoRoutes);
   app.route("/api/dashboard", dashboardRoutes);
   app.route("/api/alfred", alfredRoutes);
+  app.route("/api/budgets", budgetRoutes);
   app.route("/api/telegram", telegramLinkRoutes);
 
   app.notFound((c) => c.json({ error: { code: "not_found", message: "Not found" } }, 404));

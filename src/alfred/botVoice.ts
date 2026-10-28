@@ -1,6 +1,6 @@
 import { formatRupees } from "../domain/money";
 import type { EntryType } from "../bot/parser";
-import { greeting } from "./voice";
+import { greeting, inDays } from "./voice";
 
 /**
  * What Alfred says in Telegram. Short, composed, never excited: no exclamation marks, no emoji, and he never
@@ -52,6 +52,60 @@ export function askAccount(type: EntryType, need: Need, summary: string): string
   return `Which account shall I use? (${summary})`;
 }
 
+export interface ReminderCard {
+  name: string;
+  amountPaise: number;
+  dueDate: string;
+  daysAway: number;
+}
+
+/**
+ * Alfred's note before card payments fall due. Facts only: what is due, when, and whether the balances he can
+ * see cover it. He says "tracked" because he only knows what has been recorded.
+ */
+export function cardReminder(cards: ReminderCard[], countedBalancePaise: number): string {
+  const total = cards.reduce((sum, c) => sum + c.amountPaise, 0);
+  const coverage =
+    countedBalancePaise >= total
+      ? "Your tracked balances cover it, assuming nothing else is pending."
+      : `Your tracked balances are ${rupees(total - countedBalancePaise)} short of it, so a transfer may be needed.`;
+
+  const only = cards[0];
+  if (cards.length === 1 && only) {
+    return `A quick reminder: ${only.name} has ${rupees(only.amountPaise)} due on ${shortDate(only.dueDate)}, ${inDays(only.daysAway)}. ${coverage}`;
+  }
+  const lines = cards.map((c) => `${c.name}: ${rupees(c.amountPaise)} on ${shortDate(c.dueDate)} (${inDays(c.daysAway)})`);
+  return ["A quick reminder: several card payments are coming up.", ...lines, "", `Together that is ${rupees(total)}. ${coverage}`].join("\n");
+}
+
+/** After logging a spend in a budgeted category: what is left, said plainly and without scolding. */
+export function budgetNote(categoryName: string, remainingPaise: number, status: "ok" | "near" | "over"): string {
+  if (status === "over") return `That puts ${categoryName} ${rupees(-remainingPaise)} over its budget.`;
+  if (status === "near") return `Your ${categoryName} budget has ${rupees(remainingPaise)} remaining, which is close to the limit.`;
+  return `Your ${categoryName} budget has ${rupees(remainingPaise)} remaining.`;
+}
+
+export interface BudgetLine {
+  categoryName: string;
+  spentPaise: number;
+  limitPaise: number;
+  remainingPaise: number;
+  pct: number;
+  status: "ok" | "near" | "over";
+}
+
+export function budgetsReply(period: { from: string; to: string }, items: BudgetLine[], totalSpentPaise: number, totalLimitPaise: number): string {
+  if (items.length === 0) return "You have not set any budgets yet. You can add them in the app, under Budgets.";
+  const lines = [`Your budgets for ${shortDate(period.from)} to ${shortDate(period.to)}:`];
+  for (const b of items) {
+    const left =
+      b.status === "over" ? `${rupees(-b.remainingPaise)} over` : b.status === "near" ? `${rupees(b.remainingPaise)} remaining, close to the limit` : `${rupees(b.remainingPaise)} remaining`;
+    lines.push(`${b.categoryName}: ${rupees(b.spentPaise)} of ${rupees(b.limitPaise)} (${b.pct}%), ${left}`);
+  }
+  lines.push("", `In total: ${rupees(totalSpentPaise)} of ${rupees(totalLimitPaise)}.`);
+  return lines.join("\n");
+}
+
 export const botVoice = {
   welcome(name: string, now: Date): string {
     return [
@@ -82,6 +136,7 @@ export const botVoice = {
     "",
     "Ask me:",
     "/today  what you spent today",
+    "/budget  how your budgets stand this month",
     "/balance  your accounts, cards and safe-to-spend",
     "/due  card payments coming up",
     "/summary  your month so far (or: week, lastmonth, year)",
