@@ -7,7 +7,8 @@ import { newId } from "../utils/id";
 import { logger } from "../utils/logger";
 import type { Notifiers } from "./notifiers";
 import { enforceRateLimit } from "./rateLimit";
-import { nameFromEmail } from "./settings";
+import { getSettings, nameFromEmail } from "./settings";
+import { loginCodeMessages } from "../alfred/messages";
 
 export const CODE_TTL_SECONDS = 5 * 60;
 export const MAX_CODE_ATTEMPTS = 5;
@@ -81,10 +82,16 @@ export async function requestLoginCode(
     }),
   ]);
 
-  const message = `Your Alfred login code is ${code}. It is valid for 5 minutes and can be used once. If you did not ask for it, ignore this message.`;
+  const settings = await getSettings(db, user.id);
+  const message = loginCodeMessages({
+    name: settings.displayName ?? nameFromEmail(user.email),
+    code,
+    now: new Date(nowMs),
+    ttlMinutes: CODE_TTL_SECONDS / 60,
+  });
   try {
-    if (channel === "telegram" && chatId) await notifiers.sendTelegram(chatId, message);
-    else await notifiers.sendEmail(user.email, "Your Alfred login code", message);
+    if (channel === "telegram" && chatId) await notifiers.sendTelegram(chatId, message.telegram);
+    else await notifiers.sendEmail(user.email, message.subject, message.text, message.html);
   } catch (error) {
     // Delivery failure is logged but not reported to the caller, to keep the response uniform.
     logger.error("login_code_delivery_failed", { channel, error: error instanceof Error ? error.message : "unknown" });

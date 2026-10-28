@@ -33,7 +33,7 @@ Local secrets live in `.dev.vars` (git-ignored; `.dev.vars.example` lists every 
 | `AUTH_HMAC_KEY` | Random string (32+ chars) used to hash login codes and sessions |
 | `TELEGRAM_BOT_TOKEN` | From @BotFather, used for the Telegram bot (upcoming) and login codes |
 | `TELEGRAM_WEBHOOK_SECRET` | Random string Telegram echoes back on webhook calls |
-| `SMTP_*` | Dedicated Gmail sender and its app password, for emailed login codes |
+| `SMTP_*` | Dedicated Gmail sender and its app password, for emailed login codes. `SMTP_FROM` is the sender address (use the same Gmail account as `SMTP_USER`); `SMTP_FROM_NAME` is the name shown in the inbox, default "Alfred" |
 | `EMAIL_TRANSPORT` | `console` prints codes in the terminal (local only); `smtp` sends real email |
 
 Never commit `.dev.vars`.

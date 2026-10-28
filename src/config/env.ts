@@ -11,6 +11,7 @@ export interface Bindings {
   SMTP_USER: string;
   SMTP_PASSWORD: string;
   SMTP_FROM: string;
+  SMTP_FROM_NAME?: string;
   EMAIL_TRANSPORT?: string;
 }
 
@@ -26,6 +27,8 @@ const secretsSchema = z.object({
   SMTP_USER: z.string().min(1),
   SMTP_PASSWORD: z.string().min(1),
   SMTP_FROM: z.string().min(1),
+  /** The sender name people see in their inbox. */
+  SMTP_FROM_NAME: z.string().trim().min(1).max(60).default("Alfred"),
   EMAIL_TRANSPORT: z.enum(["smtp", "console"]).default("smtp"),
 });
 

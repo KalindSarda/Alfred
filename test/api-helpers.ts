@@ -9,7 +9,7 @@ export const START = Date.parse("2026-10-27T10:00:00Z");
 
 export interface TestApp {
   call: (method: string, path: string, options?: CallOptions) => Promise<Response>;
-  sentEmails: { to: string; subject: string; text: string }[];
+  sentEmails: { to: string; subject: string; text: string; html?: string }[];
   sentTelegram: { chatId: string; text: string }[];
   advance: (ms: number) => void;
   failTelegram: () => void;
@@ -31,8 +31,8 @@ export function makeApp(): TestApp {
   const sentEmails: TestApp["sentEmails"] = [];
   const sentTelegram: TestApp["sentTelegram"] = [];
   const notifiers: Notifiers = {
-    async sendEmail(to, subject, text) {
-      sentEmails.push({ to, subject, text });
+    async sendEmail(to, subject, text, html) {
+      sentEmails.push({ to, subject, text, ...(html && { html }) });
     },
     async sendTelegram(chatId, text) {
       if (telegramFails) throw new Error("telegram down");

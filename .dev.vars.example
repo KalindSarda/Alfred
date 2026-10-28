@@ -10,5 +10,7 @@ SMTP_PORT=465
 SMTP_USER=sender@example.com
 SMTP_PASSWORD=replace-with-app-password
 SMTP_FROM=sender@example.com
+# The sender name shown in the inbox, next to the address above
+SMTP_FROM_NAME=Alfred
 # "console" prints login emails to the log instead of sending (local dev only); "smtp" for real sending
 EMAIL_TRANSPORT=console

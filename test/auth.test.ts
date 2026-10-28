@@ -27,7 +27,7 @@ describe("request-code", () => {
     const chatId = await linkTelegram(user.id);
 
     await app.call("POST", "/api/auth/request-code", { body: { email: user.email } });
-    expect(app.sentTelegram).toEqual([{ chatId, text: expect.stringContaining("login code") }]);
+    expect(app.sentTelegram).toEqual([{ chatId, text: expect.stringContaining("sign-in code") }]);
     expect(app.sentEmails).toHaveLength(0);
 
     await app.call("POST", "/api/auth/request-code", { body: { email: user.email, channel: "email" } });

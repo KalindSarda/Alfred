@@ -4,7 +4,8 @@ import type { Config } from "../config/env";
 /** Outbound channels used by auth. Injected so tests can fake them and routes build the real ones. */
 export interface Notifiers {
   sendTelegram(chatId: string, text: string): Promise<void>;
-  sendEmail(to: string, subject: string, text: string): Promise<void>;
+  /** `html` is the styled version; `text` is the plain-text alternative every email carries. */
+  sendEmail(to: string, subject: string, text: string, html?: string): Promise<void>;
 }
 
 async function sendTelegramMessage(config: Config, chatId: string, text: string): Promise<void> {
@@ -19,7 +20,7 @@ async function sendTelegramMessage(config: Config, chatId: string, text: string)
   }
 }
 
-async function sendSmtpEmail(config: Config, to: string, subject: string, text: string): Promise<void> {
+async function sendSmtpEmail(config: Config, to: string, subject: string, text: string, html?: string): Promise<void> {
   await WorkerMailer.send(
     {
       host: config.SMTP_HOST,
@@ -30,20 +31,20 @@ async function sendSmtpEmail(config: Config, to: string, subject: string, text: 
       credentials: { username: config.SMTP_USER, password: config.SMTP_PASSWORD },
       logLevel: LogLevel.ERROR,
     },
-    { from: { name: "Alfred", email: config.SMTP_FROM }, to, subject, text },
+    { from: { name: config.SMTP_FROM_NAME, email: config.SMTP_FROM }, to, subject, text, ...(html && { html }) },
   );
 }
 
 export function createNotifiers(config: Config): Notifiers {
   return {
     sendTelegram: (chatId, text) => sendTelegramMessage(config, chatId, text),
-    sendEmail: async (to, subject, text) => {
+    sendEmail: async (to, subject, text, html) => {
       if (config.EMAIL_TRANSPORT === "console") {
         // Local development only: lets you log in without SMTP. Never enabled in production config.
         console.log(`[console email] to=${to} subject=${subject}\n${text}`);
         return;
       }
-      await sendSmtpEmail(config, to, subject, text);
+      await sendSmtpEmail(config, to, subject, text, html);
     },
   };
 }
