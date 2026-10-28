@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `period_start_day` integer DEFAULT 1 NOT NULL;

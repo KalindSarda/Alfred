@@ -6,7 +6,7 @@ import { getSummary, reviewCounts } from "../services/dashboard";
 import { requestToday } from "../utils/clock";
 import { parseQuery } from "../utils/validate";
 
-const Period = z.enum(["7d", "30d", "90d", "this_month", "last_month", "ytd"]).default("30d");
+const Period = z.enum(["7d", "30d", "90d", "this_month", "last_month", "ytd", "cycle"]).default("30d");
 
 export const PeriodQuery = z.object({ period: Period });
 export const CashflowQuery = z.object({ period: Period, groupBy: z.enum(["category", "merchant"]).default("category") });

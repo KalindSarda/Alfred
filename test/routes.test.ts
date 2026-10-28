@@ -317,8 +317,8 @@ describe("categories", () => {
 describe("settings", () => {
   it("returns defaults, patches partially and validates", async () => {
     const { api } = await session();
-    expect((await api("GET", "/api/settings")).json).toEqual({ nudgeLeadDays: 3, nudgeTimeIst: "10:00", sessionDays: 30, displayName: null });
-    expect((await api("PATCH", "/api/settings", { nudgeLeadDays: 2 })).json).toEqual({ nudgeLeadDays: 2, nudgeTimeIst: "10:00", sessionDays: 30, displayName: null });
+    expect((await api("GET", "/api/settings")).json).toEqual({ nudgeLeadDays: 3, nudgeTimeIst: "10:00", sessionDays: 30, displayName: null, periodStartDay: 1 });
+    expect((await api("PATCH", "/api/settings", { nudgeLeadDays: 2 })).json).toEqual({ nudgeLeadDays: 2, nudgeTimeIst: "10:00", sessionDays: 30, displayName: null, periodStartDay: 1 });
     expect((await api("GET", "/api/settings")).json.nudgeLeadDays).toBe(2);
     expect((await api("PATCH", "/api/settings", { nudgeLeadDays: 0 })).status).toBe(422);
     expect((await api("PATCH", "/api/settings", { nudgeLeadDays: 8 })).status).toBe(422);

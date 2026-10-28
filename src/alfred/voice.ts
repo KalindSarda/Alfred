@@ -61,6 +61,24 @@ const PERIOD_PHRASE: Record<string, string> = {
   ytd: "so far this year",
 };
 
+function ordinal(n: number): string {
+  const rest = n % 100;
+  if (rest >= 11 && rest <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10 > 3 ? 0 : n % 10] ?? "th"}`;
+}
+
+/** "so far this month", or "since the 30th" when the user's month starts on their payday. */
+function periodPhrase(facts: BriefingFacts): string {
+  if (facts.periodKey === "cycle") {
+    return facts.cycleStartDay > 1 ? `since the ${ordinal(facts.cycleStartDay)}` : "so far this month";
+  }
+  return PERIOD_PHRASE[facts.periodKey] ?? "in this period";
+}
+
+function previousPhrase(facts: BriefingFacts): string {
+  return facts.periodKey === "cycle" ? "the same point last month" : "the period before";
+}
+
 export interface BriefingCard {
   name: string;
   nextDueDate: string;
@@ -71,7 +89,11 @@ export interface BriefingCard {
 export interface BriefingFacts {
   today: string;
   periodKey: string;
+  /** The day the user's month starts on (1 = calendar months). Only used when periodKey is "cycle". */
+  cycleStartDay: number;
   safeToSpendPaise: number;
+  /** Money in accounts that is not counted toward safe-to-spend. */
+  setAsidePaise: number;
   expensePaise: number;
   previousExpensePaise: number;
   uncategorizedCount: number;
@@ -92,12 +114,13 @@ const rupees = (paise: number) => formatRupees(paise);
 export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: string) => string): BriefingLine[] {
   const lines: BriefingLine[] = [];
 
+  const setAside = facts.setAsidePaise > 0 ? ` A further ${rupees(facts.setAsidePaise)} is set aside and not counted.` : "";
   lines.push({
     key: "safe",
     text:
       facts.safeToSpendPaise >= 0
-        ? `${rupees(facts.safeToSpendPaise)} is available to spend, as recorded.`
-        : `Your recorded balances are ${rupees(-facts.safeToSpendPaise)} short of what your cards currently owe.`,
+        ? `${rupees(facts.safeToSpendPaise)} is available to spend, as recorded.${setAside}`
+        : `Your recorded balances are ${rupees(-facts.safeToSpendPaise)} short of what your cards currently owe.${setAside}`,
     to: "/accounts",
   });
 
@@ -120,13 +143,14 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
     }
   }
 
-  const phrase = PERIOD_PHRASE[facts.periodKey] ?? "in this period";
+  const phrase = periodPhrase(facts);
+  const before = previousPhrase(facts);
   if (facts.expensePaise > 0 || facts.previousExpensePaise > 0) {
     const diff = facts.expensePaise - facts.previousExpensePaise;
     let comparison: string;
     if (facts.previousExpensePaise === 0) comparison = "There is no earlier spending to compare with.";
-    else if (diff === 0) comparison = "That matches the period before.";
-    else comparison = `That is ${rupees(Math.abs(diff))} ${diff > 0 ? "more" : "less"} than the period before.`;
+    else if (diff === 0) comparison = `That matches ${before}.`;
+    else comparison = `That is ${rupees(Math.abs(diff))} ${diff > 0 ? "more" : "less"} than ${before}.`;
 
     // A touch of dry wit, only for a clear swing and never at the user's expense.
     let aside = "";

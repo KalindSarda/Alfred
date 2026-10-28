@@ -43,6 +43,13 @@
       "when": 1793107953512,
       "tag": "0005_bill_payment",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793176753660,
+      "tag": "0006_period_start_day",
+      "breakpoints": true
     }
   ]
 }

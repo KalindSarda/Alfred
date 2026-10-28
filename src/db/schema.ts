@@ -171,4 +171,6 @@ export const appSettings = sqliteTable("app_settings", {
   sessionDays: integer("session_days").notNull().default(30),
   /** How Alfred addresses the user; when null a name is derived from the email. */
   displayName: text("display_name"),
+  /** Day the user's month starts on (their payday, say). 1 means calendar months. */
+  periodStartDay: integer("period_start_day").notNull().default(1),
 });

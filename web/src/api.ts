@@ -183,4 +183,5 @@ export interface Settings {
   nudgeTimeIst: string;
   sessionDays: number;
   displayName: string | null;
+  periodStartDay: number;
 }

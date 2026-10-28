@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { daysBetween, inDays } from "../../../src/alfred/voice";
 import type { CardAccount } from "../api";
 import { AlfredPanel } from "../components/Alfred";
@@ -11,15 +11,6 @@ import { NetWorthStrip } from "../components/NetWorth";
 import { useAccounts, useBalanceOverview, useBriefing, useCategories, useSummary, useTransactions } from "../queries";
 import { Link } from "../router";
 import { amountSign, amountTone, describeTxn } from "../txn";
-
-const PERIODS = [
-  { value: "7d", label: "7 days" },
-  { value: "30d", label: "30 days" },
-  { value: "90d", label: "90 days" },
-  { value: "this_month", label: "This month" },
-  { value: "last_month", label: "Last month" },
-  { value: "ytd", label: "Year to date" },
-];
 
 function Tile({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" }) {
   const color = tone === "good" ? "text-good" : tone === "bad" ? "text-bad" : "";
@@ -45,7 +36,8 @@ function SectionTitle({ children, to, action }: { children: string; to?: string;
 }
 
 export function Home() {
-  const [period, setPeriod] = useState("30d");
+  // The user's own month: calendar month by default, or from their payday (set in More).
+  const period = "cycle";
   const briefing = useBriefing();
   const summary = useSummary(period);
   const accounts = useAccounts();
@@ -79,25 +71,14 @@ export function Home() {
       {panel}
 
       <section aria-label="Cash flow summary" className="space-y-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="font-display mr-auto text-xl">Cash flow</h2>
-          <label className="sr-only" htmlFor="period">
-            Period
-          </label>
-          <select
-            id="period"
-            value={period}
-            onChange={(e) => setPeriod(e.target.value)}
-            className="min-h-11 rounded-xl border border-line bg-card px-3 text-base"
-          >
-            {PERIODS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <h2 className="font-display text-xl">Cash flow</h2>
           <span className="text-sm text-soft">
             {shortDate(s.period.from)} – {shortDate(s.period.to)}
+            {" · "}
+            <Link to="/more" className="text-brand hover:underline">
+              change month start
+            </Link>
           </span>
         </div>
         <div className="grid grid-cols-3 gap-3">
@@ -107,11 +88,12 @@ export function Home() {
         </div>
       </section>
 
+      {overview.data && <NetWorthStrip overview={overview.data} />}
+
       <CashflowCard period={period} />
 
       <Breakdown period={period} />
 
-      {overview.data && <NetWorthStrip overview={overview.data} />}
 
       <div className="grid items-start gap-6 lg:grid-cols-2">
         <Card>

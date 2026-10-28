@@ -12,7 +12,9 @@ const card = (over: Partial<BriefingCard> = {}): BriefingCard => ({
 const facts = (over: Partial<BriefingFacts> = {}): BriefingFacts => ({
   today: "2026-10-27",
   periodKey: "30d",
+  cycleStartDay: 1,
   safeToSpendPaise: 1_71_922_00,
+  setAsidePaise: 0,
   expensePaise: 0,
   previousExpensePaise: 0,
   uncategorizedCount: 0,
@@ -73,6 +75,35 @@ describe("date phrases", () => {
 describe("briefing lines", () => {
   it("states safe-to-spend as recorded", () => {
     expect(lines()[0]?.text).toBe("₹1,71,922 is available to spend, as recorded.");
+  });
+
+  it("says how much is set aside when some accounts are not counted", () => {
+    expect(lines({ safeToSpendPaise: 86_542_00, setAsidePaise: 84_380_00 })[0]?.text).toBe(
+      "₹86,542 is available to spend, as recorded. A further ₹84,380 is set aside and not counted.",
+    );
+    expect(lines({ setAsidePaise: 0 })[0]?.text).not.toContain("set aside");
+  });
+
+  it("words the user's own month naturally, and compares with the same point last month", () => {
+    const calendar = find({ periodKey: "cycle", cycleStartDay: 1, expensePaise: 9_000_00, previousExpensePaise: 8_000_00 }, "spend")?.text;
+    expect(calendar).toBe("You have spent ₹9,000 so far this month. That is ₹1,000 more than the same point last month.");
+    const payday = find({ periodKey: "cycle", cycleStartDay: 30, expensePaise: 10_000_00, previousExpensePaise: 10_000_00 }, "spend")?.text;
+    expect(payday).toBe("You have spent ₹10,000 since the 30th. That matches the same point last month.");
+    expect(find({ periodKey: "cycle", cycleStartDay: 1, expensePaise: 5_000_00 }, "spend")?.text).toContain("no earlier spending to compare with");
+  });
+
+  it.each([
+    [1, "since the 1st"],
+    [2, "since the 2nd"],
+    [3, "since the 3rd"],
+    [11, "since the 11th"],
+    [21, "since the 21st"],
+    [22, "since the 22nd"],
+    [30, "since the 30th"],
+  ])("orders day %i as an ordinal", (day, expected) => {
+    // day 1 is the calendar month, so use 2+ for the "since" wording and check 1 separately above
+    if (day === 1) return;
+    expect(find({ periodKey: "cycle", cycleStartDay: day, expensePaise: 100_00 }, "spend")?.text).toContain(expected);
   });
 
   it("explains a shortfall without blame", () => {
@@ -165,7 +196,7 @@ describe("GET /api/alfred/briefing", () => {
     const byKey = Object.fromEntries(res.lines.map((l: { key: string; text: string }) => [l.key, l.text]));
     expect(byKey.safe).toBe("₹9,000 is available to spend, as recorded.");
     expect(byKey.due).toBe("No card payments are pending.");
-    expect(byKey.spend).toContain("You have spent ₹1,000 over the last 30 days.");
+    expect(byKey.spend).toContain("You have spent ₹1,000 so far this month.");
     expect(byKey.uncategorized).toBe("1 entry needs a category.");
   });
 

@@ -4,7 +4,8 @@ const IST_OFFSET_MINUTES = 330;
 
 export type IstDate = string;
 
-export type PeriodKey = "7d" | "30d" | "90d" | "this_month" | "last_month" | "ytd";
+/** "cycle" is the user's own month: from their chosen start day (often payday) to the day before the next one. */
+export type PeriodKey = "7d" | "30d" | "90d" | "this_month" | "last_month" | "ytd" | "cycle";
 
 export interface DateRange {
   from: IstDate;
@@ -81,10 +82,36 @@ export function monthRange(month: string): DateRange {
 }
 
 /**
- * Resolves a dashboard period against today (IST). Rolling periods include today.
- * "this_month" and "ytd" run from their start to today.
+ * The monthly cycle that contains `today`, starting on `startDay` (clamped in short months, so 30 becomes
+ * 28 in February). With startDay 1 this is the calendar month. The range covers the whole cycle, including
+ * days that have not happened yet.
  */
-export function resolvePeriod(key: PeriodKey, today: IstDate): DateRange {
+export function cycleRange(today: IstDate, startDay: number): DateRange {
+  const { year, month } = parseIstDate(today);
+  const thisStart = clampDay(year, month, startDay);
+  const startMonth = thisStart <= today ? { year, month } : shiftMonth(year, month, -1);
+  const from = clampDay(startMonth.year, startMonth.month, startDay);
+  const next = shiftMonth(startMonth.year, startMonth.month, 1);
+  return { from, to: addDays(clampDay(next.year, next.month, startDay), -1) };
+}
+
+/**
+ * The same stretch of the previous cycle: if today is day 10 of this cycle, the first 10 days of the one
+ * before. Used to say whether spending so far is more or less than "this point last month".
+ */
+export function previousCycleSameDays(today: IstDate, startDay: number): DateRange {
+  const current = cycleRange(today, startDay);
+  const previous = cycleRange(addDays(current.from, -1), startDay);
+  const elapsedDays = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${current.from}T00:00:00Z`)) / 86_400_000);
+  const to = addDays(previous.from, elapsedDays);
+  return { from: previous.from, to: to > previous.to ? previous.to : to };
+}
+
+/**
+ * Resolves a dashboard period against today (IST). Rolling periods include today.
+ * "this_month" and "ytd" run from their start to today. "cycle" uses `cycleStartDay`.
+ */
+export function resolvePeriod(key: PeriodKey, today: IstDate, cycleStartDay = 1): DateRange {
   const { year, month } = parseIstDate(today);
   switch (key) {
     case "7d":
@@ -101,5 +128,7 @@ export function resolvePeriod(key: PeriodKey, today: IstDate): DateRange {
     }
     case "ytd":
       return { from: formatIstDate(year, 1, 1), to: today };
+    case "cycle":
+      return cycleRange(today, cycleStartDay);
   }
 }

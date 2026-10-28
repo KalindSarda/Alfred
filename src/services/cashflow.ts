@@ -3,6 +3,7 @@ import type { Db } from "../db/client";
 import { categories, transactions } from "../db/schema";
 import { type DateRange, type IstDate, type PeriodKey, resolvePeriod } from "../domain/dates";
 import { FLOW_TYPES } from "../domain/txnTypes";
+import { getSettings } from "./settings";
 
 export type GroupBy = "category" | "merchant";
 
@@ -88,7 +89,8 @@ async function groupedRows(db: Db, userId: string, range: DateRange, groupBy: Gr
  * Only confirmed income and expense count: transfers, bill payments, drafts and deleted rows are excluded.
  */
 export async function getCashflow(db: Db, userId: string, key: PeriodKey, groupBy: GroupBy, today: IstDate): Promise<CashflowDto> {
-  const range = resolvePeriod(key, today);
+  const { periodStartDay } = await getSettings(db, userId);
+  const range = resolvePeriod(key, today, periodStartDay);
   const rows = await groupedRows(db, userId, range, groupBy);
 
   const sumOf = (type: "income" | "expense") => rows.filter((r) => r.type === type).reduce((s, r) => s + r.total, 0);

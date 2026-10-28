@@ -1,9 +1,10 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { transactions } from "../db/schema";
-import { addDays, type DateRange, type IstDate, type PeriodKey, resolvePeriod } from "../domain/dates";
+import { addDays, type DateRange, type IstDate, type PeriodKey, previousCycleSameDays, resolvePeriod } from "../domain/dates";
 import { FLOW_TYPES } from "../domain/txnTypes";
 import { getSafeToSpend } from "./ledger";
+import { getSettings } from "./settings";
 
 export interface SummaryDto {
   period: { key: PeriodKey } & DateRange;
@@ -67,10 +68,13 @@ export async function reviewCounts(db: Db, userId: string): Promise<ReviewCounts
 }
 
 export async function getSummary(db: Db, userId: string, key: PeriodKey, today: IstDate): Promise<SummaryDto> {
-  const range = resolvePeriod(key, today);
+  const { periodStartDay } = await getSettings(db, userId);
+  const range = resolvePeriod(key, today, periodStartDay);
+  // For the user's own month, compare with the same stretch of the previous one; otherwise the period before.
+  const comparison = key === "cycle" ? previousCycleSameDays(today, periodStartDay) : previousRange(range);
   const [totals, previous, safeToSpendPaise, review] = await Promise.all([
     periodTotals(db, userId, range),
-    periodTotals(db, userId, previousRange(range)),
+    periodTotals(db, userId, comparison),
     getSafeToSpend(db, userId, today),
     reviewCounts(db, userId),
   ]);

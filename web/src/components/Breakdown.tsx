@@ -1,11 +1,18 @@
 import { useState } from "react";
 import type { Cashflow, CashflowRow } from "../api";
-import { transactionsLink } from "../filters";
+import { emptyFilters, transactionsLink, type TxnFilters } from "../filters";
 import { rupees } from "../format";
 import { useCashflow } from "../queries";
 import { Link } from "../router";
-import { rowFilters } from "./ProfitLoss";
 import { Card } from "./ui";
+
+/** The transaction filters that show the entries behind a row. */
+function rowFilters(data: Cashflow, row: CashflowRow, type: "income" | "expense"): TxnFilters {
+  const base = { ...emptyFilters, type, from: data.period.from, to: data.period.to };
+  if (data.groupBy === "category") return { ...base, categories: [row.categoryId ?? "none"] };
+  // Merchant rows are matched by name through search; entries with no merchant cannot be filtered this way.
+  return row.key === "" ? base : { ...base, q: row.name };
+}
 
 const BAR_COLORS = ["bg-brand", "bg-orb", "bg-brass", "bg-good", "bg-soft"];
 const COLLAPSED = 6;

@@ -23,6 +23,16 @@ export function More() {
     },
   });
 
+  const saveStartDay = useMutation({
+    mutationFn: (periodStartDay: number) => api.patch<Settings>("/api/settings", { periodStartDay }),
+    onSuccess: async (data) => {
+      client.setQueryData(["settings"], data);
+      // Everything on Home is measured over this month, so it all needs recalculating.
+      await refresh();
+      toast.show("Saved");
+    },
+  });
+
   const saveLead = useMutation({
     mutationFn: (nudgeLeadDays: number) => api.patch<Settings>("/api/settings", { nudgeLeadDays }),
     onSuccess: (data) => {
@@ -86,6 +96,31 @@ export function More() {
         <p className="text-sm text-soft">
           Telegram: {me.data?.telegramLinked ? "linked" : "not linked yet (Alfred joins you there in an upcoming update)"}
         </p>
+      </Card>
+
+      <Card className="space-y-3">
+        <h2 className="font-medium">Your month</h2>
+        {settings.isPending ? (
+          <Spinner />
+        ) : (
+          <Field
+            label="My month starts on day"
+            hint="Cash flow on Home shows this month only. Set it to your salary day: with 30, you see the 30th to the 29th. Short months use their last day."
+          >
+            <select
+              className={inputClass}
+              value={settings.data?.periodStartDay ?? 1}
+              onChange={(e) => saveStartDay.mutate(Number(e.target.value))}
+            >
+              {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                <option key={d} value={d}>
+                  {d === 1 ? "1 (calendar month)" : d}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        <ErrorText>{saveStartDay.isError ? describeError(saveStartDay.error) : ""}</ErrorText>
       </Card>
 
       <Card className="space-y-3">

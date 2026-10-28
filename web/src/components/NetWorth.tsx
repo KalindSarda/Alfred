@@ -45,7 +45,9 @@ export function NetWorthStrip({ overview }: { overview: BalanceOverview }) {
       <span>
         <span className="block text-xs tracking-wide text-soft uppercase">{LABEL}</span>
         <span className="block text-xs text-soft">
-          In banks {rupees(overview.totalInBanksPaise)} · owed on cards {rupees(overview.cardsOwedPaise)}
+          In banks {rupees(overview.totalInBanksPaise)}
+          {overview.setAsidePaise > 0 && <> (of which {rupees(overview.setAsidePaise)} set aside)</>} · owed on cards{" "}
+          {rupees(overview.cardsOwedPaise)}
         </span>
       </span>
       <span className="font-display text-2xl tabular-nums">{rupees(overview.netWorthPaise)}</span>
