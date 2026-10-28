@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Settings, api, describeError } from "../api";
 import { useToast } from "../components/toast";
 import { Button, Card, ErrorText, Field, inputClass, Spinner } from "../components/ui";
+import { TelegramCard } from "../components/TelegramCard";
 import { useMe, useRefreshMoney } from "../queries";
 import { useState } from "react";
 
@@ -93,10 +94,9 @@ export function More() {
           </Button>
           <ErrorText>{saveName.isError ? describeError(saveName.error) : ""}</ErrorText>
         </form>
-        <p className="text-sm text-soft">
-          Telegram: {me.data?.telegramLinked ? "linked" : "not linked yet (Alfred joins you there in an upcoming update)"}
-        </p>
       </Card>
+
+      <TelegramCard />
 
       <Card className="space-y-3">
         <h2 className="font-medium">Your month</h2>

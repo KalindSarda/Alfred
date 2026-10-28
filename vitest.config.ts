@@ -13,6 +13,9 @@ export default defineConfig({
   ],
   test: {
     include: ["test/**/*.test.ts"],
+    // Conversation tests set up a user, accounts and a linked chat; give them room when the suite runs in parallel.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     setupFiles: ["./test/setup.ts"],
   },
 });

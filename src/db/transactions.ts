@@ -194,3 +194,18 @@ export async function listTotals(db: Db, userId: string, query: ListTransactions
     .where(and(...filterConditions(userId, query)));
   return { count: Number(row?.count ?? 0), incomePaise: Number(row?.income ?? 0), expensePaise: Number(row?.expense ?? 0) };
 }
+
+/** The most recent live entry created from a given source (for the bot's /undo). */
+export async function lastTransactionRowBySource(
+  db: Db,
+  userId: string,
+  source: TransactionRow["source"],
+): Promise<TransactionRow | undefined> {
+  const [row] = await db
+    .select()
+    .from(transactions)
+    .where(and(eq(transactions.userId, userId), eq(transactions.source, source), isNull(transactions.deletedAt)))
+    .orderBy(desc(transactions.createdAt), desc(transactions.id))
+    .limit(1);
+  return row;
+}

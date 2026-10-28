@@ -1,11 +1,54 @@
 import { env } from "cloudflare:workers";
 import { createApp } from "../src/app";
 import { telegramLinks } from "../src/db/schema";
+import type { Button, TelegramApi } from "../src/bot/telegramApi";
 import type { Notifiers } from "../src/services/notifiers";
 import { newId } from "../src/utils/id";
 import { createUser, db } from "./helpers";
 
 export const START = Date.parse("2026-10-27T10:00:00Z");
+
+export interface BotMessage {
+  id: number;
+  chatId: string;
+  text: string;
+  buttons: Button[][];
+  /** Set when a later edit replaced this message's text. */
+  edited: boolean;
+}
+
+/** Stands in for Telegram: records what Alfred sends and edits so tests can read the conversation. */
+export class FakeTelegram implements TelegramApi {
+  messages: BotMessage[] = [];
+  answered: string[] = [];
+  failSending = false;
+  private nextId = 100;
+
+  async sendMessage(chatId: string, text: string, buttons: Button[][] = []): Promise<number> {
+    if (this.failSending) throw new Error("telegram down");
+    const id = this.nextId++;
+    this.messages.push({ id, chatId, text, buttons, edited: false });
+    return id;
+  }
+
+  async editMessage(chatId: string, messageId: number, text: string, buttons: Button[][] = []): Promise<void> {
+    const found = this.messages.find((m) => m.id === messageId && m.chatId === chatId);
+    if (!found) throw new Error(`No message ${messageId} to edit`);
+    found.text = text;
+    found.buttons = buttons;
+    found.edited = true;
+  }
+
+  async answerCallback(callbackId: string): Promise<void> {
+    this.answered.push(callbackId);
+  }
+
+  get last(): BotMessage {
+    const m = this.messages.at(-1);
+    if (!m) throw new Error("Alfred has said nothing");
+    return m;
+  }
+}
 
 export interface TestApp {
   call: (method: string, path: string, options?: CallOptions) => Promise<Response>;
@@ -13,6 +56,7 @@ export interface TestApp {
   sentTelegram: { chatId: string; text: string }[];
   advance: (ms: number) => void;
   failTelegram: () => void;
+  telegram: FakeTelegram;
 }
 
 export interface CallOptions {
@@ -28,6 +72,7 @@ export interface CallOptions {
 export function makeApp(): TestApp {
   let nowMs = START;
   let telegramFails = false;
+  const telegram = new FakeTelegram();
   const sentEmails: TestApp["sentEmails"] = [];
   const sentTelegram: TestApp["sentTelegram"] = [];
   const notifiers: Notifiers = {
@@ -39,12 +84,13 @@ export function makeApp(): TestApp {
       sentTelegram.push({ chatId, text });
     },
   };
-  const app = createApp({ notifiers: () => notifiers, now: () => nowMs });
+  const app = createApp({ notifiers: () => notifiers, telegram: () => telegram, now: () => nowMs });
   const defaultIp = `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
 
   return {
     sentEmails,
     sentTelegram,
+    telegram,
     advance: (ms) => {
       nowMs += ms;
     },

@@ -144,12 +144,39 @@ export const telegramLinks = sqliteTable(
   (t) => [uniqueIndex("telegram_links_chat_uq").on(t.chatId)],
 );
 
-export const telegramLinkCodes = sqliteTable("telegram_link_codes", {
-  id: text("id").primaryKey(),
-  userId: text("user_id").notNull().references(() => users.id),
-  codeHash: text("code_hash").notNull(),
-  expiresAt: text("expires_at").notNull(),
-  usedAt: text("used_at"),
+export const telegramLinkCodes = sqliteTable(
+  "telegram_link_codes",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    codeHash: text("code_hash").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    usedAt: text("used_at"),
+  },
+  (t) => [uniqueIndex("telegram_link_codes_hash_uq").on(t.codeHash)],
+);
+
+/**
+ * A half-finished entry from the bot (waiting for you to choose an account, or to confirm). Buttons carry only
+ * this short id, because Telegram limits callback data to 64 bytes.
+ */
+export const botPending = sqliteTable(
+  "bot_pending",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    chatId: text("chat_id").notNull(),
+    payload: text("payload").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("bot_pending_expiry_idx").on(t.expiresAt)],
+);
+
+/** Telegram retries updates it thinks failed; remembering each update id makes handling idempotent. */
+export const telegramUpdates = sqliteTable("telegram_updates", {
+  updateId: integer("update_id").primaryKey(),
+  receivedAt: text("received_at").notNull(),
 });
 
 /** Lets a retried POST /api/transactions (flaky mobile network) return the original instead of duplicating. */

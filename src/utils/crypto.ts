@@ -42,3 +42,15 @@ export function randomDigits(length: number): string {
 export function randomToken(): string {
   return toBase64Url(crypto.getRandomValues(new Uint8Array(32)));
 }
+
+/** Random string from an alphabet, without modulo bias. Used for short link codes and button ids. */
+export function randomString(length: number, alphabet: string): string {
+  const limit = 256 - (256 % alphabet.length);
+  let out = "";
+  while (out.length < length) {
+    for (const byte of crypto.getRandomValues(new Uint8Array(length * 2))) {
+      if (byte < limit && out.length < length) out += alphabet[byte % alphabet.length];
+    }
+  }
+  return out;
+}

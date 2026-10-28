@@ -14,7 +14,11 @@
     "migrate:local": "wrangler d1 migrations apply finance-tracker --local",
     "migrate:remote": "wrangler d1 migrations apply finance-tracker --remote",
     "start": "npm run build && wrangler dev",
-    "setup:local": "npm run migrate:local && node scripts/bootstrap-user.ts --local"
+    "setup:local": "npm run migrate:local && node scripts/bootstrap-user.ts --local",
+    "bot:info": "node scripts/bot.ts info",
+    "bot:setup": "node scripts/bot.ts setup",
+    "bot:webhook": "node scripts/bot.ts webhook",
+    "bot:unhook": "node scripts/bot.ts unhook"
   },
   "dependencies": {
     "@hono/zod-validator": "0.9.1",
