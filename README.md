@@ -49,7 +49,15 @@ Never commit `.dev.vars`.
 | `npm run db:generate` | Generate a migration after changing `src/db/schema.ts` |
 | `npm run migrate:local` | Apply migrations to the local database |
 
+## Deploying
+
+See [DEPLOY.md](DEPLOY.md) for the step-by-step guide (Cloudflare free plan).
+
+## Your data
+
+**More** has two downloads: a JSON backup of everything (including deleted entries) and a CSV of current transactions. Exports are limited to ten an hour.
+
 ## Status
 
-Built: accounts, cards, transactions, categories, one-time-code login, demo data, safe-to-spend and period totals, installable web app.
-Coming next: Telegram bot, cash flow chart and Profit and loss view, budgets, card due-date reminders, export.
+Built: accounts, cards, transactions, categories, one-time-code login, demo data, safe-to-spend, cash flow, the Alfred briefing, the Telegram bot, budgets, card due-date reminders, export, security headers, installable web app.
+Next: a first deployment, then an optional AI phase (free-text understanding, voice notes, ask-your-ledger).

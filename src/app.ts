@@ -5,6 +5,7 @@ import { AppError, RateLimitedError } from "./config/errors";
 import { getDb } from "./db/client";
 import { csrfGuard } from "./middleware/csrf";
 import { requestId } from "./middleware/requestId";
+import { securityHeaders } from "./middleware/securityHeaders";
 import { requireSession } from "./middleware/session";
 import { accountRoutes } from "./routes/accounts";
 import { alfredRoutes } from "./routes/alfred";
@@ -14,6 +15,7 @@ import { categoryRoutes } from "./routes/categories";
 import { dashboardRoutes } from "./routes/dashboard";
 import { demoRoutes } from "./routes/demo";
 import { health } from "./routes/health";
+import { exportRoutes } from "./routes/export";
 import { me } from "./routes/me";
 import { settingsRoutes } from "./routes/settings";
 import { transactionRoutes } from "./routes/transactions";
@@ -41,6 +43,7 @@ export function createApp(options: AppOptions = {}) {
   const app = new Hono<AppEnv>();
 
   app.use("*", requestId);
+  app.use("*", securityHeaders);
 
   // Builds per-request dependencies once; handlers and middleware read them from context.
   const dependencies = createMiddleware<AppEnv>(async (c, next) => {
@@ -76,6 +79,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/dashboard", dashboardRoutes);
   app.route("/api/alfred", alfredRoutes);
   app.route("/api/budgets", budgetRoutes);
+  app.route("/api/export", exportRoutes);
   app.route("/api/telegram", telegramLinkRoutes);
 
   app.notFound((c) => c.json({ error: { code: "not_found", message: "Not found" } }, 404));
