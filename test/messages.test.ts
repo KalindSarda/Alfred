@@ -8,7 +8,7 @@ const input = { name: "Kalind", code: "482913", now: EVENING, ttlMinutes: 5 };
 describe("loginCodeMessages", () => {
   it("greets by name and gives the code once, in Alfred's voice", () => {
     const m = loginCodeMessages(input);
-    expect(m.subject).toBe("Your Alfred sign-in code");
+    expect(m.subject).toBe("Your code, Kalind");
     expect(m.text).toContain("Good evening, Kalind.");
     expect(m.text).toContain("expires in five minutes");
     expect(m.text.match(/482913/g)).toHaveLength(1);
@@ -40,6 +40,7 @@ describe("loginCodeMessages", () => {
   it("says sir only on the fixed days, like the rest of Alfred's greetings", () => {
     const on21st = loginCodeMessages({ ...input, now: new Date("2026-10-21T14:00:00Z") });
     expect(on21st.text).toContain("Good evening, sir.");
+    expect(on21st.subject).toBe("Your code, sir");
     expect(on21st.telegram).toContain("Good evening, sir.");
   });
 
@@ -74,7 +75,8 @@ describe("sign-in messages as sent by the app", () => {
     const user = await registeredUser();
     await app.call("POST", "/api/auth/request-code", { body: { email: user.email } });
     const sent = app.sentEmails[0]!;
-    expect(sent.subject).toBe("Your Alfred sign-in code");
+    expect(sent.subject).toMatch(/^Your code, \S+$/);
+    expect(sent.subject).not.toContain("Alfred");
     expect(sent.text).toMatch(/Good (morning|afternoon|evening), \S+\./);
     expect(sent.html).toContain("<!doctype html>");
     expect(extractCode(sent.html!.replace(/<[^>]+>/g, " "))).toBe(extractCode(sent.text));

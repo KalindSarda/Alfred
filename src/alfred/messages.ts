@@ -1,4 +1,4 @@
-import { greeting } from "./voice";
+import { address, greeting } from "./voice";
 
 /**
  * Alfred's sign-in messages. The same code reaches you by Telegram or email, so both carry his voice:
@@ -34,7 +34,8 @@ export function loginCodeMessages(input: LoginCodeInput): LoginCodeMessages {
   const hello = greeting(input.name, input.now);
   const ttl = minutes(input.ttlMinutes);
 
-  const subject = "Your Alfred sign-in code";
+  // The sender name already says "Alfred"; a person would not sign their own subject line.
+  const subject = `Your code, ${address(input.name, input.now)}`;
 
   const text = [
     hello,

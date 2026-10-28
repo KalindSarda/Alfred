@@ -30,9 +30,12 @@ export function dayPart(now: Date): "morning" | "afternoon" | "evening" {
 
 /** "Good evening, Kalind." and, on a few fixed days of the month, "Good evening, sir." (never random per request). */
 export function greeting(name: string, now: Date): string {
-  const { day } = istParts(now);
-  const address = day % 7 === 0 ? "sir" : name;
-  return `Good ${dayPart(now)}, ${address}.`;
+  return `Good ${dayPart(now)}, ${address(name, now)}.`;
+}
+
+/** How Alfred addresses the user today: their name, or "sir" on a few fixed days of the month. */
+export function address(name: string, now: Date): string {
+  return istParts(now).day % 7 === 0 ? "sir" : name;
 }
 
 const SUBLINES = ["Here is where things stand.", "A brief look at your position.", "Here is the situation."];
