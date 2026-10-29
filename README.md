@@ -53,6 +53,10 @@ Never commit `.dev.vars`.
 
 See [DEPLOY.md](DEPLOY.md) for the step-by-step guide (Cloudflare free plan).
 
+## People
+
+Sign-up is invite-only. The owner (the first account) invites people under **More**, then **People**; each person gets their own private ledger and a short guided setup on first sign-in. The owner can remove or restore someone's access, and delete the data of someone removed.
+
 ## Your data
 
 **More** has two downloads: a JSON backup of everything (including deleted entries) and a CSV of current transactions. Exports are limited to ten an hour.

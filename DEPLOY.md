@@ -100,7 +100,8 @@ If something fails, watch the live logs with `npx wrangler tail`. Rejected webho
 
 ## Later
 
-- **Updating:** `npm run migrate:remote` if the database changed, then `npm run deploy`.
+- **Updating:** run `npm run migrate:remote` first if the database changed (releases that add tables or columns say so), then `npm run deploy`. Migrating before deploying means the new code never runs against old tables.
+- **Inviting people:** sign in, open **More**, then **People**, and send an invitation. They get an email with a link and sign in with a one-time code. You can remove their access, restore it, or delete their data from the same card. The first account ever created (yours) is the owner.
 - **Backups:** the app has no automatic backup, by design. Download the JSON backup from **More** now and then. Cloudflare also keeps 30 days of D1 history (`npx wrangler d1 time-travel info finance-tracker`).
 - **Rotating a secret:** run `npx wrangler secret put NAME` again and, for the Telegram token or webhook secret, run `npm run bot:webhook` again.
 - **Free-plan limits:** the Worker has 10 ms of CPU per request and 100,000 requests a day. A single person is far below both.

@@ -68,6 +68,9 @@ export interface Me {
   /** What Alfred calls the user. */
   displayName: string;
   telegramLinked: boolean;
+  isOwner: boolean;
+  /** True until the first-run setup guide has been finished or skipped. */
+  needsSetup: boolean;
   settings: { nudgeLeadDays: number; nudgeTimeIst: string };
 }
 

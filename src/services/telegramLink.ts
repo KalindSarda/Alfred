@@ -1,6 +1,6 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { telegramLinkCodes, telegramLinks } from "../db/schema";
+import { telegramLinkCodes, telegramLinks, users } from "../db/schema";
 import { hmacHex, randomString } from "../utils/crypto";
 import { newId } from "../utils/id";
 
@@ -68,6 +68,12 @@ export async function unlinkChat(db: Db, userId: string): Promise<void> {
 }
 
 export async function userForChat(db: Db, chatId: string): Promise<string | null> {
-  const [row] = await db.select().from(telegramLinks).where(eq(telegramLinks.chatId, chatId)).limit(1);
+  // Someone whose access was removed is no longer recognised, so the bot goes quiet for them.
+  const [row] = await db
+    .select({ userId: telegramLinks.userId })
+    .from(telegramLinks)
+    .innerJoin(users, eq(users.id, telegramLinks.userId))
+    .where(and(eq(telegramLinks.chatId, chatId), isNull(users.disabledAt)))
+    .limit(1);
   return row?.userId ?? null;
 }

@@ -228,6 +228,8 @@ describe("sessions", () => {
       email: user.email,
       displayName: nameFromEmail(user.email),
       telegramLinked: false,
+      isOwner: false,
+      needsSetup: false,
       settings: { nudgeLeadDays: 3, nudgeTimeIst: "10:00" },
     });
     await linkTelegram(user.id);

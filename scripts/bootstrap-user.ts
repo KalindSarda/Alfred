@@ -28,7 +28,8 @@ if (!/^[^\s@'"]+@[^\s@'"]+\.[^\s@'"]+$/.test(email) || email.length > 254) {
 
 const now = new Date().toISOString();
 const lines: string[] = [
-  `INSERT OR IGNORE INTO users (id, email, created_at) VALUES ('${newId()}', '${email}', '${now}');`,
+  // The first account ever created is the owner, who invites others from the app.
+  `INSERT OR IGNORE INTO users (id, email, created_at, is_owner) VALUES ('${newId()}', '${email}', '${now}', (SELECT COUNT(*) = 0 FROM users));`,
   `INSERT OR IGNORE INTO app_settings (user_id) SELECT id FROM users WHERE email = '${email}';`,
 ];
 

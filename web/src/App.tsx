@@ -6,6 +6,7 @@ import { Budgets } from "./pages/Budgets";
 import { Categories } from "./pages/Categories";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
+import { Setup } from "./pages/Setup";
 import { More } from "./pages/More";
 import { Transactions } from "./pages/Transactions";
 import { useMe, useReviewCounts } from "./queries";
@@ -53,6 +54,8 @@ export function App() {
     );
   }
   if (!me.data) return <Login />;
+  // New people are guided through setup first; "Run setup again" under More opens it on request.
+  if (me.data.needsSetup || path === "/setup") return <Setup />;
 
   return (
     <div className="min-h-dvh md:flex">

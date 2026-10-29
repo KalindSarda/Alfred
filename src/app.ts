@@ -17,6 +17,7 @@ import { demoRoutes } from "./routes/demo";
 import { health } from "./routes/health";
 import { exportRoutes } from "./routes/export";
 import { me } from "./routes/me";
+import { peopleRoutes } from "./routes/people";
 import { settingsRoutes } from "./routes/settings";
 import { transactionRoutes } from "./routes/transactions";
 import type { AuthDeps } from "./services/auth";
@@ -80,6 +81,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/alfred", alfredRoutes);
   app.route("/api/budgets", budgetRoutes);
   app.route("/api/export", exportRoutes);
+  app.route("/api/people", peopleRoutes);
   app.route("/api/telegram", telegramLinkRoutes);
 
   app.notFound((c) => c.json({ error: { code: "not_found", message: "Not found" } }, 404));

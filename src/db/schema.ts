@@ -10,6 +10,19 @@ export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
   email: text("email").notNull().unique(),
   createdAt: text("created_at").notNull(),
+  /** The owner invites people and removes access. The first user is the owner. */
+  isOwner: integer("is_owner", { mode: "boolean" }).notNull().default(false),
+  /** Set when the owner removes someone's access; their data stays and access can be restored. */
+  disabledAt: text("disabled_at"),
+});
+
+/** An email the owner has allowed to sign in. The account is created the first time they ask for a code. */
+export const invites = sqliteTable("invites", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  invitedBy: text("invited_by").notNull().references(() => users.id),
+  createdAt: text("created_at").notNull(),
+  acceptedAt: text("accepted_at"),
 });
 
 export const accounts = sqliteTable(
@@ -230,4 +243,6 @@ export const appSettings = sqliteTable("app_settings", {
   displayName: text("display_name"),
   /** Day the user's month starts on (their payday, say). 1 means calendar months. */
   periodStartDay: integer("period_start_day").notNull().default(1),
+  /** When the first-run setup guide was finished or skipped; null means it should still be offered. */
+  onboardedAt: text("onboarded_at"),
 });

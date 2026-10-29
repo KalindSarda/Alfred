@@ -1,9 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { cardReminder, type ReminderCard } from "../alfred/botVoice";
 import { daysBetween } from "../alfred/voice";
 import type { TelegramApi } from "../bot/telegramApi";
 import type { Db } from "../db/client";
-import { nudgeLog, telegramLinks } from "../db/schema";
+import { nudgeLog, telegramLinks, users } from "../db/schema";
 import { todayIst } from "../domain/dates";
 import { newId } from "../utils/id";
 import { logger } from "../utils/logger";
@@ -37,7 +37,11 @@ export async function runNudges(deps: NudgeDeps): Promise<NudgeResult> {
   const today = todayIst(new Date(deps.now()));
   const result: NudgeResult = { sent: 0, announced: 0 };
 
-  const links = await db.select().from(telegramLinks);
+  const links = await db
+    .select({ userId: telegramLinks.userId, chatId: telegramLinks.chatId })
+    .from(telegramLinks)
+    .innerJoin(users, eq(users.id, telegramLinks.userId))
+    .where(isNull(users.disabledAt));
   for (const link of links) {
     try {
       const settings = await getSettings(db, link.userId);

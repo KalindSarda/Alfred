@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Settings, api, describeError } from "../api";
 import { useToast } from "../components/toast";
 import { Button, Card, ErrorText, Field, inputClass, Spinner } from "../components/ui";
+import { PeopleCard } from "../components/PeopleCard";
 import { TelegramCard } from "../components/TelegramCard";
 import { useMe, useRefreshMoney } from "../queries";
 import { useState } from "react";
@@ -99,6 +100,8 @@ export function More() {
 
       <TelegramCard />
 
+      {me.data?.isOwner && <PeopleCard />}
+
       <Card className="space-y-3">
         <h2 className="font-medium">Categories</h2>
         <p className="text-sm text-soft">Add, rename, merge, archive or delete the categories your entries are filed under.</p>
@@ -177,6 +180,17 @@ export function More() {
             </a>
           ))}
         </div>
+      </Card>
+
+      <Card className="space-y-3">
+        <h2 className="font-medium">Setup guide</h2>
+        <p className="text-sm text-soft">Walk through your name, month start, accounts, cards and Telegram again.</p>
+        <Link
+          to="/setup"
+          className="flex min-h-11 w-fit items-center rounded-xl border border-line bg-card px-4 py-2.5 text-base font-medium text-ink hover:bg-hover"
+        >
+          Run setup again
+        </Link>
       </Card>
 
       <Card className="space-y-3">

@@ -2,6 +2,7 @@ import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { InvalidCodeError, UnauthenticatedError } from "../config/errors";
 import type { Db } from "../db/client";
 import { appSettings, loginCodes, sessions, telegramLinks, users } from "../db/schema";
+import { acceptInvite, findPendingInvite } from "./people";
 import { hmacHex, randomDigits, randomToken, timingSafeEqual } from "../utils/crypto";
 import { newId } from "../utils/id";
 import { logger } from "../utils/logger";
@@ -59,8 +60,14 @@ export async function requestLoginCode(
   await enforceRateLimit(db, hmacKey, { bucket: "req-ip", subject: input.ip, limit: 20, windowSeconds: 3600 }, nowSeconds);
   await enforceRateLimit(db, hmacKey, { bucket: "req-email", subject: email, limit: 5, windowSeconds: 3600 }, nowSeconds);
 
-  const user = await findUserByEmail(db, email);
-  if (!user) return;
+  let user = await findUserByEmail(db, email);
+  if (!user) {
+    // Only an invited email can become an account; everyone else gets the same quiet answer.
+    const invite = await findPendingInvite(db, email);
+    if (!invite) return;
+    user = await acceptInvite(db, invite, iso(nowMs));
+  }
+  if (user.disabledAt) return;
 
   const chatId = await getLinkedChatId(db, user.id);
   const channel: Channel = input.channel === "email" || !chatId ? "email" : "telegram";
@@ -138,7 +145,7 @@ export async function verifyLoginCode(
   await enforceRateLimit(db, hmacKey, { bucket: "verify-ip", subject: input.ip, limit: 30, windowSeconds: 900 }, nowSeconds);
 
   const user = await findUserByEmail(db, input.email);
-  if (!user) throw new InvalidCodeError();
+  if (!user || user.disabledAt) throw new InvalidCodeError();
 
   const [row] = await db
     .select()
@@ -174,8 +181,14 @@ export async function authenticateSession(deps: AuthDeps, token: string | undefi
   if (!token) throw new UnauthenticatedError();
   const nowMs = clock(deps);
   const tokenHash = await hmacHex(deps.hmacKey, `session:${token}`);
-  const [row] = await deps.db.select().from(sessions).where(eq(sessions.tokenHash, tokenHash)).limit(1);
-  if (!row || row.expiresAt <= iso(nowMs)) throw new UnauthenticatedError();
+  const [found] = await deps.db
+    .select({ session: sessions, disabledAt: users.disabledAt })
+    .from(sessions)
+    .innerJoin(users, eq(users.id, sessions.userId))
+    .where(eq(sessions.tokenHash, tokenHash))
+    .limit(1);
+  const row = found?.session;
+  if (!found || !row || row.expiresAt <= iso(nowMs) || found.disabledAt) throw new UnauthenticatedError();
 
   // Refresh last-seen at most hourly to avoid a write on every request.
   if (nowMs - Date.parse(row.lastSeenAt) > SESSION_TOUCH_INTERVAL_SECONDS * 1000) {
@@ -198,6 +211,10 @@ export interface MeDto {
   /** What Alfred calls the user: the saved display name, or one derived from the email. */
   displayName: string;
   telegramLinked: boolean;
+  /** The owner invites people and removes access. */
+  isOwner: boolean;
+  /** True until the first-run setup guide has been finished or skipped. */
+  needsSetup: boolean;
   settings: { nudgeLeadDays: number; nudgeTimeIst: string };
 }
 
@@ -210,6 +227,16 @@ export async function getMe(db: Db, userId: string): Promise<MeDto> {
     email: user.email,
     displayName: settings?.displayName ?? nameFromEmail(user.email),
     telegramLinked: (await getLinkedChatId(db, userId)) !== undefined,
+    isOwner: user.isOwner,
+    needsSetup: settings ? settings.onboardedAt === null : false,
     settings: { nudgeLeadDays: settings?.nudgeLeadDays ?? 3, nudgeTimeIst: settings?.nudgeTimeIst ?? "10:00" },
   };
+}
+
+/** Marks the first-run setup guide as done (finished or skipped). */
+export async function markOnboarded(db: Db, userId: string, nowIso: string): Promise<void> {
+  await db
+    .insert(appSettings)
+    .values({ userId, onboardedAt: nowIso })
+    .onConflictDoUpdate({ target: appSettings.userId, set: { onboardedAt: nowIso } });
 }

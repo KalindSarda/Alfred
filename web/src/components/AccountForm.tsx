@@ -9,11 +9,11 @@ import { Button, ErrorText, Field, inputClass } from "./ui";
 
 const entriesText = (n: number) => `${n} ${n === 1 ? "entry" : "entries"}`;
 
-export function AccountForm({ initial, onDone }: { initial?: Account; onDone: () => void }) {
+export function AccountForm({ initial, onDone, kind: fixedKind }: { initial?: Account; onDone: () => void; /** Skips the bank/card choice when the caller already knows. */ kind?: "bank" | "card" }) {
   const refresh = useRefreshMoney();
   const client = useQueryClient();
   const toast = useToast();
-  const [kind, setKind] = useState<"bank" | "card">(initial?.kind ?? "bank");
+  const [kind, setKind] = useState<"bank" | "card">(initial?.kind ?? fixedKind ?? "bank");
   const [name, setName] = useState(initial?.name ?? "");
   const [last4, setLast4] = useState(initial?.last4 ?? "");
   const [opening, setOpening] = useState(initial?.kind === "bank" ? paiseToInput(initial.openingBalancePaise) : "");
@@ -100,7 +100,7 @@ export function AccountForm({ initial, onDone }: { initial?: Account; onDone: ()
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      {!initial && (
+      {!initial && !fixedKind && (
         <div role="radiogroup" aria-label="Account type" className="grid grid-cols-2 gap-1 rounded-xl bg-sunk p-1">
           {(["bank", "card"] as const).map((k) => (
             <button

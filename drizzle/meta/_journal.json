@@ -64,6 +64,13 @@
       "when": 1793183821144,
       "tag": "0008_budgets_nudges",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1793278754283,
+      "tag": "0009_people_invites",
+      "breakpoints": true
     }
   ]
 }

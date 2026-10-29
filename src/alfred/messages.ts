@@ -88,3 +88,73 @@ export function loginCodeMessages(input: LoginCodeInput): LoginCodeMessages {
 
   return { subject, text, html, telegram };
 }
+
+export interface InvitationInput {
+  /** What Alfred calls the person who invited them. */
+  inviterName: string;
+  /** Where to sign in, such as "https://alfred.example.workers.dev". */
+  siteUrl: string;
+  now: Date;
+}
+
+export interface InvitationMessages {
+  subject: string;
+  text: string;
+  html: string;
+}
+
+/** The invitation email: what this is, how to begin, and that ignoring it is safe. */
+export function invitationMessages(input: InvitationInput): InvitationMessages {
+  const { inviterName, siteUrl } = input;
+  const subject = `An invitation from ${inviterName}`;
+
+  const text = [
+    "Good day.",
+    "",
+    `${inviterName} has invited you to use me, a private ledger and assistant for your money: accounts, cards, spending and what is coming due.`,
+    "",
+    "To begin, open the link below, enter this email address, and I will send you a one-time code. There is no password to set.",
+    "",
+    `    ${siteUrl}`,
+    "",
+    "If you were not expecting this, you may ignore it. Nothing is created until you sign in.",
+    "",
+    "Alfred",
+  ].join("\n");
+
+  const html = `<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:0;background:#f5f1e8;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(inviterName)} has invited you to Alfred.</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f1e8;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="width:100%;max-width:480px;background:#fffdf8;border:1px solid #ddd6c6;border-radius:16px;overflow:hidden;">
+            <tr>
+              <td style="background:#101a2e;padding:20px 28px;">
+                <span style="display:inline-block;width:22px;height:22px;border-radius:50%;background:#2b6cde;background-image:radial-gradient(circle at 35% 30%,#8fb8ff,#2b6cde 55%,#16327a);vertical-align:middle;"></span>
+                <span style="font-family:Georgia,'Times New Roman',serif;font-size:24px;color:#ffffff;vertical-align:middle;margin-left:10px;">Alfred</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px;font-family:Georgia,'Times New Roman',serif;color:#1b2433;">
+                <p style="margin:0 0 16px;font-size:20px;line-height:1.3;">Good day.</p>
+                <p style="margin:0 0 16px;font-size:16px;line-height:1.5;">${escapeHtml(inviterName)} has invited you to use me, a private ledger and assistant for your money: accounts, cards, spending and what is coming due.</p>
+                <p style="margin:0 0 24px;font-size:16px;line-height:1.5;">To begin, open the link below, enter this email address, and I will send you a one-time code. There is no password to set.</p>
+                <p style="margin:0 0 24px;text-align:center;">
+                  <a href="${escapeHtml(siteUrl)}" style="display:inline-block;padding:14px 24px;background:#1f5c47;color:#ffffff;border-radius:12px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;text-decoration:none;">Open Alfred</a>
+                </p>
+                <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#5b6372;">If you were not expecting this, you may ignore it. Nothing is created until you sign in.</p>
+                <p style="margin:0;font-size:16px;font-style:italic;">Alfred</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+`;
+
+  return { subject, text, html };
+}
