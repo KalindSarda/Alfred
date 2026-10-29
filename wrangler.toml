@@ -3,6 +3,10 @@ main = "src/index.ts"
 compatibility_date = "2026-10-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Serve on the workers.dev address only; no extra public preview address for every version.
+workers_dev = true
+preview_urls = false
+
 # Static PWA is served from the same Worker; API and webhook routes always hit the Worker first.
 [assets]
 directory = "./web/dist"
@@ -11,10 +15,10 @@ not_found_handling = "single-page-application"
 run_worker_first = ["/api/*", "/telegram/*"]
 
 [[d1_databases]]
+# The code reads this as env.DB, so the binding name must stay "DB".
 binding = "DB"
 database_name = "finance-tracker"
-# Replace with the real id from `wrangler d1 create finance-tracker` before the first remote deploy.
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "dc4a17c4-8278-4ead-8d66-409831138889"
 migrations_dir = "drizzle"
 
 # One daily run: 04:30 UTC = 10:00 IST.
