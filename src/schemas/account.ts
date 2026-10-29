@@ -40,6 +40,8 @@ export const UpdateAccount = z
   .strict();
 export type UpdateAccountData = z.output<typeof UpdateAccount>;
 
+export const MergeAccount = z.object({ intoId: z.string().min(1).max(64) }).strict();
+
 export const ListAccountsQuery = z.object({
   includeArchived: z
     .enum(["true", "false"])

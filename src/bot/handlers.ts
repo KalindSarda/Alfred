@@ -3,7 +3,7 @@ import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, descri
 import { daysBetween, inDays } from "../alfred/voice";
 import { AppError, ConflictError, RateLimitedError } from "../config/errors";
 import type { Db } from "../db/client";
-import { listAccounts } from "../db/accounts";
+import { getAccount, listAccounts } from "../db/accounts";
 import { listCategories } from "../db/categories";
 import { lastTransactionRowBySource, toDto } from "../db/transactions";
 import { telegramUpdates, transactions } from "../db/schema";
@@ -11,7 +11,7 @@ import { formatRupees } from "../domain/money";
 import { FLOW_TYPES } from "../domain/txnTypes";
 import { type IstDate, todayIst } from "../domain/dates";
 import { getMe } from "../services/auth";
-import { balanceOverview, toAccountDto } from "../services/accounts";
+import { balanceOverview, setArchived, toAccountDto } from "../services/accounts";
 import { getCashflow } from "../services/cashflow";
 import { createCategory } from "../services/categories";
 import { budgetFor, listBudgets } from "../services/budgets";
@@ -285,6 +285,42 @@ async function cmdBalance(deps: BotDeps, who: Actor, today: IstDate): Promise<vo
   await deps.telegram.sendMessage(who.chatId, lines.join("\n"));
 }
 
+/** The account list with one button per account: Archive for active ones, Restore for archived ones. */
+async function accountsView(deps: BotDeps, who: Actor, today: IstDate, note?: string): Promise<{ text: string; buttons: Button[][] } | null> {
+  const figures = await listAccountsWithFigures(deps.db, who.userId, today, { includeArchived: true });
+  if (figures.length === 0) return null;
+  const dtos = figures.map((f) => toAccountDto(f));
+  const active = dtos.filter((a) => !a.archived);
+  const archived = dtos.filter((a) => a.archived);
+
+  const lines: string[] = note ? [note, ""] : [];
+  lines.push("Your accounts. Tap one to archive it.");
+  const banks = active.filter((a) => a.kind === "bank");
+  const cards = active.filter((a) => a.kind === "card");
+  if (banks.length) {
+    lines.push("", "Bank accounts");
+    for (const b of banks) if (b.kind === "bank") lines.push(`${b.name}: ${rupees(b.balancePaise)}`);
+  }
+  if (cards.length) {
+    lines.push("", "Credit cards");
+    for (const k of cards) if (k.kind === "card") lines.push(`${k.name}: owes ${rupees(k.outstandingPaise)}`);
+  }
+  if (archived.length) lines.push("", `Archived: ${archived.map((a) => a.name).join(", ")}.`);
+  lines.push("", "Adding, editing, merging and deleting are in the app, under Accounts and cards.");
+
+  const buttons: Button[][] = [
+    ...active.map((a) => [{ text: `Archive ${a.name}`, data: `a:${a.id}:x` }]),
+    ...archived.map((a) => [{ text: `Restore ${a.name}`, data: `a:${a.id}:r` }]),
+  ];
+  return { text: lines.join("\n"), buttons };
+}
+
+async function cmdAccounts(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
+  const view = await accountsView(deps, who, today);
+  if (!view) return void (await deps.telegram.sendMessage(who.chatId, botVoice.noAccountsYet));
+  await deps.telegram.sendMessage(who.chatId, view.text, view.buttons);
+}
+
 async function cmdDue(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
   const figures = await listAccountsWithFigures(deps.db, who.userId, today);
   const cards = figures
@@ -488,6 +524,8 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
       case "budget":
       case "budgets":
         return await cmdBudget(deps, who, today);
+      case "accounts":
+        return await cmdAccounts(deps, who, today);
       case "category":
       case "categories":
         return await cmdCategory(deps, who, arg);
@@ -569,6 +607,24 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
       } else {
         const options = c.categories.filter((cat) => cat.kind === t.type).slice(0, 12);
         await reply(deps, to, botVoice.askCategory, rows(options.map((cat) => ({ text: cat.name, data: `k:${id}:${cat.id}` }))));
+      }
+    } else if (kind === "a" && id && (action === "x" || action === "r")) {
+      const today = todayIst(new Date(deps.now()));
+      const account = await getAccount(deps.db, userId, id);
+      if (!account) {
+        await reply(deps, to, botVoice.alreadyRemoved);
+      } else {
+        let note: string;
+        try {
+          await setArchived(deps.db, userId, id, action === "x", today);
+          note = action === "x" ? botVoice.accountArchived(account.name) : botVoice.accountRestored(account.name);
+        } catch (error) {
+          if (!(error instanceof ConflictError)) throw error;
+          note = botVoice.accountNotArchived(account.name, error.message);
+        }
+        const view = await accountsView(deps, who, today, note);
+        if (view) await reply(deps, to, view.text, view.buttons);
+        else await reply(deps, to, note);
       }
     } else if (kind === "k" && id && action) {
       const t = await updateTransaction(deps.db, userId, id, { categoryId: action }).catch(() => null);

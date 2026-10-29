@@ -80,6 +80,7 @@ export interface BankAccount {
   countsTowardSafeToSpend: boolean;
   balancePaise: number;
   archived: boolean;
+  entryCount: number;
 }
 
 export interface CardAccount {
@@ -92,6 +93,7 @@ export interface CardAccount {
   dueDay: number;
   openingOutstandingPaise: number;
   archived: boolean;
+  entryCount: number;
   outstandingPaise: number;
   unbilledPaise: number;
   statementOutstandingPaise: number;

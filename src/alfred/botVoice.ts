@@ -147,6 +147,7 @@ export const botVoice = {
     "Ask me:",
     "/today  what you spent today",
     "/budget  how your budgets stand this month",
+    "/accounts  your accounts and cards; archive or restore one",
     "/category  list your categories, or add one",
     "/balance  your accounts, cards and safe-to-spend",
     "/due  card payments coming up",
@@ -158,6 +159,9 @@ export const botVoice = {
   ].join("\n"),
 
   unknownCommand: "I do not know that one. /help lists what I can do.",
+  accountArchived: (name: string) => `Archived ${name}. It is hidden from lists and new entries, and its history is kept. You can restore it below.`,
+  accountRestored: (name: string) => `Restored ${name}. It is back in your lists.`,
+  accountNotArchived: (name: string, reason: string) => `I could not archive ${name}. ${reason}`,
   categoryAdded: (name: string, kind: "expense" | "income") => `Added ${name} as ${kind === "expense" ? "an expense" : "an income"} category. You can use it straight away.`,
   categoryExists: (name: string) => `You already have a category called ${name}.`,
   categoryBadName: "A category name can be 1 to 40 characters. For example: /category add Pets",

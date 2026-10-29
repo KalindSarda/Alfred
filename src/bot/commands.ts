@@ -28,6 +28,7 @@ export const BOT_COMMANDS: BotCommand[] = [
   { command: "today", description: "What you spent today" },
   { command: "balance", description: "Accounts, cards and safe-to-spend" },
   { command: "budget", description: "How your budgets stand this month" },
+  { command: "accounts", description: "Your accounts and cards; archive or restore one" },
   { command: "category", description: "List categories, or add one: /category add Pets" },
   { command: "due", description: "Card payments coming up" },
   { command: "summary", description: "Your month so far" },

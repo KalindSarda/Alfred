@@ -3,9 +3,11 @@ import { type FormEvent, useState } from "react";
 import { parsePaise } from "../../../src/domain/money";
 import { type Account, api, describeError } from "../api";
 import { paiseToInput, parseSignedPaise } from "../format";
-import { useRefreshMoney } from "../queries";
+import { useAccounts, useRefreshMoney } from "../queries";
 import { useToast } from "./toast";
 import { Button, ErrorText, Field, inputClass } from "./ui";
+
+const entriesText = (n: number) => `${n} ${n === 1 ? "entry" : "entries"}`;
 
 export function AccountForm({ initial, onDone }: { initial?: Account; onDone: () => void }) {
   const refresh = useRefreshMoney();
@@ -65,6 +67,29 @@ export function AccountForm({ initial, onDone }: { initial?: Account; onDone: ()
     },
   });
 
+  const remove = useMutation({
+    mutationFn: () => api.del(`/api/accounts/${initial?.id}`),
+    onSuccess: async () => {
+      await refresh();
+      toast.show("Account deleted");
+      onDone();
+    },
+  });
+
+  const [merging, setMerging] = useState(false);
+  const [target, setTarget] = useState("");
+  const all = useAccounts(true);
+  const candidates = (all.data ?? []).filter((a) => initial && a.kind === initial.kind && a.id !== initial.id && !a.archived);
+  const into = candidates.find((a) => a.id === target);
+  const merge = useMutation({
+    mutationFn: () => api.post<{ movedEntries: number; removedTransfers: number }>(`/api/accounts/${initial?.id}/merge`, { intoId: target }),
+    onSuccess: async (r) => {
+      await refresh();
+      toast.show(`Merged into ${into?.name ?? "the other account"}. ${entriesText(r.movedEntries)} moved.`);
+      onDone();
+    },
+  });
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setLocalError("");
@@ -102,7 +127,14 @@ export function AccountForm({ initial, onDone }: { initial?: Account; onDone: ()
 
       {kind === "bank" ? (
         <>
-          <Field label="Opening balance (₹)" hint="What the account holds right now. You can change it later.">
+          <Field
+            label={initial ? "Balance before your first entry (₹)" : "Balance today (₹)"}
+            hint={
+              initial
+                ? "Your balance is this figure plus every entry. Changing it moves the balance by the same amount, on every day."
+                : "What the account holds right now. Entries you add from here on are applied on top of it."
+            }
+          >
             <input className={inputClass} inputMode="decimal" placeholder="0" value={opening} onChange={(e) => setOpening(e.target.value)} />
           </Field>
           <label className="flex min-h-11 items-center gap-3 text-sm">
@@ -126,13 +158,20 @@ export function AccountForm({ initial, onDone }: { initial?: Account; onDone: ()
           <p className="-mt-2 text-xs text-soft">
             If the due day is later than the statement day it falls in the same month; otherwise in the next month.
           </p>
-          <Field label="Outstanding right now (₹)" hint="Leave empty if you are starting fresh.">
+          <Field
+            label={initial ? "Owed before your first entry (₹)" : "Owed right now (₹)"}
+            hint={initial ? "What the card owed before the entries here. Changing it changes what it owes now by the same amount." : "Leave empty if you are starting fresh."}
+          >
             <input className={inputClass} inputMode="decimal" placeholder="0" value={outstanding} onChange={(e) => setOutstanding(e.target.value)} />
           </Field>
         </>
       )}
 
-      <ErrorText>{localError || error || (archive.isError ? describeError(archive.error) : "")}</ErrorText>
+      <ErrorText>
+        {localError ||
+          error ||
+          (archive.isError ? describeError(archive.error) : remove.isError ? describeError(remove.error) : merge.isError ? describeError(merge.error) : "")}
+      </ErrorText>
 
       <div className="flex gap-3">
         <Button type="submit" className="flex-1" disabled={save.isPending}>
@@ -144,6 +183,59 @@ export function AccountForm({ initial, onDone }: { initial?: Account; onDone: ()
           </Button>
         )}
       </div>
+
+      {initial && (
+        <div className="space-y-3 border-t border-line pt-4">
+          <p className="text-sm text-soft">
+            {entriesText(initial.entryCount)} use this {initial.kind === "bank" ? "account" : "card"}.
+          </p>
+
+          {candidates.length > 0 &&
+            (!merging ? (
+              <Button type="button" variant="secondary" onClick={() => setMerging(true)}>
+                Merge into another {initial.kind === "bank" ? "account" : "card"}…
+              </Button>
+            ) : (
+              <div className="space-y-3">
+                <Field label="Merge into">
+                  <select className={inputClass} value={target} onChange={(e) => setTarget(e.target.value)}>
+                    <option value="">Choose…</option>
+                    {candidates.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {into && (
+                  <p className="rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn-ink">
+                    All entries move to {into.name}, and {initial.name} is removed. Its {initial.kind === "bank" ? "starting balance is added to" : "starting amount owed is added to"} {into.name}, so totals stay the same
+                    {initial.archived ? " once it is included again" : ""}. Transfers between the two cancel out and are removed.
+                    {initial.kind === "card" ? ` Statements follow ${into.name}'s statement and due days.` : ""} This cannot be undone.
+                  </p>
+                )}
+                <Button type="button" disabled={!into || merge.isPending} onClick={() => merge.mutate()}>
+                  Merge and remove {initial.name}
+                </Button>
+              </div>
+            ))}
+
+          {initial.entryCount === 0 ? (
+            <Button
+              type="button"
+              variant="danger"
+              disabled={remove.isPending}
+              onClick={() => {
+                if (window.confirm(`Delete ${initial.name}? This cannot be undone.`)) remove.mutate();
+              }}
+            >
+              Delete
+            </Button>
+          ) : (
+            <p className="text-xs text-soft">An account with entries cannot be deleted. Merge it into another, or archive it to hide it.</p>
+          )}
+        </div>
+      )}
     </form>
   );
 }
