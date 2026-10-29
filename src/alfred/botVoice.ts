@@ -106,6 +106,16 @@ export function budgetsReply(period: { from: string; to: string }, items: Budget
   return lines.join("\n");
 }
 
+/** The category list, expense first. Archived categories are not shown. */
+export function categoriesReply(expense: string[], income: string[]): string {
+  return [
+    `Expense categories: ${expense.length ? expense.join(", ") : "none yet"}.`,
+    `Income categories: ${income.length ? income.join(", ") : "none yet"}.`,
+    "",
+    "To add one: /category add Pets (for income: /category add income Freelance). Renaming, merging and deleting are in the app, under More.",
+  ].join("\n");
+}
+
 export const botVoice = {
   welcome(name: string, now: Date): string {
     return [
@@ -137,6 +147,7 @@ export const botVoice = {
     "Ask me:",
     "/today  what you spent today",
     "/budget  how your budgets stand this month",
+    "/category  list your categories, or add one",
     "/balance  your accounts, cards and safe-to-spend",
     "/due  card payments coming up",
     "/summary  your month so far (or: week, lastmonth, year)",
@@ -147,6 +158,9 @@ export const botVoice = {
   ].join("\n"),
 
   unknownCommand: "I do not know that one. /help lists what I can do.",
+  categoryAdded: (name: string, kind: "expense" | "income") => `Added ${name} as ${kind === "expense" ? "an expense" : "an income"} category. You can use it straight away.`,
+  categoryExists: (name: string) => `You already have a category called ${name}.`,
+  categoryBadName: "A category name can be 1 to 40 characters. For example: /category add Pets",
   noAmount: "I could not find an amount in that. Something like \"450 food swiggy\" will do.",
   badDate: "That date does not look right. Try \"yesterday\", \"24 oct\" or \"24/10\".",
   failure: "That did not go through, and nothing was recorded. Shall we try again?",

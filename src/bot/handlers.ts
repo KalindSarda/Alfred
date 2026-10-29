@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { askAccount, botVoice, budgetNote, budgetsReply, describeEntry, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
+import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
-import { AppError, RateLimitedError } from "../config/errors";
+import { AppError, ConflictError, RateLimitedError } from "../config/errors";
 import type { Db } from "../db/client";
 import { listAccounts } from "../db/accounts";
 import { listCategories } from "../db/categories";
@@ -13,6 +13,7 @@ import { type IstDate, todayIst } from "../domain/dates";
 import { getMe } from "../services/auth";
 import { balanceOverview, toAccountDto } from "../services/accounts";
 import { getCashflow } from "../services/cashflow";
+import { createCategory } from "../services/categories";
 import { budgetFor, listBudgets } from "../services/budgets";
 import { getSummary } from "../services/dashboard";
 import { createTransaction, getTransaction, listAccountsWithFigures, listTransactions, softDeleteTransaction, updateTransaction } from "../services/ledger";
@@ -360,6 +361,28 @@ async function cmdBudget(deps: BotDeps, who: Actor, today: IstDate): Promise<voi
   await deps.telegram.sendMessage(who.chatId, budgetsReply(overview.period, overview.items, overview.totalSpentPaise, overview.totalLimitPaise));
 }
 
+/** "/category" lists; "/category add Pets" adds an expense category; "/category add income Freelance" an income one. */
+async function cmdCategory(deps: BotDeps, who: Actor, arg: string): Promise<void> {
+  const add = /^add\s+([\s\S]*)$/i.exec(arg);
+  if (!add) {
+    const rows = (await listCategories(deps.db, who.userId)).filter((c) => !c.archivedAt);
+    const names = (kind: "expense" | "income") => rows.filter((c) => c.kind === kind).map((c) => c.name);
+    return void (await deps.telegram.sendMessage(who.chatId, categoriesReply(names("expense"), names("income"))));
+  }
+  let rest = (add[1] ?? "").trim();
+  const kind = /^income\s+/i.test(rest) ? "income" : "expense";
+  if (kind === "income") rest = rest.replace(/^income\s+/i, "");
+  const name = rest.replace(/\s+/g, " ").trim();
+  if (name.length < 1 || name.length > 40) return void (await deps.telegram.sendMessage(who.chatId, botVoice.categoryBadName));
+  try {
+    const created = await createCategory(deps.db, who.userId, { name, kind });
+    await deps.telegram.sendMessage(who.chatId, botVoice.categoryAdded(created.name, kind));
+  } catch (error) {
+    if (error instanceof ConflictError) return void (await deps.telegram.sendMessage(who.chatId, botVoice.categoryExists(name)));
+    throw error;
+  }
+}
+
 async function cmdSettings(deps: BotDeps, who: Actor): Promise<void> {
   const [settings, me] = await Promise.all([getSettings(deps.db, who.userId), getMe(deps.db, who.userId)]);
   await deps.telegram.sendMessage(
@@ -465,6 +488,9 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
       case "budget":
       case "budgets":
         return await cmdBudget(deps, who, today);
+      case "category":
+      case "categories":
+        return await cmdCategory(deps, who, arg);
       case "settings":
         return await cmdSettings(deps, who);
       default:

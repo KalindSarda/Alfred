@@ -3,6 +3,7 @@ import { QuickAddSheet } from "./components/QuickAddSheet";
 import { Icon, Spinner } from "./components/ui";
 import { Accounts } from "./pages/Accounts";
 import { Budgets } from "./pages/Budgets";
+import { Categories } from "./pages/Categories";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { More } from "./pages/More";
@@ -28,6 +29,8 @@ function Page({ path }: { path: string }) {
       return <Accounts />;
     case "/more":
       return <More />;
+    case "/categories":
+      return <Categories />;
     default:
       return <Home />;
   }
@@ -37,6 +40,7 @@ export function App() {
   const me = useMe();
   const path = usePath();
   const [adding, setAdding] = useState(false);
+  const isActive = (to: string) => path === to || (to === "/more" && path === "/categories");
   const review = useReviewCounts(Boolean(me.data));
   const reviewTotal = (review.data?.uncategorizedCount ?? 0) + (review.data?.draftCount ?? 0);
 
@@ -65,9 +69,9 @@ export function App() {
           <Link
             key={item.to}
             to={item.to}
-            aria-current={path === item.to ? "page" : undefined}
+            aria-current={isActive(item.to) ? "page" : undefined}
             className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium ${
-              path === item.to
+              isActive(item.to)
                 ? "bg-sunk text-brand"
                 : "text-soft hover:bg-hover"
             }`}
@@ -106,9 +110,9 @@ export function App() {
           <Link
             key={item.to}
             to={item.to}
-            aria-current={path === item.to ? "page" : undefined}
+            aria-current={isActive(item.to) ? "page" : undefined}
             className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${
-              path === item.to ? "text-brand" : "text-soft"
+              isActive(item.to) ? "text-brand" : "text-soft"
             }`}
           >
             <span className="relative">

@@ -117,6 +117,7 @@ export interface Category {
   kind: "expense" | "income";
   archived: boolean;
   isSystem: boolean;
+  entryCount: number;
 }
 
 export type TxnType = "expense" | "income" | "transfer" | "bill_payment";

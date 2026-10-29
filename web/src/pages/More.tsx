@@ -5,6 +5,7 @@ import { Button, Card, ErrorText, Field, inputClass, Spinner } from "../componen
 import { TelegramCard } from "../components/TelegramCard";
 import { useMe, useRefreshMoney } from "../queries";
 import { useState } from "react";
+import { Link } from "../router";
 
 export function More() {
   const client = useQueryClient();
@@ -97,6 +98,17 @@ export function More() {
       </Card>
 
       <TelegramCard />
+
+      <Card className="space-y-3">
+        <h2 className="font-medium">Categories</h2>
+        <p className="text-sm text-soft">Add, rename, merge, archive or delete the categories your entries are filed under.</p>
+        <Link
+          to="/categories"
+          className="flex min-h-11 w-fit items-center rounded-xl border border-line bg-card px-4 py-2.5 text-base font-medium text-ink hover:bg-hover"
+        >
+          Manage categories
+        </Link>
+      </Card>
 
       <Card className="space-y-3">
         <h2 className="font-medium">Your month</h2>

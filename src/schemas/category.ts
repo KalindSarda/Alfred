@@ -14,10 +14,14 @@ export const UpdateCategory = z
   })
   .strict();
 
+export const MergeCategory = z.object({ intoId: z.string().min(1).max(64) }).strict();
+
 export interface CategoryDto {
   id: string;
   name: string;
   kind: "expense" | "income";
   archived: boolean;
   isSystem: boolean;
+  /** Live entries filed under it. */
+  entryCount: number;
 }
