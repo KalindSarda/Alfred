@@ -92,6 +92,8 @@ export function loginCodeMessages(input: LoginCodeInput): LoginCodeMessages {
 export interface InvitationInput {
   /** What Alfred calls the person who invited them. */
   inviterName: string;
+  /** What to call the invitee, when the inviter said. */
+  name?: string | null | undefined;
   /** Where to sign in, such as "https://alfred.example.workers.dev". */
   siteUrl: string;
   now: Date;
@@ -103,29 +105,25 @@ export interface InvitationMessages {
   html: string;
 }
 
-/** The invitation email: what this is, how to begin, and that ignoring it is safe. */
+/** The invitation, written by Alfred to the new person: who he is, what he does, and how to begin. */
 export function invitationMessages(input: InvitationInput): InvitationMessages {
   const { inviterName, siteUrl } = input;
+  const hello = input.name?.trim() ? `Good day, ${input.name.trim()}.` : "Good day.";
   const subject = `An invitation from ${inviterName}`;
 
-  const text = [
-    "Good day.",
-    "",
-    `${inviterName} has invited you to use me, a private ledger and assistant for your money: accounts, cards, spending and what is coming due.`,
-    "",
-    "To begin, open the link below, enter this email address, and I will send you a one-time code. There is no password to set.",
-    "",
-    `    ${siteUrl}`,
-    "",
-    "If you were not expecting this, you may ignore it. Nothing is created until you sign in.",
-    "",
-    "Alfred",
-  ].join("\n");
+  const intro = `${inviterName} has arranged for you to have a ledger of your own, and has asked me to attend to it. I am Alfred, and I am pleased to make your acquaintance.`;
+  const about =
+    "Think of me as a household manager for your money. I record what comes in and goes out, watch for payments falling due, and tell you plainly where things stand. Your ledger is private, visible to no one but me, and I have yet to repeat anything to anyone.";
+  const begin =
+    "Beginning takes about two minutes. Open the link below, enter this address, and I will send you a one-time code. There is no password to remember. I find them tiresome as well. Then I will guide you from there.";
+  const safety = "If this has reached you in error, please disregard it. Nothing is set up until you sign in.";
+
+  const text = [hello, "", intro, "", about, "", begin, "", `    ${siteUrl}`, "", safety, "", "At your service,", "Alfred"].join("\n");
 
   const html = `<!doctype html>
 <html lang="en">
   <body style="margin:0;padding:0;background:#f5f1e8;">
-    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(inviterName)} has invited you to Alfred.</div>
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(hello)} ${escapeHtml(inviterName)} has arranged a ledger for you.</div>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f1e8;padding:24px 12px;">
       <tr>
         <td align="center">
@@ -138,14 +136,15 @@ export function invitationMessages(input: InvitationInput): InvitationMessages {
             </tr>
             <tr>
               <td style="padding:28px;font-family:Georgia,'Times New Roman',serif;color:#1b2433;">
-                <p style="margin:0 0 16px;font-size:20px;line-height:1.3;">Good day.</p>
-                <p style="margin:0 0 16px;font-size:16px;line-height:1.5;">${escapeHtml(inviterName)} has invited you to use me, a private ledger and assistant for your money: accounts, cards, spending and what is coming due.</p>
-                <p style="margin:0 0 24px;font-size:16px;line-height:1.5;">To begin, open the link below, enter this email address, and I will send you a one-time code. There is no password to set.</p>
+                <p style="margin:0 0 16px;font-size:20px;line-height:1.3;">${escapeHtml(hello)}</p>
+                <p style="margin:0 0 16px;font-size:16px;line-height:1.5;">${escapeHtml(intro)}</p>
+                <p style="margin:0 0 16px;font-size:16px;line-height:1.5;">${escapeHtml(about)}</p>
+                <p style="margin:0 0 24px;font-size:16px;line-height:1.5;">${escapeHtml(begin)}</p>
                 <p style="margin:0 0 24px;text-align:center;">
                   <a href="${escapeHtml(siteUrl)}" style="display:inline-block;padding:14px 24px;background:#1f5c47;color:#ffffff;border-radius:12px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;text-decoration:none;">Open Alfred</a>
                 </p>
-                <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#5b6372;">If you were not expecting this, you may ignore it. Nothing is created until you sign in.</p>
-                <p style="margin:0;font-size:16px;font-style:italic;">Alfred</p>
+                <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#5b6372;">${escapeHtml(safety)}</p>
+                <p style="margin:0;font-size:16px;line-height:1.5;font-style:italic;">At your service,<br />Alfred</p>
               </td>
             </tr>
           </table>

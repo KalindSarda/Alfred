@@ -20,6 +20,8 @@ export const users = sqliteTable("users", {
 export const invites = sqliteTable("invites", {
   id: text("id").primaryKey(),
   email: text("email").notNull().unique(),
+  /** What the owner said to call them; becomes their name until they change it. */
+  name: text("name"),
   invitedBy: text("invited_by").notNull().references(() => users.id),
   createdAt: text("created_at").notNull(),
   acceptedAt: text("accepted_at"),

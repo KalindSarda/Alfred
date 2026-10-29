@@ -14,6 +14,7 @@ interface Member {
 interface Invite {
   id: string;
   email: string;
+  name: string | null;
 }
 interface People {
   members: Member[];
@@ -26,13 +27,15 @@ export function PeopleCard() {
   const toast = useToast();
   const people = useQuery({ queryKey: ["people"], queryFn: () => api.get<People>("/api/people") });
   const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
 
   const refresh = () => client.invalidateQueries({ queryKey: ["people"] });
 
   const invite = useMutation({
-    mutationFn: () => api.post<{ invite: Invite; emailed: boolean }>("/api/people/invites", { email: email.trim() }),
+    mutationFn: () => api.post<{ invite: Invite; emailed: boolean }>("/api/people/invites", { email: email.trim(), ...(name.trim() && { name: name.trim() }) }),
     onSuccess: async (r) => {
       setEmail("");
+      setName("");
       await refresh();
       toast.show(r.emailed ? `Invitation sent to ${r.invite.email}.` : `Invited ${r.invite.email}, but the email did not go out. Tell them to open the site and sign in.`);
     },
@@ -123,7 +126,7 @@ export function PeopleCard() {
               <ul className="divide-y divide-line">
                 {people.data.invites.map((i) => (
                   <li key={i.id} className="flex min-h-11 items-center justify-between gap-3 py-1">
-                    <span className="min-w-0 truncate text-sm">{i.email}</span>
+                    <span className="min-w-0 truncate text-sm">{i.name ? `${i.name} (${i.email})` : i.email}</span>
                     <button type="button" className="min-h-11 shrink-0 px-2 text-sm font-medium text-brand" disabled={withdraw.isPending} onClick={() => withdraw.mutate(i.id)}>
                       Withdraw
                     </button>
@@ -142,8 +145,11 @@ export function PeopleCard() {
           if (email.trim()) invite.mutate();
         }}
       >
-        <Field label="Invite someone" hint="They get an email with a link. After signing in with a one-time code they can set up their own ledger.">
+        <Field label="Invite someone" hint="They get an email from Alfred with a link. After signing in with a one-time code they can set up their own ledger.">
           <input className={inputClass} type="email" autoComplete="off" placeholder="name@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </Field>
+        <Field label="Their name (optional)" hint="Alfred uses it to greet them, in the email and in setup.">
+          <input className={inputClass} maxLength={40} autoComplete="off" placeholder="Priya" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Button type="submit" variant="secondary" disabled={invite.isPending || !email.trim()}>
           Send invitation

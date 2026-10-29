@@ -71,6 +71,13 @@
       "when": 1793278754283,
       "tag": "0009_people_invites",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1793281324276,
+      "tag": "0010_invite_name",
+      "breakpoints": true
     }
   ]
 }

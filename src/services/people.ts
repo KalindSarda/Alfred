@@ -54,7 +54,7 @@ export async function acceptInvite(db: Db, invite: InviteRow, nowIso: string): P
   await db.insert(users).values({ id: newId(), email: invite.email, createdAt: nowIso }).onConflictDoNothing();
   const [user] = await db.select().from(users).where(eq(users.email, invite.email)).limit(1);
   if (!user) throw new Error("User insert returned no row");
-  await db.insert(appSettings).values({ userId: user.id }).onConflictDoNothing();
+  await db.insert(appSettings).values({ userId: user.id, displayName: invite.name }).onConflictDoNothing();
   await seedDefaultCategories(db, user.id);
   await db.update(invites).set({ acceptedAt: nowIso }).where(eq(invites.id, invite.id));
   return user;
@@ -63,11 +63,12 @@ export async function acceptInvite(db: Db, invite: InviteRow, nowIso: string): P
 export interface InviteDto {
   id: string;
   email: string;
+  name: string | null;
   createdAt: string;
 }
 
 /** Creates the invite, or refreshes a pending one so the email can be sent again. */
-export async function createInvite(db: Db, ownerId: string, rawEmail: string, nowIso: string): Promise<InviteDto> {
+export async function createInvite(db: Db, ownerId: string, rawEmail: string, nowIso: string, name?: string): Promise<InviteDto> {
   const email = normalizeInviteEmail(rawEmail);
   const [member] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
   if (member) throw new ConflictError("That person already has an account here");
@@ -75,12 +76,13 @@ export async function createInvite(db: Db, ownerId: string, rawEmail: string, no
   const [existing] = await db.select().from(invites).where(eq(invites.email, email)).limit(1);
   if (existing) {
     // A used invite whose account no longer exists (deleted) is opened again; a pending one is simply sent again.
-    await db.update(invites).set({ acceptedAt: null, createdAt: nowIso, invitedBy: ownerId }).where(eq(invites.id, existing.id));
-    return { id: existing.id, email, createdAt: nowIso };
+    const keep = name ?? existing.name;
+    await db.update(invites).set({ acceptedAt: null, createdAt: nowIso, invitedBy: ownerId, name: keep }).where(eq(invites.id, existing.id));
+    return { id: existing.id, email, name: keep, createdAt: nowIso };
   }
   const id = newId();
-  await db.insert(invites).values({ id, email, invitedBy: ownerId, createdAt: nowIso });
-  return { id, email, createdAt: nowIso };
+  await db.insert(invites).values({ id, email, name: name ?? null, invitedBy: ownerId, createdAt: nowIso });
+  return { id, email, name: name ?? null, createdAt: nowIso };
 }
 
 export async function withdrawInvite(db: Db, inviteId: string): Promise<void> {
@@ -123,7 +125,7 @@ export async function listPeople(db: Db): Promise<PeopleDto> {
       disabled: user.disabledAt !== null,
       createdAt: user.createdAt,
     })),
-    invites: inviteRows.map((i) => ({ id: i.id, email: i.email, createdAt: i.createdAt })),
+    invites: inviteRows.map((i) => ({ id: i.id, email: i.email, name: i.name, createdAt: i.createdAt })),
   };
 }
 

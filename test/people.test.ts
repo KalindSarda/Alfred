@@ -277,4 +277,70 @@ describe("invitationMessages", () => {
     expect(m.html).not.toContain("<b>Kal</b>");
     expect(m.html).toContain('href="https://alfred.example.dev"');
   });
+
+  const base = { inviterName: "Kalind", siteUrl: "https://alfred.example.dev", now: new Date() };
+
+  it("greets by name when there is one, and plainly when there is not", () => {
+    expect(invitationMessages({ ...base, name: "Priya" }).text.startsWith("Good day, Priya.\n")).toBe(true);
+    expect(invitationMessages({ ...base, name: "Priya" }).html).toContain(">Good day, Priya.</p>");
+    for (const name of [undefined, null, "", "   "]) {
+      expect(invitationMessages({ ...base, name }).text.startsWith("Good day.\n")).toBe(true);
+    }
+  });
+
+  it("escapes the invitee's name", () => {
+    const m = invitationMessages({ ...base, name: "<i>Pri</i>" });
+    expect(m.html).toContain("Good day, &lt;i&gt;Pri&lt;/i&gt;.");
+    expect(m.html).not.toContain("<i>Pri</i>");
+  });
+
+  it("speaks as Alfred, says the ledger is private to him, and does not single out the inviter", () => {
+    const m = invitationMessages({ ...base, name: "Priya" });
+    expect(m.text).toContain("Kalind has arranged for you to have a ledger of your own");
+    expect(m.text).toContain("I am Alfred");
+    expect(m.text).toContain("visible to no one but me");
+    expect(m.text).not.toMatch(/Kalind (cannot|will not|can't)/);
+    expect(m.text).toContain("At your service,\nAlfred");
+    expect(m.text).not.toContain("!");
+    expect(m.text).not.toContain("use me");
+  });
+});
+
+describe("inviting with a name", () => {
+  it("greets them by name in the email and starts their setup with that name", async () => {
+    const o = await owner();
+    const email = uniqueEmail();
+    const res = await o.api("POST", "/api/people/invites", { email, name: "  Priya " });
+    expect(res.status).toBe(201);
+    expect(res.json.invite.name).toBe("Priya");
+    expect(o.app.sentEmails.find((m) => m.to === email)?.text.startsWith("Good day, Priya.\n")).toBe(true);
+    expect(((await o.api("GET", "/api/people")).json.invites as Json[]).find((i) => i.email === email)?.name).toBe("Priya");
+
+    const member = client(o.app, await login(o.app, email));
+    expect((await member("GET", "/api/me")).json.displayName).toBe("Priya");
+  });
+
+  it("without a name, the greeting is plain and their name comes from the email", async () => {
+    const o = await owner();
+    const email = uniqueEmail();
+    await o.api("POST", "/api/people/invites", { email, name: "" });
+    expect(o.app.sentEmails.find((m) => m.to === email)?.text.startsWith("Good day.\n")).toBe(true);
+    const member = client(o.app, await login(o.app, email));
+    expect((await member("GET", "/api/me")).json.needsSetup).toBe(true);
+  });
+
+  it("inviting again can change the name, and keeps it when none is given", async () => {
+    const o = await owner();
+    const email = uniqueEmail();
+    await o.api("POST", "/api/people/invites", { email, name: "Pri" });
+    await o.api("POST", "/api/people/invites", { email });
+    expect(((await o.api("GET", "/api/people")).json.invites as Json[]).find((i) => i.email === email)?.name).toBe("Pri");
+    await o.api("POST", "/api/people/invites", { email, name: "Priya" });
+    expect(((await o.api("GET", "/api/people")).json.invites as Json[]).find((i) => i.email === email)?.name).toBe("Priya");
+  });
+
+  it("rejects a name over 40 characters", async () => {
+    const o = await owner();
+    expect((await o.api("POST", "/api/people/invites", { email: uniqueEmail(), name: "x".repeat(41) })).status).toBe(422);
+  });
 });
