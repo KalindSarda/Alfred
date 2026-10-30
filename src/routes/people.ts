@@ -46,7 +46,7 @@ export const peopleRoutes = new Hono<AppEnv>()
 
     const invite = await createInvite(db, c.var.userId, email, nowIso(c), name);
     const owner = await getMe(db, c.var.userId);
-    const message = invitationMessages({ inviterName: owner.displayName, name: invite.name, siteUrl: new URL(c.req.url).origin, now: new Date((now ?? Date.now)()) });
+    const message = invitationMessages({ inviterName: owner.displayName, name: invite.name, email, siteUrl: new URL(c.req.url).origin, now: new Date((now ?? Date.now)()) });
     let emailed = true;
     try {
       await notifiers.sendEmail(email, message.subject, message.text, message.html);

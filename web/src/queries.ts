@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type Me, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
@@ -98,4 +98,14 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["budgets"] }),
       client.invalidateQueries({ queryKey: ["review"] }),
     ]);
+}
+
+/**
+ * Ends the local session after the server has ended it (sign out, account deleted). The "me" answer becomes
+ * null first so the app re-renders to the login screen at once; clearing the whole cache instead would detach
+ * the query the app is watching, and the screen would stay put until a refresh.
+ */
+export function endSession(client: QueryClient): void {
+  client.setQueryData(["me"], null);
+  client.removeQueries({ predicate: (query) => query.queryKey[0] !== "me" });
 }

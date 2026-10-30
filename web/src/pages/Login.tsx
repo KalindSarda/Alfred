@@ -1,7 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { api, describeError } from "../api";
 import { Orb } from "../components/Alfred";
+import { inviteEmailFromHash } from "../invite";
+import { clearInviteHash } from "../inviteUrl";
 import { Button, ErrorText, Field, inputClass } from "../components/ui";
 import type { Me } from "../api";
 
@@ -15,7 +17,9 @@ function rememberedEmail(): string {
 
 export function Login() {
   const client = useQueryClient();
-  const [email, setEmail] = useState(rememberedEmail);
+  // An invitation link opens the sign-in screen with the invited address already filled in.
+  const [email, setEmail] = useState(() => inviteEmailFromHash(window.location.hash) ?? rememberedEmail());
+  useEffect(() => clearInviteHash(), []);
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"email" | "code">("email");
   const [viaEmail, setViaEmail] = useState(false);

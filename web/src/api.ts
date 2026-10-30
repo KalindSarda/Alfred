@@ -44,7 +44,7 @@ export const api = {
     request<T>("POST", path, body ?? {}, headers),
   patch: <T>(path: string, body: unknown) => request<T>("PATCH", path, body),
   put: <T>(path: string, body: unknown) => request<T>("PUT", path, body),
-  del: <T>(path: string) => request<T>("DELETE", path),
+  del: <T>(path: string, body?: unknown) => request<T>("DELETE", path, body),
 };
 
 /** Turns an API failure into text a person can act on. */

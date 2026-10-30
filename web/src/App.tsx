@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { InviteSwitch } from "./components/InviteSwitch";
 import { QuickAddSheet } from "./components/QuickAddSheet";
 import { Icon, Spinner } from "./components/ui";
 import { Accounts } from "./pages/Accounts";
@@ -9,6 +10,8 @@ import { Login } from "./pages/Login";
 import { Setup } from "./pages/Setup";
 import { More } from "./pages/More";
 import { Transactions } from "./pages/Transactions";
+import { inviteEmailFromHash } from "./invite";
+import { clearInviteHash } from "./inviteUrl";
 import { useMe, useReviewCounts } from "./queries";
 import { Link, usePath } from "./router";
 
@@ -43,6 +46,16 @@ export function App() {
   const [adding, setAdding] = useState(false);
   const isActive = (to: string) => path === to || (to === "/more" && path === "/categories");
   const review = useReviewCounts(Boolean(me.data));
+  // An invitation link carries the invited address in its fragment; it matters only when someone else is signed in.
+  const [invite, setInvite] = useState(() => inviteEmailFromHash(window.location.hash));
+  const signedInAs = me.data?.email.toLowerCase();
+  useEffect(() => {
+    if (me.isSuccess && !me.data) setInvite(null);
+    if (invite && signedInAs === invite) {
+      clearInviteHash();
+      setInvite(null);
+    }
+  }, [me.isSuccess, me.data, signedInAs, invite]);
   const reviewTotal = (review.data?.uncategorizedCount ?? 0) + (review.data?.draftCount ?? 0);
 
   if (me.isPending) return <Spinner label="Starting" />;
@@ -54,6 +67,18 @@ export function App() {
     );
   }
   if (!me.data) return <Login />;
+  if (invite && signedInAs !== invite) {
+    return (
+      <InviteSwitch
+        current={me.data.email}
+        invited={invite}
+        onStay={() => {
+          clearInviteHash();
+          setInvite(null);
+        }}
+      />
+    );
+  }
   // New people are guided through setup first; "Run setup again" under More opens it on request.
   if (me.data.needsSetup || path === "/setup") return <Setup />;
 

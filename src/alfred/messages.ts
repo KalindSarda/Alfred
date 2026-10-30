@@ -96,6 +96,8 @@ export interface InvitationInput {
   name?: string | null | undefined;
   /** Where to sign in, such as "https://alfred.example.workers.dev". */
   siteUrl: string;
+  /** The invited address. It rides in the link's fragment, which is never sent to a server, so the app can say whom the link is for. */
+  email: string;
   now: Date;
 }
 
@@ -107,7 +109,8 @@ export interface InvitationMessages {
 
 /** The invitation, written by Alfred to the new person: who he is, what he does, and how to begin. */
 export function invitationMessages(input: InvitationInput): InvitationMessages {
-  const { inviterName, siteUrl } = input;
+  const { inviterName } = input;
+  const link = `${input.siteUrl.replace(/\/+$/, "")}/#invite=${encodeURIComponent(input.email)}`;
   const hello = input.name?.trim() ? `Good day, ${input.name.trim()}.` : "Good day.";
   const subject = `An invitation from ${inviterName}`;
 
@@ -118,7 +121,7 @@ export function invitationMessages(input: InvitationInput): InvitationMessages {
     "Beginning takes about two minutes. Open the link below, enter this address, and I will send you a one-time code. There is no password to remember. I find them tiresome as well. Then I will guide you from there.";
   const safety = "If this has reached you in error, please disregard it. Nothing is set up until you sign in.";
 
-  const text = [hello, "", intro, "", about, "", begin, "", `    ${siteUrl}`, "", safety, "", "At your service,", "Alfred"].join("\n");
+  const text = [hello, "", intro, "", about, "", begin, "", `    ${link}`, "", safety, "", "At your service,", "Alfred"].join("\n");
 
   const html = `<!doctype html>
 <html lang="en">
@@ -141,7 +144,7 @@ export function invitationMessages(input: InvitationInput): InvitationMessages {
                 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;">${escapeHtml(about)}</p>
                 <p style="margin:0 0 24px;font-size:16px;line-height:1.5;">${escapeHtml(begin)}</p>
                 <p style="margin:0 0 24px;text-align:center;">
-                  <a href="${escapeHtml(siteUrl)}" style="display:inline-block;padding:14px 24px;background:#1f5c47;color:#ffffff;border-radius:12px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;text-decoration:none;">Open Alfred</a>
+                  <a href="${escapeHtml(link)}" style="display:inline-block;padding:14px 24px;background:#1f5c47;color:#ffffff;border-radius:12px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;text-decoration:none;">Open ledger</a>
                 </p>
                 <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#5b6372;">${escapeHtml(safety)}</p>
                 <p style="margin:0;font-size:16px;line-height:1.5;font-style:italic;">At your service,<br />Alfred</p>

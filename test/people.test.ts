@@ -270,15 +270,27 @@ describe("first-run setup flag", () => {
 
 describe("invitationMessages", () => {
   it("carries the link and escapes the inviter's name", () => {
-    const m = invitationMessages({ inviterName: "<b>Kal</b> & Co", siteUrl: "https://alfred.example.dev", now: new Date() });
+    const m = invitationMessages({ inviterName: "<b>Kal</b> & Co", siteUrl: "https://alfred.example.dev", email: "a@b.co", now: new Date() });
     expect(m.subject).toBe("An invitation from <b>Kal</b> & Co");
     expect(m.text).toContain("https://alfred.example.dev");
     expect(m.html).toContain("&lt;b&gt;Kal&lt;/b&gt; &amp; Co");
     expect(m.html).not.toContain("<b>Kal</b>");
-    expect(m.html).toContain('href="https://alfred.example.dev"');
+    expect(m.html).toContain('href="https://alfred.example.dev/#invite=a%40b.co"');
   });
 
-  const base = { inviterName: "Kalind", siteUrl: "https://alfred.example.dev", now: new Date() };
+  const base = { inviterName: "Kalind", siteUrl: "https://alfred.example.dev", email: "priya@example.com", now: new Date() };
+
+  it("the button says Open ledger and the link names the invited address", () => {
+    const m = invitationMessages(base);
+    expect(m.html).toContain(">Open ledger</a>");
+    expect(m.html).not.toContain("Open Alfred");
+    expect(m.html).toContain('href="https://alfred.example.dev/#invite=priya%40example.com"');
+    expect(m.text).toContain("    https://alfred.example.dev/#invite=priya%40example.com\n");
+  });
+
+  it("does not double a trailing slash on the site address", () => {
+    expect(invitationMessages({ ...base, siteUrl: "https://alfred.example.dev/" }).text).toContain("dev/#invite=");
+  });
 
   it("greets by name when there is one, and plainly when there is not", () => {
     expect(invitationMessages({ ...base, name: "Priya" }).text.startsWith("Good day, Priya.\n")).toBe(true);

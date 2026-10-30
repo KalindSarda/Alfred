@@ -1,5 +1,5 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { ConflictError, ForbiddenError, NotFoundError } from "../config/errors";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
 import { seedDefaultCategories } from "../db/seed";
 import {
@@ -151,10 +151,8 @@ export async function enableMember(db: Db, ownerId: string, targetId: string): P
   await db.update(users).set({ disabledAt: null }).where(eq(users.id, targetId));
 }
 
-/** Permanently removes a person and everything they own. Only for someone whose access was already removed. */
-export async function deleteMember(db: Db, ownerId: string, targetId: string): Promise<void> {
-  const target = await memberFor(db, ownerId, targetId);
-  if (!target.disabledAt) throw new ConflictError("Remove their access first, then delete their data");
+/** Removes a person and every row they own, in one atomic batch. The invitation record stays, so the address cannot be quietly recreated. */
+async function eraseUser(db: Db, targetId: string): Promise<void> {
   await db.batch([
     db.delete(nudgeLog).where(eq(nudgeLog.userId, targetId)),
     db.delete(budgets).where(eq(budgets.userId, targetId)),
@@ -171,4 +169,22 @@ export async function deleteMember(db: Db, ownerId: string, targetId: string): P
     db.delete(appSettings).where(eq(appSettings.userId, targetId)),
     db.delete(users).where(eq(users.id, targetId)),
   ]);
+}
+
+/** Permanently removes a person and everything they own. Only for someone whose access was already removed. */
+export async function deleteMember(db: Db, ownerId: string, targetId: string): Promise<void> {
+  const target = await memberFor(db, ownerId, targetId);
+  if (!target.disabledAt) throw new ConflictError("Remove their access first, then delete their data");
+  await eraseUser(db, targetId);
+}
+
+/** People can delete their own account. They confirm by typing their email; the owner's account cannot be deleted here. */
+export async function deleteOwnAccount(db: Db, userId: string, typedEmail: string): Promise<void> {
+  const user = await getUserRow(db, userId);
+  if (!user) throw new NotFoundError("Account not found");
+  if (user.isOwner) throw new ConflictError("The owner's account cannot be deleted from the app");
+  if (normalizeInviteEmail(typedEmail) !== user.email) {
+    throw new ValidationError("Request validation failed", [{ path: "email", message: "That is not the email address on this account" }]);
+  }
+  await eraseUser(db, userId);
 }

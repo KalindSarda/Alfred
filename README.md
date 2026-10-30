@@ -55,7 +55,7 @@ See [DEPLOY.md](DEPLOY.md) for the step-by-step guide (Cloudflare free plan).
 
 ## People
 
-Sign-up is invite-only. The owner (the first account) invites people under **More**, then **People**; each person gets their own private ledger and a short guided setup on first sign-in. The owner can remove or restore someone's access, and delete the data of someone removed.
+Sign-up is invite-only. The owner (the first account) invites people under **More**, then **People**; each person gets their own private ledger and a short guided setup on first sign-in. The owner can remove or restore someone's access, and delete the data of someone removed. Anyone but the owner can delete their own account under **More** (they type their email to confirm); the owner's account cannot be deleted from the app.
 
 ## Your data
 

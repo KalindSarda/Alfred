@@ -2,9 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Settings, api, describeError } from "../api";
 import { useToast } from "../components/toast";
 import { Button, Card, ErrorText, Field, inputClass, Spinner } from "../components/ui";
+import { DeleteAccountCard } from "../components/DeleteAccountCard";
 import { PeopleCard } from "../components/PeopleCard";
 import { TelegramCard } from "../components/TelegramCard";
-import { useMe, useRefreshMoney } from "../queries";
+import { endSession, useMe, useRefreshMoney } from "../queries";
 import { useState } from "react";
 import { Link } from "../router";
 
@@ -62,10 +63,7 @@ export function More() {
 
   const signOut = useMutation({
     mutationFn: (everywhere: boolean) => api.post(everywhere ? "/api/auth/logout-all" : "/api/auth/logout"),
-    onSuccess: () => {
-      client.clear();
-      client.setQueryData(["me"], null);
-    },
+    onSuccess: () => endSession(client),
   });
 
   return (
@@ -226,6 +224,8 @@ export function More() {
           </Button>
         </div>
       </Card>
+
+      <DeleteAccountCard />
     </div>
   );
 }
