@@ -2,7 +2,8 @@ import { and, count, eq, isNull, or, sql } from "drizzle-orm";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
 import { getAccount, insertAccount } from "../db/accounts";
-import { accounts, nudgeLog, transactions } from "../db/schema";
+import { activeHoldTotals } from "../db/holds";
+import { accounts, holds, nudgeLog, transactions } from "../db/schema";
 import type { IstDate } from "../domain/dates";
 import type { CreateAccountData, UpdateAccountData } from "../schemas/account";
 import { nowIso } from "../utils/id";
@@ -16,6 +17,10 @@ export interface BankAccountDto {
   openingBalancePaise: number;
   countsTowardSafeToSpend: boolean;
   balancePaise: number;
+  /** Money blocked in this account (IPO applications and the like); still in the balance, but not spendable. */
+  blockedPaise: number;
+  /** The balance less what is blocked. */
+  availablePaise: number;
   archived: boolean;
   /** Live entries that touch this account. */
   entryCount: number;
@@ -52,6 +57,8 @@ export function toAccountDto(account: AccountWithFigures, entryCount = 0): Accou
       openingBalancePaise: account.openingBalancePaise,
       countsTowardSafeToSpend: account.countsTowardSafeToSpend,
       balancePaise: account.balancePaise,
+      blockedPaise: account.blockedPaise,
+      availablePaise: account.balancePaise - account.blockedPaise,
       archived: account.archivedAt !== null,
       entryCount,
     };
@@ -83,6 +90,8 @@ export interface BalanceOverview {
   countedPaise: number;
   /** The part set aside (accounts not counted toward safe-to-spend, such as a reserve). */
   setAsidePaise: number;
+  /** Blocked in counted accounts (IPO applications and the like); taken off safe-to-spend. */
+  blockedPaise: number;
   /** What all active credit cards currently owe. */
   cardsOwedPaise: number;
   /** Banks minus cards. Investments and loans will join this once they are tracked. */
@@ -94,12 +103,16 @@ export interface BalanceOverview {
 export function balanceOverview(figures: readonly AccountWithFigures[]): BalanceOverview {
   let totalInBanksPaise = 0;
   let countedPaise = 0;
+  let blockedPaise = 0;
   let cardsOwedPaise = 0;
   for (const a of figures) {
     if (a.archivedAt) continue;
     if (a.kind === "bank") {
       totalInBanksPaise += a.balancePaise;
-      if (a.countsTowardSafeToSpend) countedPaise += a.balancePaise;
+      if (a.countsTowardSafeToSpend) {
+        countedPaise += a.balancePaise;
+        blockedPaise += a.blockedPaise;
+      }
     } else {
       cardsOwedPaise += a.summary.owedPaise;
     }
@@ -108,9 +121,10 @@ export function balanceOverview(figures: readonly AccountWithFigures[]): Balance
     totalInBanksPaise,
     countedPaise,
     setAsidePaise: totalInBanksPaise - countedPaise,
+    blockedPaise,
     cardsOwedPaise,
     netWorthPaise: totalInBanksPaise - cardsOwedPaise,
-    safeToSpendPaise: countedPaise - cardsOwedPaise,
+    safeToSpendPaise: countedPaise - blockedPaise - cardsOwedPaise,
   };
 }
 
@@ -215,8 +229,13 @@ export async function deleteAccount(db: Db, userId: string, id: string): Promise
       `${entries} ${entries === 1 ? "entry uses" : "entries use"} this account. Merge it into another account, or archive it.`,
     );
   }
+  if (((await activeHoldTotals(db, userId)).get(id) ?? 0) > 0) {
+    throw new ConflictError("Money is still blocked in this account. Settle it first (allotted or not allotted), then delete the account.");
+  }
   await db.batch([
     db.delete(transactions).where(uses(userId, id)),
+    // Settled blocked amounts are only history and go with the account.
+    db.delete(holds).where(and(eq(holds.userId, userId), eq(holds.accountId, id))),
     db.delete(nudgeLog).where(and(eq(nudgeLog.userId, userId), eq(nudgeLog.cardAccountId, id))),
     db.delete(accounts).where(and(eq(accounts.userId, userId), eq(accounts.id, id))),
   ]);
@@ -262,6 +281,7 @@ export async function mergeAccount(db: Db, userId: string, fromId: string, intoI
     db.update(transactions).set({ accountId: intoId }).where(and(eq(transactions.userId, userId), eq(transactions.accountId, fromId))),
     db.update(transactions).set({ toAccountId: intoId }).where(and(eq(transactions.userId, userId), eq(transactions.toAccountId, fromId))),
     db.update(accounts).set(addOpening).where(and(eq(accounts.userId, userId), eq(accounts.id, intoId))),
+    db.update(holds).set({ accountId: intoId }).where(and(eq(holds.userId, userId), eq(holds.accountId, fromId))),
     db.delete(nudgeLog).where(and(eq(nudgeLog.userId, userId), eq(nudgeLog.cardAccountId, fromId))),
     db.delete(accounts).where(and(eq(accounts.userId, userId), eq(accounts.id, fromId))),
   ]);

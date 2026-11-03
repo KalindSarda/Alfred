@@ -15,6 +15,7 @@ const TYPE_FILTERS = [
   { value: "income", label: "Income" },
   { value: "transfer", label: "Transfers" },
   { value: "bill_payment", label: "Bill payments" },
+  { value: "investment", label: "Investments" },
 ] as const;
 
 function Row({

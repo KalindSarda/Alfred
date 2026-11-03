@@ -13,6 +13,9 @@ export function describeTxn(
   if (txn.type === "bill_payment") {
     return { title: `Paid ${to}`, sub: ["Bill payment", `from ${account}`, txn.note].filter(Boolean).join(" · ") };
   }
+  if (txn.type === "investment") {
+    return { title: txn.merchant || "Investment", sub: ["Investment", account, txn.note].filter(Boolean).join(" · ") };
+  }
   return {
     title: txn.merchant || category || "Uncategorized",
     sub: [category && txn.merchant ? category : null, account].filter(Boolean).join(" · "),
@@ -22,10 +25,10 @@ export function describeTxn(
 const isMovement = (type: Transaction["type"]) => type === "transfer" || type === "bill_payment";
 
 /** Income or expense with no category: needs one before it shows properly in cash flow. */
-export const needsCategory = (txn: Transaction): boolean => !isMovement(txn.type) && txn.categoryId === null;
+export const needsCategory = (txn: Transaction): boolean => !isMovement(txn.type) && txn.type !== "investment" && txn.categoryId === null;
 
 export const amountTone = (type: Transaction["type"]): string =>
-  type === "income" ? "text-good" : isMovement(type) ? "text-soft" : "";
+  type === "income" ? "text-good" : isMovement(type) || type === "investment" ? "text-soft" : "";
 
 export const amountSign = (type: Transaction["type"]): string =>
-  type === "income" ? "+" : type === "expense" ? "−" : "";
+  type === "income" ? "+" : type === "expense" || type === "investment" ? "−" : "";

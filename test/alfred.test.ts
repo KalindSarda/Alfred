@@ -21,6 +21,7 @@ const facts = (over: Partial<BriefingFacts> = {}): BriefingFacts => ({
   draftCount: 0,
   cards: [],
   budgets: [],
+  holds: [],
   ...over,
 });
 
@@ -162,6 +163,42 @@ describe("briefing lines", () => {
 
   it("shows neither review line when nothing needs attention", () => {
     expect(lines().some((l) => l.key === "uncategorized" || l.key === "drafts")).toBe(false);
+  });
+});
+
+describe("blocked funds in the briefing", () => {
+  const hold = (over: Partial<BriefingFacts["holds"][number]> = {}): BriefingFacts["holds"][number] => ({
+    title: "Tata Tech IPO",
+    amountPaise: 15_000_00,
+    expectedDate: "2026-11-06",
+    ...over,
+  });
+
+  it("is silent when nothing is blocked", () => {
+    expect(lines().some((l) => l.key === "blocked")).toBe(false);
+  });
+
+  it("names a single application and when its outcome is due", () => {
+    expect(find({ holds: [hold()] }, "blocked")?.text).toBe("₹15,000 is blocked for Tata Tech IPO; the outcome is due 2026-11-06.");
+  });
+
+  it("adds several together and points at the next outcome", () => {
+    const text = find({ holds: [hold(), hold({ title: "Other", amountPaise: 5_000_00, expectedDate: "2026-11-03" })] }, "blocked")?.text;
+    expect(text).toBe("₹20,000 is blocked for 2 applications; the outcome is due 2026-11-03.");
+  });
+
+  it("asks how an overdue one went", () => {
+    expect(find({ holds: [hold({ expectedDate: "2026-10-25" })] }, "blocked")?.text).toBe("₹15,000 is blocked for Tata Tech IPO. An outcome was due earlier; do tell me how it went.");
+  });
+
+  it("copes with no outcome date, and links to the accounts page", () => {
+    const l = find({ holds: [hold({ expectedDate: null })] }, "blocked");
+    expect(l?.text).toBe("₹15,000 is blocked for Tata Tech IPO.");
+    expect(l?.to).toBe("/accounts");
+  });
+
+  it("sits right after the safe-to-spend line", () => {
+    expect(lines({ holds: [hold()] }).map((l) => l.key).slice(0, 2)).toEqual(["safe", "blocked"]);
   });
 });
 

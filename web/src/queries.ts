@@ -1,5 +1,5 @@
 import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type Me, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type Hold, type Me, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -52,6 +52,10 @@ export const useBriefing = () =>
 
 export const useBudgets = () => useQuery({ queryKey: ["budgets"], queryFn: () => api.get<Budgets>("/api/budgets") });
 
+/** Money blocked for IPO applications and the like; active ones only. */
+export const useHolds = () =>
+  useQuery({ queryKey: ["holds"], queryFn: async () => (await api.get<{ items: Hold[] }>("/api/holds")).items });
+
 export interface ReviewCounts {
   uncategorizedCount: number;
   draftCount: number;
@@ -96,6 +100,7 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["cashflow"] }),
       client.invalidateQueries({ queryKey: ["briefing"] }),
       client.invalidateQueries({ queryKey: ["budgets"] }),
+      client.invalidateQueries({ queryKey: ["holds"] }),
       client.invalidateQueries({ queryKey: ["review"] }),
     ]);
 }

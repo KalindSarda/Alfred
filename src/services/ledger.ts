@@ -22,7 +22,8 @@ import {
   safeToSpend,
 } from "../domain/balances";
 import { type IstDate, isValidIstDate } from "../domain/dates";
-import { isMovement } from "../domain/txnTypes";
+import { activeHoldTotals } from "../db/holds";
+import { hasNoCategory, isMovement } from "../domain/txnTypes";
 import {
   checkTransactionShape,
   CreateTransaction,
@@ -77,6 +78,8 @@ function assertAccountKinds(v: Resolved, fromKind: "bank" | "card", toKind: "ban
   } else if (v.type === "bill_payment") {
     if (fromKind !== "bank") failShape([{ path: "accountId", message: "A bill payment is paid from a bank account" }]);
     if (toKind !== "card") failShape([{ path: "toAccountId", message: "A bill payment is paid to a credit card" }]);
+  } else if (v.type === "investment") {
+    if (fromKind !== "bank") failShape([{ path: "accountId", message: "An investment is paid from a bank account" }]);
   }
 }
 
@@ -173,8 +176,8 @@ export async function updateTransaction(
     note: p.note === undefined ? existing.note : p.note,
     status: p.status ?? existing.status,
   };
-  // Changing to a movement (transfer or bill payment) clears the category; changing away clears the destination.
-  if (isMovement(merged.type) && p.categoryId === undefined) merged.categoryId = null;
+  // Changing to a movement (transfer or bill payment) or an investment clears the category; changing away clears the destination.
+  if (hasNoCategory(merged.type) && p.categoryId === undefined) merged.categoryId = null;
   if (!isMovement(merged.type) && p.toAccountId === undefined) merged.toAccountId = null;
 
   const issues = checkTransactionShape(merged);
@@ -231,7 +234,7 @@ export async function listTransactions(
 }
 
 export type AccountWithFigures =
-  | (AccountRow & { kind: "bank"; balancePaise: number })
+  | (AccountRow & { kind: "bank"; balancePaise: number; blockedPaise: number })
   | (AccountRow & { kind: "card"; summary: CardSummary });
 
 function toLedgerAccount(row: AccountRow): LedgerAccount {
@@ -263,17 +266,17 @@ export async function listAccountsWithFigures(
   today: IstDate,
   options: { includeArchived?: boolean } = {},
 ): Promise<AccountWithFigures[]> {
-  const [rows, txns] = await Promise.all([listAccounts(db, userId, options), loadLedgerTxns(db, userId)]);
+  const [rows, txns, blocked] = await Promise.all([listAccounts(db, userId, options), loadLedgerTxns(db, userId), activeHoldTotals(db, userId)]);
   return rows.map((row): AccountWithFigures => {
     const ledger = toLedgerAccount(row);
     if (ledger.kind === "bank") {
-      return { ...row, kind: "bank", balancePaise: bankBalance(ledger, txns, today) };
+      return { ...row, kind: "bank", balancePaise: bankBalance(ledger, txns, today), blockedPaise: blocked.get(row.id) ?? 0 };
     }
     return { ...row, kind: "card", summary: cardSummary(ledger, txns, today) };
   });
 }
 
 export async function getSafeToSpend(db: Db, userId: string, today: IstDate): Promise<number> {
-  const [rows, txns] = await Promise.all([listAccounts(db, userId), loadLedgerTxns(db, userId)]);
-  return safeToSpend(rows.map(toLedgerAccount), txns, today);
+  const [rows, txns, blocked] = await Promise.all([listAccounts(db, userId), loadLedgerTxns(db, userId), activeHoldTotals(db, userId)]);
+  return safeToSpend(rows.map(toLedgerAccount), txns, today, blocked);
 }

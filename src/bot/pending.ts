@@ -10,6 +10,8 @@ export interface PendingEntry {
   /** "text" entries (typed without a command) wait for a confirming tap; commands record as soon as they are complete. */
   mode: "command" | "text";
   entry: ParsedEntry;
+  /** "hold": the amount is being blocked for an application (/ipo), not spent. */
+  kind?: "hold";
 }
 
 const iso = (ms: number) => new Date(ms).toISOString();

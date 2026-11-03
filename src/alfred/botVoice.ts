@@ -116,6 +116,26 @@ export function categoriesReply(expense: string[], income: string[]): string {
   ].join("\n");
 }
 
+export interface HoldLine {
+  title: string;
+  amountPaise: number;
+  accountName: string;
+  expectedDate: string | null;
+  overdue: boolean;
+}
+
+/** Money blocked for applications, soonest outcome first. */
+export function holdsReply(items: HoldLine[], note?: string): string {
+  const lines: string[] = note ? [note, ""] : [];
+  const total = items.reduce((sum, h) => sum + h.amountPaise, 0);
+  lines.push(`Blocked for applications: ${rupees(total)}. Tap one when you know how it went.`);
+  for (const h of items) {
+    const when = h.expectedDate ? `, outcome ${h.overdue ? "was due" : "due"} ${shortDate(h.expectedDate)}` : "";
+    lines.push(`${h.title}: ${rupees(h.amountPaise)} in ${h.accountName}${when}`);
+  }
+  return lines.join("\n");
+}
+
 export const botVoice = {
   welcome(name: string, now: Date): string {
     return [
@@ -148,6 +168,7 @@ export const botVoice = {
     "/today  what you spent today",
     "/budget  how your budgets stand this month",
     "/accounts  your accounts and cards; archive or restore one",
+    "/ipo  money blocked for IPO applications, or: /ipo 15000 hdfc tata tech",
     "/category  list your categories, or add one",
     "/balance  your accounts, cards and safe-to-spend",
     "/due  card payments coming up",
@@ -159,6 +180,19 @@ export const botVoice = {
   ].join("\n"),
 
   unknownCommand: "I do not know that one. /help lists what I can do.",
+  holdRecorded: (title: string, amountPaise: number, accountName: string, safePaise: number) =>
+    `Noted. ${rupees(amountPaise)} is blocked in ${accountName} for ${title}. You can spend ${rupees(safePaise)}, as recorded. When you know the outcome, /ipo has the buttons.`,
+  holdAllotted: (title: string, amountPaise: number, accountName: string) =>
+    `${title} was allotted. ${rupees(amountPaise)} has been debited from ${accountName}, recorded as an investment rather than spending.`,
+  holdReleased: (title: string, amountPaise: number, accountName: string) =>
+    `${title} was not allotted. The ${rupees(amountPaise)} in ${accountName} is available again, and nothing was debited.`,
+  holdRemoved: "Removed. That block is gone.",
+  holdAlreadySettled: "That one has already been settled.",
+  holdNeedsBank: "Money is blocked in a bank account. Please name one, for example: /ipo 15000 hdfc tata tech.",
+  noHolds: "Nothing is blocked for applications at the moment. To add one: /ipo 15000 hdfc tata tech.",
+  askHoldAccount: (summary: string) => `Which account is it blocked in? (${summary})`,
+  holdDue: (title: string, amountPaise: number, accountName: string) =>
+    `The outcome of ${title} is due. ${rupees(amountPaise)} is blocked in ${accountName}. Was it allotted?`,
   accountArchived: (name: string) => `Archived ${name}. It is hidden from lists and new entries, and its history is kept. You can restore it below.`,
   accountRestored: (name: string) => `Restored ${name}. It is back in your lists.`,
   accountNotArchived: (name: string, reason: string) => `I could not archive ${name}. ${reason}`,

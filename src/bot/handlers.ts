@@ -1,9 +1,10 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
+import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, holdsReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
-import { AppError, ConflictError, RateLimitedError } from "../config/errors";
+import { AppError, ConflictError, NotFoundError, RateLimitedError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
 import { getAccount, listAccounts } from "../db/accounts";
+import { getHold } from "../db/holds";
 import { listCategories } from "../db/categories";
 import { lastTransactionRowBySource, toDto } from "../db/transactions";
 import { telegramUpdates, transactions } from "../db/schema";
@@ -14,6 +15,7 @@ import { getMe } from "../services/auth";
 import { balanceOverview, setArchived, toAccountDto } from "../services/accounts";
 import { getCashflow } from "../services/cashflow";
 import { createCategory } from "../services/categories";
+import { allotHold, createHold, deleteHold, listHolds, releaseHold } from "../services/holds";
 import { budgetFor, listBudgets } from "../services/budgets";
 import { getSummary } from "../services/dashboard";
 import { createTransaction, getTransaction, listAccountsWithFigures, listTransactions, softDeleteTransaction, updateTransaction } from "../services/ledger";
@@ -137,8 +139,9 @@ function nextNeed(e: ParsedEntry): Need | null {
 }
 
 /** The accounts worth offering for a question: the ones that fit, the likely one first. */
-function optionsFor(e: ParsedEntry, need: Need, c: BotContext): BotAccount[] {
-  const wantedKind = e.type === "bill_payment" ? (need === "to" ? "card" : "bank") : e.type === "transfer" ? "bank" : null;
+function optionsFor(e: ParsedEntry, need: Need, c: BotContext, kind?: "hold"): BotAccount[] {
+  // Money is blocked in a bank account, so a hold only ever offers banks.
+  const wantedKind = kind === "hold" ? "bank" : e.type === "bill_payment" ? (need === "to" ? "card" : "bank") : e.type === "transfer" ? "bank" : null;
   const resolution = need === "from" ? e.from : e.to;
   const otherId = idOf(need === "from" ? e.to : e.from);
 
@@ -215,13 +218,53 @@ async function recordEntry(deps: BotDeps, who: Actor, entry: ParsedEntry, c: Bot
   await reply(deps, to, botVoice.recorded(summary, extra), [buttons]);
 }
 
+/** Blocks the amount in the chosen bank account. The title is whatever the line named, such as the IPO. */
+async function recordHold(deps: BotDeps, who: Actor, entry: ParsedEntry, c: BotContext, to: Reply): Promise<void> {
+  const from = idOf(entry.from);
+  if (!from) throw new AppError("validation_failed", 422, "Missing account");
+  try {
+    const hold = await createHold(
+      deps.db,
+      who.userId,
+      { accountId: from, title: (entry.merchant ?? "").trim().slice(0, 80) || "IPO application", amountPaise: entry.amountPaise, appliedDate: entry.txnDate },
+      c.today,
+    );
+    const overview = balanceOverview(await listAccountsWithFigures(deps.db, who.userId, c.today));
+    await reply(deps, to, botVoice.holdRecorded(hold.title, hold.amountPaise, hold.accountName, overview.safeToSpendPaise), [[{ text: "Undo", data: `h:${hold.id}:u` }]]);
+  } catch (error) {
+    if (error instanceof ValidationError) return void (await reply(deps, to, botVoice.holdNeedsBank));
+    throw error;
+  }
+}
+
+/** Active blocks with an Allotted and a Not allotted button each. */
+async function holdsView(deps: BotDeps, who: Actor, today: IstDate, note?: string): Promise<{ text: string; buttons: Button[][] } | null> {
+  const items = await listHolds(deps.db, who.userId, today, "active");
+  if (items.length === 0) return null;
+  const short = (title: string) => (title.length > 16 ? `${title.slice(0, 15)}\u2026` : title);
+  return {
+    text: holdsReply(items, note),
+    buttons: items.map((h) => [
+      { text: `Allotted: ${short(h.title)}`, data: `h:${h.id}:a` },
+      { text: `Not allotted: ${short(h.title)}`, data: `h:${h.id}:n` },
+    ]),
+  };
+}
+
+async function cmdIpo(deps: BotDeps, who: Actor, arg: string, today: IstDate): Promise<void> {
+  if (arg) return await startEntry(deps, who, arg, "expense", "command", "hold");
+  const view = await holdsView(deps, who, today);
+  if (!view) return void (await deps.telegram.sendMessage(who.chatId, botVoice.noHolds));
+  await deps.telegram.sendMessage(who.chatId, view.text, view.buttons);
+}
+
 /** Moves an entry forward: ask for what is missing, ask for confirmation, or record it. */
 async function advance(deps: BotDeps, who: Actor, c: BotContext, pending: PendingEntry, pendingId: string | null, to: Reply): Promise<void> {
-  const { entry, mode } = pending;
+  const { entry, mode, kind } = pending;
   const need = nextNeed(entry);
 
   if (need) {
-    const options = optionsFor(entry, need, c);
+    const options = optionsFor(entry, need, c, kind);
     if (options.length === 0) {
       if (pendingId) await deletePending(deps.db, pendingId);
       await reply(deps, to, c.accounts.length === 0 ? botVoice.noAccountsYet : botVoice.noMatchingAccount);
@@ -230,7 +273,7 @@ async function advance(deps: BotDeps, who: Actor, c: BotContext, pending: Pendin
     const id = pendingId ?? (await createPending(deps.db, who.userId, who.chatId, pending, deps.now()));
     if (pendingId) await updatePending(deps.db, id, pending);
     const buttons = [...rows(options.map((a) => ({ text: a.name, data: `p:${id}:a:${a.id}` }))), [{ text: "Cancel", data: `p:${id}:no` }]];
-    await reply(deps, to, askAccount(entry.type, need, describeEntry(factsOf(entry, c))), buttons);
+    await reply(deps, to, kind === "hold" ? botVoice.askHoldAccount(describeEntry(factsOf(entry, c))) : askAccount(entry.type, need, describeEntry(factsOf(entry, c))), buttons);
     return;
   }
 
@@ -244,18 +287,21 @@ async function advance(deps: BotDeps, who: Actor, c: BotContext, pending: Pendin
   }
 
   if (pendingId) await deletePending(deps.db, pendingId);
-  await recordEntry(deps, who, entry, c, to);
+  if (kind === "hold") await recordHold(deps, who, entry, c, to);
+  else await recordEntry(deps, who, entry, c, to);
 }
 
-async function startEntry(deps: BotDeps, who: Actor, text: string, type: EntryType, mode: PendingEntry["mode"]): Promise<void> {
+async function startEntry(deps: BotDeps, who: Actor, text: string, type: EntryType, mode: PendingEntry["mode"], kind?: "hold"): Promise<void> {
   const c = await loadContext(deps.db, who.userId, todayIst(new Date(deps.now())));
-  const parsed = parseEntry(text, type, parseContext(c));
+  // Money is blocked in a bank account, so a word like "hdfc" can only mean the bank.
+  const parseCtx = kind === "hold" ? { ...parseContext(c), accounts: c.accounts.filter((a) => a.kind === "bank") } : parseContext(c);
+  const parsed = parseEntry(text, type, parseCtx);
   if (!parsed.ok) {
     const message = parsed.reason === "bad_date" ? botVoice.badDate : botVoice.noAmount;
     await deps.telegram.sendMessage(who.chatId, message);
     return;
   }
-  await advance(deps, who, c, { mode, entry: parsed.entry }, null, { chatId: who.chatId });
+  await advance(deps, who, c, { mode, entry: parsed.entry, ...(kind && { kind }) }, null, { chatId: who.chatId });
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -265,7 +311,7 @@ async function startEntry(deps: BotDeps, who: Actor, text: string, type: EntryTy
 async function cmdBalance(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
   const figures = await listAccountsWithFigures(deps.db, who.userId, today);
   if (figures.length === 0) return void (await deps.telegram.sendMessage(who.chatId, botVoice.noAccountsYet));
-  const dtos = figures.map(toAccountDto);
+  const dtos = figures.map((f) => toAccountDto(f));
   const overview = balanceOverview(figures);
 
   const banks = dtos.filter((a) => a.kind === "bank");
@@ -273,13 +319,18 @@ async function cmdBalance(deps: BotDeps, who: Actor, today: IstDate): Promise<vo
   const lines = ["Here is where things stand."];
   if (banks.length) {
     lines.push("", "Bank accounts");
-    for (const b of banks) if (b.kind === "bank") lines.push(`${b.name}: ${rupees(b.balancePaise)}${b.countsTowardSafeToSpend ? "" : " (set aside)"}`);
+    for (const b of banks) {
+      if (b.kind !== "bank") continue;
+      const blocked = b.blockedPaise > 0 ? `, ${rupees(b.blockedPaise)} blocked` : "";
+      lines.push(`${b.name}: ${rupees(b.balancePaise)}${blocked}${b.countsTowardSafeToSpend ? "" : " (set aside)"}`);
+    }
   }
   if (cards.length) {
     lines.push("", "Credit cards");
     for (const k of cards) if (k.kind === "card") lines.push(`${k.name}: owes ${rupees(k.outstandingPaise)}, due ${shortDate(k.nextDueDate)}`);
   }
   lines.push("", `Safe to spend: ${rupees(overview.safeToSpendPaise)}, as recorded.`);
+  if (overview.blockedPaise > 0) lines.push(`Blocked for applications, not spendable: ${rupees(overview.blockedPaise)}.`);
   if (overview.setAsidePaise > 0) lines.push(`Set aside, not counted: ${rupees(overview.setAsidePaise)}.`);
   lines.push(`Net worth: ${rupees(overview.netWorthPaise)} (banks minus cards).`);
   await deps.telegram.sendMessage(who.chatId, lines.join("\n"));
@@ -351,7 +402,7 @@ async function cmdToday(deps: BotDeps, who: Actor, today: IstDate): Promise<void
     const total = spent.reduce((s, t) => s + t.amountPaise, 0);
     lines.push(`Today, ${shortDate(today)}: ${rupees(total)} spent across ${spent.length} ${spent.length === 1 ? "entry" : "entries"}.`);
     for (const t of list.items.slice(0, 8)) {
-      const label = t.merchant ?? (t.categoryId ? c.categoryNames.get(t.categoryId) : null) ?? (t.type === "bill_payment" ? "Card payment" : t.type === "transfer" ? "Transfer" : "Entry");
+      const label = t.merchant ?? (t.categoryId ? c.categoryNames.get(t.categoryId) : null) ?? (t.type === "bill_payment" ? "Card payment" : t.type === "transfer" ? "Transfer" : t.type === "investment" ? "Investment" : "Entry");
       lines.push(`${label}: ${rupees(t.amountPaise)}${t.type === "income" ? " received" : ""}`);
     }
   }
@@ -443,7 +494,8 @@ async function cmdUndo(deps: BotDeps, who: Actor, c: BotContext): Promise<void> 
 
 function summaryOfTxn(t: ReturnType<typeof toDto>, c: BotContext): string {
   return describeEntry({
-    type: t.type,
+    // An investment reads like a spend in a short summary: the amount, what it was for, and the account.
+    type: t.type === "investment" ? "expense" : t.type,
     amountPaise: t.amountPaise,
     merchant: t.merchant,
     categoryName: t.categoryId ? (c.categoryNames.get(t.categoryId) ?? null) : null,
@@ -524,6 +576,8 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
       case "budget":
       case "budgets":
         return await cmdBudget(deps, who, today);
+      case "ipo":
+        return await cmdIpo(deps, who, arg, today);
       case "accounts":
         return await cmdAccounts(deps, who, today);
       case "category":
@@ -573,15 +627,16 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
         await reply(deps, to, botVoice.cancelled);
       } else if (action === "ok") {
         await deletePending(deps.db, id);
-        await recordEntry(deps, who, pending.entry, c, to);
+        if (pending.kind === "hold") await recordHold(deps, who, pending.entry, c, to);
+        else await recordEntry(deps, who, pending.entry, c, to);
       } else if (action === "a" && argument) {
         const need = nextNeed(pending.entry);
-        const allowed = need ? optionsFor(pending.entry, need, c).some((a) => a.id === argument) : false;
+        const allowed = need ? optionsFor(pending.entry, need, c, pending.kind).some((a) => a.id === argument) : false;
         if (!need || !allowed) {
           await reply(deps, to, botVoice.noMatchingAccount);
         } else {
           const entry: ParsedEntry = { ...pending.entry, [need]: { status: "found", id: argument } as Resolution };
-          await advance(deps, who, c, { mode: pending.mode, entry }, id, to);
+          await advance(deps, who, c, { mode: pending.mode, entry, ...(pending.kind && { kind: pending.kind }) }, id, to);
         }
       }
     } else if (kind === "u" && id) {
@@ -608,6 +663,29 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
         const options = c.categories.filter((cat) => cat.kind === t.type).slice(0, 12);
         await reply(deps, to, botVoice.askCategory, rows(options.map((cat) => ({ text: cat.name, data: `k:${id}:${cat.id}` }))));
       }
+    } else if (kind === "h" && id && (action === "a" || action === "n" || action === "u")) {
+      const today = todayIst(new Date(deps.now()));
+      let note: string;
+      try {
+        if (action === "u") {
+          const row = await getHold(deps.db, userId, id);
+          if (!row || row.status !== "active") throw new ConflictError("settled");
+          await deleteHold(deps.db, userId, id);
+          return await reply(deps, to, botVoice.holdRemoved);
+        }
+        if (action === "a") {
+          const r = await allotHold(deps.db, userId, id, {}, "telegram", today);
+          note = botVoice.holdAllotted(r.hold.title, r.transaction.amountPaise, r.hold.accountName);
+        } else {
+          const h = await releaseHold(deps.db, userId, id, today);
+          note = botVoice.holdReleased(h.title, h.amountPaise, h.accountName);
+        }
+      } catch (error) {
+        if (!(error instanceof ConflictError || error instanceof NotFoundError)) throw error;
+        note = botVoice.holdAlreadySettled;
+      }
+      const view = await holdsView(deps, who, today, note);
+      await reply(deps, to, view?.text ?? note, view?.buttons);
     } else if (kind === "a" && id && (action === "x" || action === "r")) {
       const today = todayIst(new Date(deps.now()));
       const account = await getAccount(deps.db, userId, id);

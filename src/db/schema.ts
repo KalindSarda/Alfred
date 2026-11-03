@@ -73,7 +73,7 @@ export const transactions = sqliteTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull().references(() => users.id),
-    type: text("type", { enum: ["expense", "income", "transfer", "bill_payment"] }).notNull(),
+    type: text("type", { enum: ["expense", "income", "transfer", "bill_payment", "investment"] }).notNull(),
     amountPaise: integer("amount_paise").notNull(),
     txnDate: text("txn_date").notNull(),
     accountId: text("account_id").notNull().references(() => accounts.id),
@@ -209,6 +209,33 @@ export const budgets = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [uniqueIndex("budgets_user_category_uq").on(t.userId, t.categoryId), check("budgets_limit_positive", sql`${t.limitPaise} > 0`)],
+);
+
+/**
+ * Money blocked in a bank account while it waits on something, such as an IPO application paid by UPI mandate.
+ * It is not a transaction: the balance does not change until the money is really debited (allotted), but what
+ * can be spent is lower while the block lasts. Released holds and allotted ones stay as history.
+ */
+export const holds = sqliteTable(
+  "holds",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    accountId: text("account_id").notNull().references(() => accounts.id),
+    title: text("title").notNull(),
+    amountPaise: integer("amount_paise").notNull(),
+    appliedDate: text("applied_date").notNull(),
+    /** When the outcome is due (the allotment date); Alfred asks then. */
+    expectedDate: text("expected_date"),
+    status: text("status", { enum: ["active", "allotted", "released"] }).notNull().default("active"),
+    resolvedAt: text("resolved_at"),
+    /** The investment entry created when the application was allotted. */
+    resolvedTxnId: text("resolved_txn_id"),
+    /** The day Alfred asked about the outcome, so he asks once. */
+    remindedOn: text("reminded_on"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("holds_user_status_idx").on(t.userId, t.status), check("holds_amount_positive", sql`${t.amountPaise} > 0`)],
 );
 
 /** One row per card payment announced, so Alfred mentions each due date once however often the job runs. */

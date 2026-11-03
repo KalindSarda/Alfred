@@ -32,6 +32,9 @@ export function NetWorthCard({ overview }: { overview: BalanceOverview }) {
           </>
         )}
         <Row label="Owed on credit cards" value={rupees(overview.cardsOwedPaise)} />
+        {overview.blockedPaise > 0 && (
+          <Row label="Blocked for applications" value={rupees(overview.blockedPaise)} hint="Still yours, but not available to spend until the result" />
+        )}
       </div>
       <p className="mt-3 text-xs text-faint">Investments and loans will join this once they are tracked.</p>
     </Card>
@@ -48,6 +51,7 @@ export function NetWorthStrip({ overview }: { overview: BalanceOverview }) {
           In banks {rupees(overview.totalInBanksPaise)}
           {overview.setAsidePaise > 0 && <> (of which {rupees(overview.setAsidePaise)} set aside)</>} · owed on cards{" "}
           {rupees(overview.cardsOwedPaise)}
+          {overview.blockedPaise > 0 && <> · {rupees(overview.blockedPaise)} blocked for applications</>}
         </span>
       </span>
       <span className="font-display text-2xl tabular-nums">{rupees(overview.netWorthPaise)}</span>

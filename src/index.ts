@@ -3,7 +3,7 @@ import { createTelegramApi } from "./bot/telegramApi";
 import { type Bindings, getConfig } from "./config/env";
 import { getDb } from "./db/client";
 import { runMaintenance } from "./services/maintenance";
-import { runNudges } from "./services/nudges";
+import { runHoldReminders, runNudges } from "./services/nudges";
 import { logger } from "./utils/logger";
 
 const app = createApp();
@@ -25,6 +25,12 @@ export default {
       logger.info("nudges_done", { ...result });
     } catch (error) {
       logger.error("nudges_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+    try {
+      const holdsResult = await runHoldReminders({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });
+      logger.info("hold_reminders_done", { ...holdsResult });
+    } catch (error) {
+      logger.error("hold_reminders_failed", { error: error instanceof Error ? error.message : "unknown" });
     }
     try {
       await runMaintenance(db, now());

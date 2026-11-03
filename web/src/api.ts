@@ -82,6 +82,8 @@ export interface BankAccount {
   openingBalancePaise: number;
   countsTowardSafeToSpend: boolean;
   balancePaise: number;
+  blockedPaise: number;
+  availablePaise: number;
   archived: boolean;
   entryCount: number;
 }
@@ -111,9 +113,24 @@ export interface BalanceOverview {
   totalInBanksPaise: number;
   countedPaise: number;
   setAsidePaise: number;
+  blockedPaise: number;
   cardsOwedPaise: number;
   netWorthPaise: number;
   safeToSpendPaise: number;
+}
+
+export interface Hold {
+  id: string;
+  accountId: string;
+  accountName: string;
+  title: string;
+  amountPaise: number;
+  appliedDate: string;
+  expectedDate: string | null;
+  status: "active" | "allotted" | "released";
+  resolvedAt: string | null;
+  resolvedTxnId: string | null;
+  overdue: boolean;
 }
 
 export interface Category {
@@ -125,7 +142,7 @@ export interface Category {
   entryCount: number;
 }
 
-export type TxnType = "expense" | "income" | "transfer" | "bill_payment";
+export type TxnType = "expense" | "income" | "transfer" | "bill_payment" | "investment";
 
 export interface Transaction {
   id: string;

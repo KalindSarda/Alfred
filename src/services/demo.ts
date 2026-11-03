@@ -3,7 +3,7 @@ import { ConflictError } from "../config/errors";
 import type { Db } from "../db/client";
 import { insertAccount } from "../db/accounts";
 import { getCategoryByName } from "../db/categories";
-import { accounts, transactions } from "../db/schema";
+import { accounts, holds, transactions } from "../db/schema";
 import { addDays, type IstDate } from "../domain/dates";
 import { createTransaction } from "./ledger";
 
@@ -98,6 +98,10 @@ export async function clearDemoData(db: Db, userId: string): Promise<{ deleted: 
     .delete(transactions)
     .where(and(eq(transactions.userId, userId), touchesDemo))
     .returning({ id: transactions.id });
-  if (demoIds.length) await db.delete(accounts).where(and(eq(accounts.userId, userId), eq(accounts.isDemo, true)));
+  if (demoIds.length) {
+    // Blocked amounts held on a demo account go with it.
+    await db.delete(holds).where(and(eq(holds.userId, userId), inArray(holds.accountId, demoIds)));
+    await db.delete(accounts).where(and(eq(accounts.userId, userId), eq(accounts.isDemo, true)));
+  }
   return { deleted: removed.length };
 }

@@ -16,6 +16,7 @@ import { dashboardRoutes } from "./routes/dashboard";
 import { demoRoutes } from "./routes/demo";
 import { health } from "./routes/health";
 import { exportRoutes } from "./routes/export";
+import { holdRoutes } from "./routes/holds";
 import { me } from "./routes/me";
 import { peopleRoutes } from "./routes/people";
 import { settingsRoutes } from "./routes/settings";
@@ -82,6 +83,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/budgets", budgetRoutes);
   app.route("/api/export", exportRoutes);
   app.route("/api/people", peopleRoutes);
+  app.route("/api/holds", holdRoutes);
   app.route("/api/telegram", telegramLinkRoutes);
 
   app.notFound((c) => c.json({ error: { code: "not_found", message: "Not found" } }, 404));

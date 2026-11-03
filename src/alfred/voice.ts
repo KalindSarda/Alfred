@@ -88,6 +88,12 @@ export interface BriefingCard {
   statementOutstandingPaise: number;
 }
 
+export interface BriefingHold {
+  title: string;
+  amountPaise: number;
+  expectedDate: string | null;
+}
+
 export interface BriefingBudget {
   categoryName: string;
   pct: number;
@@ -112,6 +118,8 @@ export interface BriefingFacts {
   cards: BriefingCard[];
   /** Budgets with this month's progress. */
   budgets: BriefingBudget[];
+  /** Money blocked for applications such as IPOs, still waiting on an outcome. */
+  holds: BriefingHold[];
 }
 
 export interface BriefingLine {
@@ -135,6 +143,19 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
         : `Your recorded balances are ${rupees(-facts.safeToSpendPaise)} short of what your cards currently owe.${setAside}`,
     to: "/accounts",
   });
+
+  // Blocked money explains why the figure above is lower than the balances.
+  if (facts.holds.length > 0) {
+    const total = facts.holds.reduce((sum, h) => sum + h.amountPaise, 0);
+    const dated = facts.holds.filter((h) => h.expectedDate !== null).map((h) => h.expectedDate as string).sort();
+    const overdue = dated.filter((d) => d < facts.today).length;
+    const next = dated.find((d) => d >= facts.today);
+    const what = facts.holds.length === 1 ? (facts.holds[0] as BriefingHold).title : `${facts.holds.length} applications`;
+    let text = `${rupees(total)} is blocked for ${what}`;
+    if (overdue > 0) text += `. ${overdue === 1 ? "An outcome was" : `${overdue} outcomes were`} due earlier; do tell me how ${overdue === 1 ? "it" : "they"} went`;
+    else if (next) text += `; the outcome is due ${formatDate(next)}`;
+    lines.push({ key: "blocked", text: `${text}.`, to: "/accounts" });
+  }
 
   const cards = [...facts.cards].sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate));
   if (cards.length > 0) {

@@ -12,9 +12,12 @@ const TYPES: { value: TxnType; label: string }[] = [
   { value: "income", label: "Income" },
   { value: "transfer", label: "Transfer" },
   { value: "bill_payment", label: "Pay bill" },
+  { value: "investment", label: "Invest" },
 ];
 
 const isMovement = (type: TxnType) => type === "transfer" || type === "bill_payment";
+/** Movements and investments are not income or expense, so they have no category. */
+const noCategory = (type: TxnType) => isMovement(type) || type === "investment";
 
 export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: () => void }) {
   const accountsQuery = useAccounts(true);
@@ -42,7 +45,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
     [categoriesQuery.data, type, initial],
   );
   // Transfers are bank to bank; a bill payment goes from a bank to a credit card.
-  const fromOptions = useMemo(() => accounts.filter((a) => !isMovement(type) || a.kind === "bank"), [accounts, type]);
+  const fromOptions = useMemo(() => accounts.filter((a) => !noCategory(type) || a.kind === "bank"), [accounts, type]);
   const toOptions = useMemo(
     () => accounts.filter((a) => (type === "bill_payment" ? a.kind === "card" : a.kind === "bank") && a.id !== accountId),
     [accounts, type, accountId],
@@ -59,7 +62,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
         txnDate: date,
         accountId: effectiveAccount,
         toAccountId: isMovement(type) ? toAccountId : null,
-        categoryId: isMovement(type) || !categoryId ? null : categoryId,
+        categoryId: noCategory(type) || !categoryId ? null : categoryId,
         merchant: merchant.trim() || null,
         note: note.trim() || null,
       };
@@ -103,7 +106,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <div role="radiogroup" aria-label="Type" className="grid grid-cols-4 gap-1 rounded-xl bg-sunk p-1">
+      <div role="radiogroup" aria-label="Type" className="grid grid-cols-5 gap-1 rounded-xl bg-sunk p-1">
         {TYPES.map((t) => (
           <button
             key={t.value}
@@ -115,7 +118,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
               setCategoryId("");
               setToAccountId("");
             }}
-            className={`min-h-11 rounded-lg text-[13px] font-medium ${
+            className={`min-h-11 rounded-lg text-xs font-medium ${
               type === t.value ? "bg-card shadow-sm" : "text-soft"
             }`}
           >
@@ -136,7 +139,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
         />
       </Field>
 
-      <Field label={isMovement(type) ? "Pay from" : "Account"}>
+      <Field label={isMovement(type) ? "Pay from" : type === "investment" ? "Paid from" : "Account"} {...(type === "investment" ? { hint: "Money put into shares, IPOs or funds. It lowers the balance but is not counted as spending." } : {})}>
         <select className={inputClass} value={effectiveAccount} onChange={(e) => setAccountId(e.target.value)} required>
           {fromOptions.map((a) => (
             <option key={a.id} value={a.id}>
@@ -169,7 +172,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
         </Field>
       )}
 
-      {!isMovement(type) && (
+      {!noCategory(type) && (
         <Field label="Category">
           <select className={inputClass} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
             <option value="">Uncategorized</option>
@@ -187,7 +190,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
       </Field>
 
       {!isMovement(type) && (
-        <Field label="Merchant">
+        <Field label={type === "investment" ? "What (for example, the IPO)" : "Merchant"}>
           <input className={inputClass} maxLength={80} value={merchant} onChange={(e) => setMerchant(e.target.value)} />
         </Field>
       )}

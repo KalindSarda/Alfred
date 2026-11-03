@@ -31,6 +31,7 @@ describe("balance overview on GET /api/accounts", () => {
     expect(overview).toEqual({
       totalInBanksPaise: 60_000_00,
       countedPaise: 10_000_00,
+      blockedPaise: 0,
       setAsidePaise: 50_000_00,
       cardsOwedPaise: 3_000_00,
       netWorthPaise: 57_000_00,
@@ -78,6 +79,7 @@ describe("balance overview on GET /api/accounts", () => {
     expect((await api("GET", "/api/accounts")).json.overview).toEqual({
       totalInBanksPaise: 0,
       countedPaise: 0,
+      blockedPaise: 0,
       setAsidePaise: 0,
       cardsOwedPaise: 0,
       netWorthPaise: 0,

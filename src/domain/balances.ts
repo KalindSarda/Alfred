@@ -48,7 +48,7 @@ function netInflow(accountId: string, txns: readonly LedgerTxn[]): number {
   let total = 0;
   for (const t of txns) {
     if (t.type === "income" && t.accountId === accountId) total += t.amountPaise;
-    else if (t.type === "expense" && t.accountId === accountId) total -= t.amountPaise;
+    else if ((t.type === "expense" || t.type === "investment") && t.accountId === accountId) total -= t.amountPaise;
     else if (isMovement(t.type)) {
       if (t.accountId === accountId) total -= t.amountPaise;
       if (t.toAccountId === accountId) total += t.amountPaise;
@@ -113,14 +113,20 @@ export function cardSummary(account: CardLedgerAccount, txns: readonly LedgerTxn
 }
 
 /**
- * Safe-to-spend ("available now") = balance of bank accounts flagged to count, minus the total owed
- * across all cards. No dependence on salary dates, due dates or when a bill was paid.
+ * Safe-to-spend ("available now") = balance of bank accounts flagged to count, minus the money blocked in them
+ * (IPO applications and the like), minus the total owed across all cards. No dependence on salary dates,
+ * due dates or when a bill was paid.
  */
-export function safeToSpend(accounts: readonly LedgerAccount[], txns: readonly LedgerTxn[], asOf?: IstDate): number {
+export function safeToSpend(
+  accounts: readonly LedgerAccount[],
+  txns: readonly LedgerTxn[],
+  asOf?: IstDate,
+  blocked: ReadonlyMap<string, number> = new Map(),
+): number {
   let total = 0;
   for (const account of accounts) {
     if (account.kind === "bank") {
-      if (account.countsTowardSafeToSpend) total += bankBalance(account, txns, asOf);
+      if (account.countsTowardSafeToSpend) total += bankBalance(account, txns, asOf) - (blocked.get(account.id) ?? 0);
     } else {
       total -= cardOwed(account, txns, asOf);
     }

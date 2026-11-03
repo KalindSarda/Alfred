@@ -38,6 +38,7 @@ export function checkTransactionShape(v: {
   } else if (v.toAccountId) {
     issues.push({ path: "toAccountId", message: "Only transfers and bill payments have a destination" });
   }
+  if (v.type === "investment" && v.categoryId) issues.push({ path: "categoryId", message: "Investments have no category" });
   return issues;
 }
 

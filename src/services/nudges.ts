@@ -1,15 +1,21 @@
-import { and, eq, isNull } from "drizzle-orm";
-import { cardReminder, type ReminderCard } from "../alfred/botVoice";
+import { and, eq, isNotNull, isNull, lte } from "drizzle-orm";
+import { botVoice, cardReminder, type ReminderCard } from "../alfred/botVoice";
 import { daysBetween } from "../alfred/voice";
 import type { TelegramApi } from "../bot/telegramApi";
 import type { Db } from "../db/client";
-import { nudgeLog, telegramLinks, users } from "../db/schema";
+import { accounts, holds, nudgeLog, telegramLinks, users } from "../db/schema";
 import { todayIst } from "../domain/dates";
 import { newId } from "../utils/id";
 import { logger } from "../utils/logger";
 import { balanceOverview } from "./accounts";
 import { listAccountsWithFigures } from "./ledger";
 import { getSettings } from "./settings";
+
+/** What the counted accounts could pay a card with right now: their balances less any blocked amounts. */
+function availableToPay(figures: Parameters<typeof balanceOverview>[0]): number {
+  const o = balanceOverview(figures);
+  return o.countedPaise - o.blockedPaise;
+}
 
 export interface NudgeDeps {
   db: Db;
@@ -67,7 +73,7 @@ export async function runNudges(deps: NudgeDeps): Promise<NudgeResult> {
       if (candidates.length === 0) continue;
 
       candidates.sort((x, y) => x.dueDate.localeCompare(y.dueDate));
-      await telegram.sendMessage(link.chatId, cardReminder(candidates, balanceOverview(figures).countedPaise));
+      await telegram.sendMessage(link.chatId, cardReminder(candidates, availableToPay(figures)));
 
       // Logged only after Telegram accepted the message.
       const sentAt = new Date(deps.now()).toISOString();
@@ -82,6 +88,42 @@ export async function runNudges(deps: NudgeDeps): Promise<NudgeResult> {
     } catch (error) {
       // One user's failure must not stop the others; the unlogged reminder is retried on the next run.
       logger.error("nudge_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+  }
+  return result;
+}
+
+export interface HoldReminderResult {
+  /** Messages sent. */
+  sent: number;
+}
+
+/**
+ * Asks about each blocked application whose outcome has come due: "Was it allotted?", with the two answers as
+ * buttons. One message per application, once. A message that fails to send is not marked, so it is tried again.
+ */
+export async function runHoldReminders(deps: NudgeDeps): Promise<HoldReminderResult> {
+  const { db, telegram } = deps;
+  const today = todayIst(new Date(deps.now()));
+  const result: HoldReminderResult = { sent: 0 };
+
+  const due = await db
+    .select({ hold: holds, accountName: accounts.name, chatId: telegramLinks.chatId })
+    .from(holds)
+    .innerJoin(accounts, eq(accounts.id, holds.accountId))
+    .innerJoin(telegramLinks, eq(telegramLinks.userId, holds.userId))
+    .innerJoin(users, eq(users.id, holds.userId))
+    .where(and(eq(holds.status, "active"), isNull(holds.remindedOn), isNotNull(holds.expectedDate), lte(holds.expectedDate, today), isNull(users.disabledAt)));
+
+  for (const { hold, accountName, chatId } of due) {
+    try {
+      await telegram.sendMessage(chatId, botVoice.holdDue(hold.title, hold.amountPaise, accountName), [
+        [{ text: "Allotted", data: `h:${hold.id}:a` }, { text: "Not allotted", data: `h:${hold.id}:n` }],
+      ]);
+      await db.update(holds).set({ remindedOn: today }).where(eq(holds.id, hold.id));
+      result.sent += 1;
+    } catch (error) {
+      logger.error("hold_reminder_failed", { error: error instanceof Error ? error.message : "unknown" });
     }
   }
   return result;

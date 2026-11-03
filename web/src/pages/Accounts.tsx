@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Account, CardAccount } from "../api";
 import { AccountForm } from "../components/AccountForm";
+import { BlockedFunds } from "../components/BlockedFunds";
 import { Button, Card, Empty, Sheet, Spinner } from "../components/ui";
 import { rupees, shortDate } from "../format";
 import { NetWorthCard } from "../components/NetWorth";
@@ -68,6 +69,7 @@ export function Accounts() {
       ) : (
         <>
           {overview.data && <NetWorthCard overview={overview.data} />}
+          <BlockedFunds />
           {banks.length > 0 && (
             <Card pad="p-0">
               <h2 className="border-b border-line px-4 py-2 text-sm font-medium text-soft">Bank accounts</h2>
@@ -81,9 +83,12 @@ export function Accounts() {
                             {b.name}
                             {b.archived && <span className="ml-2 text-xs text-faint">archived</span>}
                           </span>
-                          {!b.countsTowardSafeToSpend && <span className="text-xs text-soft">Not counted in safe-to-spend</span>}
+                          {!b.countsTowardSafeToSpend && <span className="block text-xs text-soft">Not counted in safe-to-spend</span>}
                         </span>
-                        <span className="font-semibold tabular-nums">{rupees(b.balancePaise)}</span>
+                        <span className="text-right">
+                          <span className="block font-semibold tabular-nums">{rupees(b.balancePaise)}</span>
+                          {b.blockedPaise > 0 && <span className="block text-xs text-soft">{rupees(b.blockedPaise)} blocked, {rupees(b.availablePaise)} available</span>}
+                        </span>
                       </button>
                     </li>
                   ) : null,
