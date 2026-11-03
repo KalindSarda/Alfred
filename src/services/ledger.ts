@@ -22,6 +22,7 @@ import {
   safeToSpend,
 } from "../domain/balances";
 import { type IstDate, isValidIstDate } from "../domain/dates";
+import { emiToComeByCard } from "../db/emi";
 import { activeHoldTotals } from "../db/holds";
 import { hasNoCategory, isMovement } from "../domain/txnTypes";
 import {
@@ -235,7 +236,7 @@ export async function listTransactions(
 
 export type AccountWithFigures =
   | (AccountRow & { kind: "bank"; balancePaise: number; blockedPaise: number })
-  | (AccountRow & { kind: "card"; summary: CardSummary });
+  | (AccountRow & { kind: "card"; summary: CardSummary; emiToComePaise: number });
 
 function toLedgerAccount(row: AccountRow): LedgerAccount {
   if (row.kind === "bank") {
@@ -266,13 +267,18 @@ export async function listAccountsWithFigures(
   today: IstDate,
   options: { includeArchived?: boolean } = {},
 ): Promise<AccountWithFigures[]> {
-  const [rows, txns, blocked] = await Promise.all([listAccounts(db, userId, options), loadLedgerTxns(db, userId), activeHoldTotals(db, userId)]);
+  const [rows, txns, blocked, emiToCome] = await Promise.all([
+    listAccounts(db, userId, options),
+    loadLedgerTxns(db, userId),
+    activeHoldTotals(db, userId),
+    emiToComeByCard(db, userId, today),
+  ]);
   return rows.map((row): AccountWithFigures => {
     const ledger = toLedgerAccount(row);
     if (ledger.kind === "bank") {
       return { ...row, kind: "bank", balancePaise: bankBalance(ledger, txns, today), blockedPaise: blocked.get(row.id) ?? 0 };
     }
-    return { ...row, kind: "card", summary: cardSummary(ledger, txns, today) };
+    return { ...row, kind: "card", summary: cardSummary(ledger, txns, today), emiToComePaise: emiToCome.get(row.id) ?? 0 };
   });
 }
 

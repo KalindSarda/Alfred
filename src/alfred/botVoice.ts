@@ -136,6 +136,31 @@ export function holdsReply(items: HoldLine[], note?: string): string {
   return lines.join("\n");
 }
 
+export interface EmiLine {
+  title: string;
+  cardName: string;
+  months: number;
+  billedCount: number;
+  toComePaise: number;
+  nextDate: string | null;
+  nextAmountPaise: number | null;
+  status: "active" | "finished" | "cancelled";
+}
+
+/** Running EMI plans: how far along each is and what is still to be billed. */
+export function emiReply(items: EmiLine[]): string {
+  const running = items.filter((p) => p.status === "active");
+  if (running.length === 0) return "You have no EMI plans running. You can add one in the app, under Accounts and cards.";
+  const lines = ["Your EMI plans:"];
+  for (const p of running) {
+    const next = p.nextDate && p.nextAmountPaise !== null ? `, next ${rupees(p.nextAmountPaise)} on ${shortDate(p.nextDate)}` : "";
+    lines.push(`${p.title} (${p.cardName}): ${p.billedCount} of ${p.months} billed, ${rupees(p.toComePaise)} still to come${next}`);
+  }
+  const total = running.reduce((sum, p) => sum + p.toComePaise, 0);
+  lines.push("", `In total ${rupees(total)} is still to be billed. It counts in your net worth, but not yet in what you can spend.`);
+  return lines.join("\n");
+}
+
 export const botVoice = {
   welcome(name: string, now: Date): string {
     return [
@@ -168,6 +193,7 @@ export const botVoice = {
     "/today  what you spent today",
     "/budget  how your budgets stand this month",
     "/accounts  your accounts and cards; archive or restore one",
+    "/emi  your card EMI plans and what is still to be billed",
     "/ipo  money blocked for IPO applications, or: /ipo 15000 hdfc tata tech",
     "/category  list your categories, or add one",
     "/balance  your accounts, cards and safe-to-spend",

@@ -8,7 +8,7 @@ export const Id = z.string().min(1);
 
 export const TransactionType = z.enum(TXN_TYPES);
 export const TxnStatus = z.enum(["draft", "confirmed"]);
-export const TxnSource = z.enum(["web", "telegram", "seed", "ai"]);
+export const TxnSource = z.enum(["web", "telegram", "seed", "ai", "emi"]);
 
 const TransactionFields = z.object({
   type: TransactionType,

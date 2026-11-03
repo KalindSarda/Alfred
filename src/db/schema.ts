@@ -82,7 +82,10 @@ export const transactions = sqliteTable(
     merchant: text("merchant"),
     note: text("note"),
     status: text("status", { enum: ["draft", "confirmed"] }).notNull().default("confirmed"),
-    source: text("source", { enum: ["web", "telegram", "seed", "ai"] }).notNull().default("web"),
+    source: text("source", { enum: ["web", "telegram", "seed", "ai", "emi"] }).notNull().default("web"),
+    /** Set on the instalments an EMI plan adds by itself. No foreign key: plans and their entries are removed together in code. */
+    emiPlanId: text("emi_plan_id"),
+    emiInstalment: integer("emi_instalment"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
     deletedAt: text("deleted_at"),
@@ -92,6 +95,8 @@ export const transactions = sqliteTable(
     index("txn_user_account_date_idx").on(t.userId, t.accountId, t.txnDate),
     index("txn_user_to_account_idx").on(t.userId, t.toAccountId),
     index("txn_user_category_date_idx").on(t.userId, t.categoryId, t.txnDate),
+    // An instalment can be created only once, and a deleted one is never created again.
+    uniqueIndex("txn_emi_instalment_uq").on(t.emiPlanId, t.emiInstalment),
     check("txn_amount_positive", sql`${t.amountPaise} > 0`),
     check(
       "txn_transfer_shape",
@@ -209,6 +214,37 @@ export const budgets = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [uniqueIndex("budgets_user_category_uq").on(t.userId, t.categoryId), check("budgets_limit_positive", sql`${t.limitPaise} > 0`)],
+);
+
+/**
+ * A purchase converted to equal monthly instalments on a credit card (a phone on a 6-month EMI). The whole amount
+ * stays owed on the card, but each statement asks only for that month's instalment, so the instalments are added as
+ * ordinary expenses on the card, one a month, on the card's statement day.
+ */
+export const emiPlans = sqliteTable(
+  "emi_plans",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    cardAccountId: text("card_account_id").notNull().references(() => accounts.id),
+    title: text("title").notNull(),
+    categoryId: text("category_id").references(() => categories.id),
+    /** What the instalments add up to, interest included. */
+    totalPaise: integer("total_paise").notNull(),
+    months: integer("months").notNull(),
+    instalmentPaise: integer("instalment_paise").notNull(),
+    /** The month of the first instalment's statement, "YYYY-MM". */
+    startMonth: text("start_month").notNull(),
+    createdAt: text("created_at").notNull(),
+    /** Set when the plan was closed early; instalments already added stay. */
+    cancelledAt: text("cancelled_at"),
+  },
+  (t) => [
+    index("emi_plans_user_idx").on(t.userId),
+    check("emi_total_positive", sql`${t.totalPaise} > 0`),
+    check("emi_instalment_positive", sql`${t.instalmentPaise} > 0`),
+    check("emi_months_range", sql`${t.months} BETWEEN 1 AND 60`),
+  ],
 );
 
 /**

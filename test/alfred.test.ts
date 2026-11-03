@@ -22,6 +22,7 @@ const facts = (over: Partial<BriefingFacts> = {}): BriefingFacts => ({
   cards: [],
   budgets: [],
   holds: [],
+  emi: { toComePaise: 0, next: null },
   ...over,
 });
 
@@ -163,6 +164,22 @@ describe("briefing lines", () => {
 
   it("shows neither review line when nothing needs attention", () => {
     expect(lines().some((l) => l.key === "uncategorized" || l.key === "drafts")).toBe(false);
+  });
+});
+
+describe("EMIs in the briefing", () => {
+  it("is silent when no EMI is running", () => {
+    expect(lines().some((l) => l.key === "emi")).toBe(false);
+  });
+
+  it("says what is still to be billed and what comes next", () => {
+    const l = find({ emi: { toComePaise: 1_01_666_67, next: { title: "Phone", amountPaise: 20_333_33, date: "2026-11-23" } } }, "emi");
+    expect(l?.text).toBe("₹1,01,666.67 of card EMIs is still to be billed; the next is ₹20,333.33 for Phone on 2026-11-23.");
+    expect(l?.to).toBe("/accounts");
+  });
+
+  it("copes with no next date", () => {
+    expect(find({ emi: { toComePaise: 500_00, next: null } }, "emi")?.text).toBe("₹500 of card EMIs is still to be billed.");
   });
 });
 

@@ -1,5 +1,5 @@
 import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type Hold, type Me, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type EmiPlan, type Hold, type Me, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -52,6 +52,10 @@ export const useBriefing = () =>
 
 export const useBudgets = () => useQuery({ queryKey: ["budgets"], queryFn: () => api.get<Budgets>("/api/budgets") });
 
+/** Card EMI plans, running ones first. */
+export const useEmiPlans = () =>
+  useQuery({ queryKey: ["emi"], queryFn: async () => (await api.get<{ items: EmiPlan[] }>("/api/emi-plans")).items });
+
 /** Money blocked for IPO applications and the like; active ones only. */
 export const useHolds = () =>
   useQuery({ queryKey: ["holds"], queryFn: async () => (await api.get<{ items: Hold[] }>("/api/holds")).items });
@@ -101,6 +105,7 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["briefing"] }),
       client.invalidateQueries({ queryKey: ["budgets"] }),
       client.invalidateQueries({ queryKey: ["holds"] }),
+      client.invalidateQueries({ queryKey: ["emi"] }),
       client.invalidateQueries({ queryKey: ["review"] }),
     ]);
 }

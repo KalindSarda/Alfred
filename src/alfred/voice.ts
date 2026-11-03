@@ -94,6 +94,12 @@ export interface BriefingHold {
   expectedDate: string | null;
 }
 
+export interface BriefingEmi {
+  /** Instalments not yet billed, across all running plans. */
+  toComePaise: number;
+  next: { title: string; amountPaise: number; date: string } | null;
+}
+
 export interface BriefingBudget {
   categoryName: string;
   pct: number;
@@ -120,6 +126,8 @@ export interface BriefingFacts {
   budgets: BriefingBudget[];
   /** Money blocked for applications such as IPOs, still waiting on an outcome. */
   holds: BriefingHold[];
+  /** Card EMI instalments still to be billed. */
+  emi: BriefingEmi;
 }
 
 export interface BriefingLine {
@@ -174,6 +182,16 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
         to: "/accounts",
       });
     }
+  }
+
+  // EMIs still to come are debt that no statement shows yet, so they get a line of their own.
+  if (facts.emi.toComePaise > 0) {
+    const n = facts.emi.next;
+    lines.push({
+      key: "emi",
+      text: `${rupees(facts.emi.toComePaise)} of card EMIs is still to be billed${n ? `; the next is ${rupees(n.amountPaise)} for ${n.title} on ${formatDate(n.date)}` : ""}.`,
+      to: "/accounts",
+    });
   }
 
   const phrase = periodPhrase(facts);

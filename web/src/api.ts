@@ -102,6 +102,8 @@ export interface CardAccount {
   outstandingPaise: number;
   unbilledPaise: number;
   statementOutstandingPaise: number;
+  emiToComePaise: number;
+  availableCreditPaise: number;
   utilizationPct: number;
   nextStatementDate: string;
   nextDueDate: string;
@@ -115,6 +117,7 @@ export interface BalanceOverview {
   setAsidePaise: number;
   blockedPaise: number;
   cardsOwedPaise: number;
+  emiToComePaise: number;
   netWorthPaise: number;
   safeToSpendPaise: number;
 }
@@ -131,6 +134,26 @@ export interface Hold {
   resolvedAt: string | null;
   resolvedTxnId: string | null;
   overdue: boolean;
+}
+
+export interface EmiPlan {
+  id: string;
+  cardAccountId: string;
+  cardName: string;
+  title: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  totalPaise: number;
+  months: number;
+  instalmentPaise: number;
+  startMonth: string;
+  status: "active" | "finished" | "cancelled";
+  billedCount: number;
+  billedPaise: number;
+  toComePaise: number;
+  nextDate: string | null;
+  nextAmountPaise: number | null;
+  locked: boolean;
 }
 
 export interface Category {
@@ -155,7 +178,7 @@ export interface Transaction {
   merchant: string | null;
   note: string | null;
   status: "draft" | "confirmed";
-  source: "web" | "telegram" | "seed" | "ai";
+  source: "web" | "telegram" | "seed" | "ai" | "emi";
 }
 
 export interface Summary {

@@ -3,7 +3,7 @@ import { ConflictError, NotFoundError, ValidationError } from "../config/errors"
 import type { Db } from "../db/client";
 import { getAccount, insertAccount } from "../db/accounts";
 import { activeHoldTotals } from "../db/holds";
-import { accounts, holds, nudgeLog, transactions } from "../db/schema";
+import { accounts, emiPlans, holds, nudgeLog, transactions } from "../db/schema";
 import type { IstDate } from "../domain/dates";
 import type { CreateAccountData, UpdateAccountData } from "../schemas/account";
 import { nowIso } from "../utils/id";
@@ -40,6 +40,10 @@ export interface CardAccountDto {
   outstandingPaise: number;
   unbilledPaise: number;
   statementOutstandingPaise: number;
+  /** Instalments of running EMI plans not yet billed: still owed, but on no statement yet. */
+  emiToComePaise: number;
+  /** The limit less what is owed and what the EMIs still hold back. */
+  availableCreditPaise: number;
   utilizationPct: number;
   nextStatementDate: IstDate;
   nextDueDate: IstDate;
@@ -77,7 +81,12 @@ export function toAccountDto(account: AccountWithFigures, entryCount = 0): Accou
     outstandingPaise: account.summary.owedPaise,
     unbilledPaise: account.summary.unbilledPaise,
     statementOutstandingPaise: account.summary.statementOutstandingPaise,
-    utilizationPct: account.summary.utilizationPct,
+    emiToComePaise: account.emiToComePaise,
+    availableCreditPaise: (account.creditLimitPaise ?? 0) - account.summary.owedPaise - account.emiToComePaise,
+    // Utilisation counts what the EMIs still hold back, because the bank keeps that part of the limit blocked.
+    utilizationPct: account.creditLimitPaise
+      ? Math.round(((Math.max(0, account.summary.owedPaise) + account.emiToComePaise) / account.creditLimitPaise) * 10_000) / 100
+      : account.summary.utilizationPct,
     nextStatementDate: account.summary.nextStatementDate,
     nextDueDate: account.summary.nextDueDate,
   };
@@ -94,6 +103,8 @@ export interface BalanceOverview {
   blockedPaise: number;
   /** What all active credit cards currently owe. */
   cardsOwedPaise: number;
+  /** EMI instalments not yet billed. Counted in net worth, not in safe-to-spend. */
+  emiToComePaise: number;
   /** Banks minus cards. Investments and loans will join this once they are tracked. */
   netWorthPaise: number;
   safeToSpendPaise: number;
@@ -105,6 +116,7 @@ export function balanceOverview(figures: readonly AccountWithFigures[]): Balance
   let countedPaise = 0;
   let blockedPaise = 0;
   let cardsOwedPaise = 0;
+  let emiToComePaise = 0;
   for (const a of figures) {
     if (a.archivedAt) continue;
     if (a.kind === "bank") {
@@ -115,6 +127,7 @@ export function balanceOverview(figures: readonly AccountWithFigures[]): Balance
       }
     } else {
       cardsOwedPaise += a.summary.owedPaise;
+      emiToComePaise += a.emiToComePaise;
     }
   }
   return {
@@ -123,7 +136,8 @@ export function balanceOverview(figures: readonly AccountWithFigures[]): Balance
     setAsidePaise: totalInBanksPaise - countedPaise,
     blockedPaise,
     cardsOwedPaise,
-    netWorthPaise: totalInBanksPaise - cardsOwedPaise,
+    emiToComePaise,
+    netWorthPaise: totalInBanksPaise - cardsOwedPaise - emiToComePaise,
     safeToSpendPaise: countedPaise - blockedPaise - cardsOwedPaise,
   };
 }
@@ -229,6 +243,8 @@ export async function deleteAccount(db: Db, userId: string, id: string): Promise
       `${entries} ${entries === 1 ? "entry uses" : "entries use"} this account. Merge it into another account, or archive it.`,
     );
   }
+  const [running] = await db.select({ n: count() }).from(emiPlans).where(and(eq(emiPlans.userId, userId), eq(emiPlans.cardAccountId, id), isNull(emiPlans.cancelledAt)));
+  if ((running?.n ?? 0) > 0) throw new ConflictError("This card has an EMI plan. Close or delete the plan first, then delete the card.");
   if (((await activeHoldTotals(db, userId)).get(id) ?? 0) > 0) {
     throw new ConflictError("Money is still blocked in this account. Settle it first (allotted or not allotted), then delete the account.");
   }
@@ -236,6 +252,7 @@ export async function deleteAccount(db: Db, userId: string, id: string): Promise
     db.delete(transactions).where(uses(userId, id)),
     // Settled blocked amounts are only history and go with the account.
     db.delete(holds).where(and(eq(holds.userId, userId), eq(holds.accountId, id))),
+    db.delete(emiPlans).where(and(eq(emiPlans.userId, userId), eq(emiPlans.cardAccountId, id))),
     db.delete(nudgeLog).where(and(eq(nudgeLog.userId, userId), eq(nudgeLog.cardAccountId, id))),
     db.delete(accounts).where(and(eq(accounts.userId, userId), eq(accounts.id, id))),
   ]);
@@ -282,6 +299,8 @@ export async function mergeAccount(db: Db, userId: string, fromId: string, intoI
     db.update(transactions).set({ toAccountId: intoId }).where(and(eq(transactions.userId, userId), eq(transactions.toAccountId, fromId))),
     db.update(accounts).set(addOpening).where(and(eq(accounts.userId, userId), eq(accounts.id, intoId))),
     db.update(holds).set({ accountId: intoId }).where(and(eq(holds.userId, userId), eq(holds.accountId, fromId))),
+    // Plans move with their card; from then on their instalments follow the target card's statement day.
+    db.update(emiPlans).set({ cardAccountId: intoId }).where(and(eq(emiPlans.userId, userId), eq(emiPlans.cardAccountId, fromId))),
     db.delete(nudgeLog).where(and(eq(nudgeLog.userId, userId), eq(nudgeLog.cardAccountId, fromId))),
     db.delete(accounts).where(and(eq(accounts.userId, userId), eq(accounts.id, fromId))),
   ]);
@@ -302,6 +321,9 @@ export async function setArchived(
   const current = await accountDto(db, userId, id, today);
   if (archived && current.kind === "card" && current.outstandingPaise !== 0) {
     throw new ConflictError("This card still has an outstanding balance; pay it off before archiving");
+  }
+  if (archived && current.kind === "card" && current.emiToComePaise > 0) {
+    throw new ConflictError("This card still has EMI instalments to come; close the plan before archiving");
   }
   await db
     .update(accounts)

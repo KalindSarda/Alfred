@@ -13,6 +13,7 @@ import { type IstDate, parseIstDate } from "../domain/dates";
 import { balanceOverview } from "./accounts";
 import { getMe } from "./auth";
 import { listBudgets } from "./budgets";
+import { listPlans } from "./emi";
 import { listHolds } from "./holds";
 import { getSummary } from "./dashboard";
 import { listAccountsWithFigures } from "./ledger";
@@ -39,13 +40,15 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
   const base = { greeting: greeting(me.displayName, now), subline: subline(now), source: "template" as const, generatedAt: now.toISOString(), footer: BRIEFING_FOOTER };
   if (!anyAccount) return { ...base, lines: emptyBriefingLines() };
 
-  const [summary, figures, settings, budgetOverview, activeHolds] = await Promise.all([
+  const [summary, figures, settings, budgetOverview, activeHolds, emiPlans] = await Promise.all([
     getSummary(db, userId, "cycle", today),
     listAccountsWithFigures(db, userId, today),
     getSettings(db, userId),
     listBudgets(db, userId, today),
     listHolds(db, userId, today, "active"),
+    listPlans(db, userId, today),
   ]);
+  const upcoming = emiPlans.filter((p) => p.status === "active" && p.nextDate !== null && p.nextAmountPaise !== null).sort((a, b) => (a.nextDate as string).localeCompare(b.nextDate as string))[0];
   const cards = figures.flatMap((a) =>
     a.kind === "card"
       ? [{ name: a.name, nextDueDate: a.summary.nextDueDate, statementOutstandingPaise: a.summary.statementOutstandingPaise }]
@@ -64,6 +67,10 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
       uncategorizedCount: summary.uncategorizedCount,
       draftCount: summary.draftCount,
       cards,
+      emi: {
+        toComePaise: balanceOverview(figures).emiToComePaise,
+        next: upcoming ? { title: upcoming.title, amountPaise: upcoming.nextAmountPaise as number, date: upcoming.nextDate as string } : null,
+      },
       holds: activeHolds.map((h) => ({ title: h.title, amountPaise: h.amountPaise, expectedDate: h.expectedDate })),
       budgets: budgetOverview.items.map((b) => ({ categoryName: b.categoryName, pct: b.pct, remainingPaise: b.remainingPaise, status: b.status })),
     },

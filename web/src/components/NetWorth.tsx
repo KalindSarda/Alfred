@@ -32,6 +32,9 @@ export function NetWorthCard({ overview }: { overview: BalanceOverview }) {
           </>
         )}
         <Row label="Owed on credit cards" value={rupees(overview.cardsOwedPaise)} />
+        {overview.emiToComePaise > 0 && (
+          <Row label="EMIs still to be billed" value={rupees(overview.emiToComePaise)} hint="Owed, but on no statement yet; not held back from safe-to-spend" />
+        )}
         {overview.blockedPaise > 0 && (
           <Row label="Blocked for applications" value={rupees(overview.blockedPaise)} hint="Still yours, but not available to spend until the result" />
         )}
@@ -51,6 +54,7 @@ export function NetWorthStrip({ overview }: { overview: BalanceOverview }) {
           In banks {rupees(overview.totalInBanksPaise)}
           {overview.setAsidePaise > 0 && <> (of which {rupees(overview.setAsidePaise)} set aside)</>} · owed on cards{" "}
           {rupees(overview.cardsOwedPaise)}
+          {overview.emiToComePaise > 0 && <> · {rupees(overview.emiToComePaise)} of EMIs to come</>}
           {overview.blockedPaise > 0 && <> · {rupees(overview.blockedPaise)} blocked for applications</>}
         </span>
       </span>

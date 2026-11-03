@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Account, CardAccount } from "../api";
 import { AccountForm } from "../components/AccountForm";
 import { BlockedFunds } from "../components/BlockedFunds";
+import { EmiPlans } from "../components/EmiPlans";
 import { Button, Card, Empty, Sheet, Spinner } from "../components/ui";
 import { rupees, shortDate } from "../format";
 import { NetWorthCard } from "../components/NetWorth";
@@ -29,6 +30,10 @@ function CardRow({ card, onOpen }: { card: CardAccount; onOpen: () => void }) {
               {card.utilizationPct}% of {rupees(card.creditLimitPaise)}
             </span>
             <span>Unbilled {rupees(card.unbilledPaise)}</span>
+          </span>
+          <span className="mt-1 flex justify-between text-xs text-soft">
+            <span>Available credit {rupees(card.availableCreditPaise)}</span>
+            {card.emiToComePaise > 0 && <span>{rupees(card.emiToComePaise)} in EMIs to come</span>}
           </span>
         </span>
         <span className="flex justify-between text-sm text-soft">
@@ -107,6 +112,8 @@ export function Accounts() {
               </ul>
             </Card>
           )}
+
+          <EmiPlans />
         </>
       )}
 

@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, holdsReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
+import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, emiReply, holdsReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
 import { AppError, ConflictError, NotFoundError, RateLimitedError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
@@ -15,6 +15,7 @@ import { getMe } from "../services/auth";
 import { balanceOverview, setArchived, toAccountDto } from "../services/accounts";
 import { getCashflow } from "../services/cashflow";
 import { createCategory } from "../services/categories";
+import { listPlans } from "../services/emi";
 import { allotHold, createHold, deleteHold, listHolds, releaseHold } from "../services/holds";
 import { budgetFor, listBudgets } from "../services/budgets";
 import { getSummary } from "../services/dashboard";
@@ -251,6 +252,10 @@ async function holdsView(deps: BotDeps, who: Actor, today: IstDate, note?: strin
   };
 }
 
+async function cmdEmi(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
+  await deps.telegram.sendMessage(who.chatId, emiReply(await listPlans(deps.db, who.userId, today)));
+}
+
 async function cmdIpo(deps: BotDeps, who: Actor, arg: string, today: IstDate): Promise<void> {
   if (arg) return await startEntry(deps, who, arg, "expense", "command", "hold");
   const view = await holdsView(deps, who, today);
@@ -327,11 +332,16 @@ async function cmdBalance(deps: BotDeps, who: Actor, today: IstDate): Promise<vo
   }
   if (cards.length) {
     lines.push("", "Credit cards");
-    for (const k of cards) if (k.kind === "card") lines.push(`${k.name}: owes ${rupees(k.outstandingPaise)}, due ${shortDate(k.nextDueDate)}`);
+    for (const k of cards) {
+      if (k.kind !== "card") continue;
+      const emi = k.emiToComePaise > 0 ? `, ${rupees(k.emiToComePaise)} in EMIs to come` : "";
+      lines.push(`${k.name}: owes ${rupees(k.outstandingPaise)}, due ${shortDate(k.nextDueDate)}${emi}`);
+    }
   }
   lines.push("", `Safe to spend: ${rupees(overview.safeToSpendPaise)}, as recorded.`);
   if (overview.blockedPaise > 0) lines.push(`Blocked for applications, not spendable: ${rupees(overview.blockedPaise)}.`);
   if (overview.setAsidePaise > 0) lines.push(`Set aside, not counted: ${rupees(overview.setAsidePaise)}.`);
+  if (overview.emiToComePaise > 0) lines.push(`EMIs still to be billed: ${rupees(overview.emiToComePaise)}. Net worth counts them; safe to spend does not, until they are billed.`);
   lines.push(`Net worth: ${rupees(overview.netWorthPaise)} (banks minus cards).`);
   await deps.telegram.sendMessage(who.chatId, lines.join("\n"));
 }
@@ -576,6 +586,8 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
       case "budget":
       case "budgets":
         return await cmdBudget(deps, who, today);
+      case "emi":
+        return await cmdEmi(deps, who, today);
       case "ipo":
         return await cmdIpo(deps, who, arg, today);
       case "accounts":
