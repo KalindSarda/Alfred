@@ -43,7 +43,8 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
   const [instalment, setInstalment] = useState("");
   const [startMonth, setStartMonth] = useState(plan?.startMonth ?? today().slice(0, 7));
   const [replaces, setReplaces] = useState("");
-  const locked = plan?.locked ?? false;
+  // A closed plan keeps its amounts until it is reopened; any other can be corrected.
+  const frozen = plan?.status === "cancelled";
   const card = cards.find((c) => c.id === (cardId || cards[0]?.id));
   const chosenCard = card?.id ?? "";
 
@@ -70,7 +71,7 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
 
   const save = () => {
     if (!title.trim()) return setError("Say what it is, such as the phone.");
-    if (plan && locked) {
+    if (plan && frozen) {
       const body = { title: title.trim(), categoryId: categoryId || null };
       return void run(() => api.patch(`/api/emi-plans/${plan.id}`, body), "Saved.");
     }
@@ -120,18 +121,18 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
           </select>
         </Field>
         <Field label="Amount converted to EMI (₹)">
-          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="122000" disabled={locked} value={total} onChange={(e) => setTotal(e.target.value)} />
+          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="122000" disabled={frozen} value={total} onChange={(e) => setTotal(e.target.value)} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Months">
-            <input className={inputClass} type="number" min={1} max={60} disabled={locked} value={months} onChange={(e) => setMonths(e.target.value)} />
+            <input className={inputClass} type="number" min={1} max={60} disabled={frozen} value={months} onChange={(e) => setMonths(e.target.value)} />
           </Field>
           <Field label="Starting month">
-            <input className={inputClass} type="month" disabled={locked} value={startMonth} onChange={(e) => setStartMonth(e.target.value)} />
+            <input className={inputClass} type="month" disabled={frozen} value={startMonth} onChange={(e) => setStartMonth(e.target.value)} />
           </Field>
         </div>
         <Field label="Monthly instalment (optional)" hint="Only if your bank's instalment includes interest. Then the total becomes instalment times months.">
-          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="Leave empty to split evenly" disabled={locked} value={instalment} onChange={(e) => setInstalment(e.target.value)} />
+          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="Leave empty to split evenly" disabled={frozen} value={instalment} onChange={(e) => setInstalment(e.target.value)} />
         </Field>
         {!plan && (
           <Field label="Is this purchase already in your entries?" hint="If so, pick it and it is removed, so the phone is not counted twice.">
@@ -145,9 +146,14 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
             </select>
           </Field>
         )}
-        {locked && <p className="text-xs text-soft">Instalments have already been added, so only the name and category can change. To change the amounts, close this plan and add a new one.</p>}
-        {!locked && preview && <p className="rounded-lg bg-sunk px-3 py-2 text-sm">{preview}</p>}
-        {!locked && (
+        {frozen && <p className="text-xs text-soft">This plan is closed, so only the name and category can change. Reopen it to correct the amounts.</p>}
+        {plan?.locked && !frozen && (
+          <p className="rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn-ink">
+            Instalments have already been added. If you change the amounts, months or starting month, Alfred removes them and adds them again from the new details. Any you edited by hand are lost.
+          </p>
+        )}
+        {!frozen && preview && <p className="rounded-lg bg-sunk px-3 py-2 text-sm">{preview}</p>}
+        {!frozen && (
           <p className="text-xs text-soft">
             Each month Alfred adds the instalment as an expense on the card, on its statement day. The full amount stays held against the limit
             {card ? ` (the ${startMonthLabel(startMonth)} start is the first statement that carries an instalment)` : ""}.
@@ -158,13 +164,16 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
           <Button type="submit" className="flex-1" disabled={busy}>
             Save
           </Button>
-          {plan && !plan.locked && (
+          {plan && (
             <Button
               type="button"
               variant="secondary"
               disabled={busy}
               onClick={() => {
-                if (window.confirm("Delete this plan? Nothing has been added yet.")) void run(() => api.del(`/api/emi-plans/${plan.id}`), "Plan deleted.");
+                const text = plan.locked
+                  ? `Delete this plan and the ${plan.billedCount === 1 ? "instalment" : "instalments"} Alfred added for it? The card's balance falls back accordingly. This cannot be undone.`
+                  : "Delete this plan? Nothing has been added yet.";
+                if (window.confirm(text)) void run(() => api.del(`/api/emi-plans/${plan.id}${plan.locked ? "?instalments=remove" : ""}`), "Plan deleted.");
               }}
             >
               Delete
@@ -176,7 +185,7 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
   );
 }
 
-function Row({ plan, onEdit, onClose }: { plan: EmiPlan; onEdit: () => void; onClose: () => void }) {
+function Row({ plan, onEdit, onClose, onReopen }: { plan: EmiPlan; onEdit: () => void; onClose: () => void; onReopen: () => void }) {
   const pct = Math.min(100, Math.round((plan.billedCount / plan.months) * 100));
   return (
     <li className="space-y-2 px-4 py-3">
@@ -209,6 +218,11 @@ function Row({ plan, onEdit, onClose }: { plan: EmiPlan; onEdit: () => void; onC
             Close plan
           </Button>
         )}
+        {plan.status === "cancelled" && (
+          <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={onReopen}>
+            Reopen
+          </Button>
+        )}
       </div>
     </li>
   );
@@ -239,6 +253,17 @@ export function EmiPlans() {
     }
   };
 
+  const reopenPlan = async (p: EmiPlan) => {
+    setError("");
+    try {
+      await api.post(`/api/emi-plans/${p.id}/reopen`);
+      await refresh();
+      toast.show(`${p.title} reopened.`);
+    } catch (e) {
+      setError(describeError(e));
+    }
+  };
+
   return (
     <Card pad="p-0">
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2">
@@ -256,7 +281,7 @@ export function EmiPlans() {
       ) : (
         <ul className="divide-y divide-line">
           {items.map((p) => (
-            <Row key={p.id} plan={p} onEdit={() => setSheet({ plan: p })} onClose={() => void closePlan(p)} />
+            <Row key={p.id} plan={p} onEdit={() => setSheet({ plan: p })} onClose={() => void closePlan(p)} onReopen={() => void reopenPlan(p)} />
           ))}
         </ul>
       )}

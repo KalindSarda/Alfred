@@ -189,14 +189,52 @@ describe("changing and closing a plan", () => {
     expect(await s.entries()).toMatchObject([{ merchant: "Pixel phone", categoryId: other }]);
   });
 
-  it("the amounts and months can change only before any instalment exists", async () => {
+  it("the amounts, months and start can be corrected before any instalment exists", async () => {
     const s = await setup();
     const early = (await s.plan({ startMonth: "2026-12" })).json;
     const res = await s.api("PATCH", `/api/emi-plans/${early.id}`, { months: 12, totalPaise: 1_20_000_00 });
     expect(res.json).toMatchObject({ months: 12, instalmentPaise: 10_000_00, totalPaise: 1_20_000_00 });
-    const running = (await s.plan()).json;
-    const blocked = await s.api("PATCH", `/api/emi-plans/${running.id}`, { months: 12 });
+  });
+
+  it("correcting the amounts after instalments exist rebuilds them from the new details", async () => {
+    const s = await setup();
+    const p = (await s.plan()).json; // starts Oct 2026: one instalment of 20,333.33 already added
+    expect((await s.entries()).map((t) => t.amountPaise)).toEqual([20_333_33]);
+    const res = await s.api("PATCH", `/api/emi-plans/${p.id}`, { months: 12, totalPaise: 1_20_000_00 });
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({ months: 12, instalmentPaise: 10_000_00, billedCount: 1 });
+    expect((await s.entries()).map((t) => [t.txnDate, t.amountPaise])).toEqual([["2026-10-23", 10_000_00]]);
+    expect((await s.cardFigures()).outstandingPaise).toBe(10_000_00);
+
+    // Moving the start to a later month removes the instalment that no longer belongs.
+    await s.api("PATCH", `/api/emi-plans/${p.id}`, { startMonth: "2026-11" });
+    expect(await s.entries()).toHaveLength(0);
+    expect((await s.cardFigures()).outstandingPaise).toBe(0);
+    expect((await s.cardFigures()).emiToComePaise).toBe(1_20_000_00);
+  });
+
+  it("a closed plan keeps its amounts until it is reopened", async () => {
+    const s = await setup();
+    const p = (await s.plan()).json;
+    await s.api("POST", `/api/emi-plans/${p.id}/cancel`);
+    const blocked = await s.api("PATCH", `/api/emi-plans/${p.id}`, { months: 12 });
     expect(blocked.status).toBe(409);
+    expect(blocked.json.error.message).toContain("Reopen");
+    expect((await s.api("PATCH", `/api/emi-plans/${p.id}`, { title: "Renamed" })).json.title).toBe("Renamed");
+  });
+
+  it("reopening a closed plan carries on, adding instalments that have since come due", async () => {
+    const s = await setup();
+    const p = (await s.plan()).json;
+    await s.api("POST", `/api/emi-plans/${p.id}/cancel`);
+    expect((await s.cardFigures()).emiToComePaise).toBe(0);
+    const res = await s.api("POST", `/api/emi-plans/${p.id}/reopen`);
+    expect(res.status).toBe(200);
+    expect(res.json.status).toBe("active");
+    expect((await s.cardFigures()).emiToComePaise).toBe(1_22_000_00 - 20_333_33);
+    expect(await materializeEmi(db, s.user.id, "2026-11-23")).toBe(1);
+    expect((await s.api("POST", `/api/emi-plans/${p.id}/reopen`)).status).toBe(409);
+    expect((await s.api("POST", "/api/emi-plans/nope/reopen")).status).toBe(404);
   });
 
   it("closing a plan early stops further instalments and the remaining debt", async () => {
@@ -211,13 +249,30 @@ describe("changing and closing a plan", () => {
     expect((await s.api("PATCH", `/api/emi-plans/${p.id}`, { months: 3 })).status).toBe(409);
   });
 
-  it("a plan made by mistake can be deleted until an instalment exists", async () => {
+  it("a plan made by mistake can be deleted; with instalments it needs to be told to remove them too", async () => {
     const s = await setup();
     const early = (await s.plan({ startMonth: "2026-12" })).json;
     expect((await s.api("DELETE", `/api/emi-plans/${early.id}`)).status).toBe(204);
     const running = (await s.plan()).json;
-    expect((await s.api("DELETE", `/api/emi-plans/${running.id}`)).status).toBe(409);
+    const refused = await s.api("DELETE", `/api/emi-plans/${running.id}`);
+    expect(refused.status).toBe(409);
+    expect(refused.json.error.message).toContain("1 instalment entry was already added");
     expect(((await s.api("GET", "/api/emi-plans")).json.items as Json[]).map((x) => x.id)).toEqual([running.id]);
+
+    expect((await s.api("DELETE", `/api/emi-plans/${running.id}?instalments=remove`)).status).toBe(204);
+    expect((await s.api("GET", "/api/emi-plans")).json.items).toEqual([]);
+    expect(await s.entries()).toHaveLength(0);
+    const c = await s.cardFigures();
+    expect([c.outstandingPaise, c.emiToComePaise]).toEqual([0, 0]);
+  });
+
+  it("a closed plan can be deleted with its instalments too", async () => {
+    const s = await setup();
+    const p = (await s.plan()).json;
+    await s.api("POST", `/api/emi-plans/${p.id}/cancel`);
+    expect((await s.api("DELETE", `/api/emi-plans/${p.id}?instalments=remove`)).status).toBe(204);
+    expect(await s.entries()).toHaveLength(0);
+    expect((await s.cardFigures()).outstandingPaise).toBe(0);
   });
 
   it("lists running plans first, then closed ones", async () => {

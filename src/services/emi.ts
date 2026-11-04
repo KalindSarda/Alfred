@@ -31,7 +31,7 @@ export interface EmiPlanDto {
   toComePaise: number;
   nextDate: IstDate | null;
   nextAmountPaise: number | null;
-  /** True once an instalment exists; from then on only the name and category can change. */
+  /** True once instalments have been added. Changing the amounts then rebuilds them. */
   locked: boolean;
 }
 
@@ -226,10 +226,7 @@ export async function updatePlan(db: Db, userId: string, id: string, patch: Upda
   const row = await getPlanRow(db, userId, id);
   if (!row) throw new NotFoundError("EMI plan not found");
   const structural = patch.totalPaise !== undefined || patch.months !== undefined || patch.instalmentPaise !== undefined || patch.startMonth !== undefined;
-  if (structural) {
-    if (row.cancelledAt) throw new ConflictError("This plan was closed");
-    if ((await entryCounts(db, userId)).get(id)) throw new ConflictError("Instalments have already been added, so only the name and category can change");
-  }
+  if (structural && row.cancelledAt) throw new ConflictError("This plan is closed. Reopen it to change the amounts.");
   if (patch.categoryId !== undefined) await requireCategory(db, userId, patch.categoryId);
 
   const months = patch.months ?? row.months;
@@ -249,8 +246,11 @@ export async function updatePlan(db: Db, userId: string, id: string, patch: Upda
       .update(emiPlans)
       .set({ title, categoryId, months, totalPaise: amounts.totalPaise, instalmentPaise: amounts.instalmentPaise, startMonth: patch.startMonth ?? row.startMonth })
       .where(and(eq(emiPlans.userId, userId), eq(emiPlans.id, id))),
-    // Instalments already added take the new name and category too.
-    db.update(transactions).set({ merchant: title, categoryId }).where(and(eq(transactions.userId, userId), eq(transactions.emiPlanId, id), isNull(transactions.deletedAt))),
+    // New amounts or dates rebuild the instalments from scratch (they are re-added just below); otherwise the
+    // instalments already added simply take the new name and category.
+    structural
+      ? db.delete(transactions).where(and(eq(transactions.userId, userId), eq(transactions.emiPlanId, id)))
+      : db.update(transactions).set({ merchant: title, categoryId }).where(and(eq(transactions.userId, userId), eq(transactions.emiPlanId, id), isNull(transactions.deletedAt))),
   ]);
   await materializeById(db, userId, id, today);
   return dtoFor(db, userId, id, today);
@@ -266,10 +266,29 @@ export async function cancelPlan(db: Db, userId: string, id: string, today: IstD
   return dtoFor(db, userId, id, today);
 }
 
-/** Removes a plan made by mistake, only while no instalment exists. Otherwise close it instead. */
-export async function deletePlan(db: Db, userId: string, id: string): Promise<void> {
+/** Opens a closed plan again; instalments that have come due since are added. */
+export async function reopenPlan(db: Db, userId: string, id: string, today: IstDate): Promise<EmiPlanDto> {
   const row = await getPlanRow(db, userId, id);
   if (!row) throw new NotFoundError("EMI plan not found");
-  if ((await entryCounts(db, userId)).get(id)) throw new ConflictError("Instalments have already been added. Close the plan instead.");
-  await db.delete(emiPlans).where(and(eq(emiPlans.userId, userId), eq(emiPlans.id, id)));
+  if (!row.cancelledAt) throw new ConflictError("That plan is not closed");
+  await db.update(emiPlans).set({ cancelledAt: null }).where(and(eq(emiPlans.userId, userId), eq(emiPlans.id, id)));
+  await materializeById(db, userId, id, today);
+  return dtoFor(db, userId, id, today);
+}
+
+/**
+ * Removes a plan made by mistake. If instalments were already added, they go with it only when asked to
+ * (`removeInstalments`); the instalments are the entries Alfred made, so the card's balance falls back accordingly.
+ */
+export async function deletePlan(db: Db, userId: string, id: string, removeInstalments = false): Promise<void> {
+  const row = await getPlanRow(db, userId, id);
+  if (!row) throw new NotFoundError("EMI plan not found");
+  const made = (await entryCounts(db, userId)).get(id) ?? 0;
+  if (made > 0 && !removeInstalments) {
+    throw new ConflictError(`${made} instalment ${made === 1 ? "entry was" : "entries were"} already added. Delete the plan together with them, or close it instead.`);
+  }
+  await db.batch([
+    db.delete(transactions).where(and(eq(transactions.userId, userId), eq(transactions.emiPlanId, id))),
+    db.delete(emiPlans).where(and(eq(emiPlans.userId, userId), eq(emiPlans.id, id))),
+  ]);
 }
