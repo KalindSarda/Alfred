@@ -6,8 +6,9 @@ import { Button, Card, Empty, inputClass, Sheet, Spinner } from "../components/u
 import { activeFilterCount, activePreset, emptyFilters, filtersFromSearch, filtersToSearch, PRESETS, type TxnFilters } from "../filters";
 import { longDate, rupees, shortDate } from "../format";
 import { useAccounts, useCategories, useTransactions } from "../queries";
-import { Link, replaceSearch, useSearch } from "../router";
-import { amountSign, amountTone, describeTxn, needsCategory } from "../txn";
+import { Link, navigate, replaceSearch, useSearch } from "../router";
+import { accountsPath } from "../accountsView";
+import { amountSign, amountTone, describeTxn, isDebt, needsCategory } from "../txn";
 
 const TYPE_FILTERS = [
   { value: "", label: "All" },
@@ -197,7 +198,7 @@ export function Transactions() {
               <h2 className="border-b border-line px-4 py-2 text-sm font-medium text-soft">{longDate(date)}</h2>
               <ul className="divide-y divide-line">
                 {items.map((txn) => (
-                  <Row key={txn.id} txn={txn} accounts={accountMap} categories={categoryMap} onOpen={() => setEditing(txn)} />
+                  <Row key={txn.id} txn={txn} accounts={accountMap} categories={categoryMap} onOpen={() => (isDebt(txn.type) ? navigate(accountsPath("commitments")) : setEditing(txn))} />
                 ))}
               </ul>
             </Card>

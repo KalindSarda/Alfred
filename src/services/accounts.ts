@@ -2,8 +2,9 @@ import { and, count, eq, isNull, or, sql } from "drizzle-orm";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
 import { getAccount, insertAccount } from "../db/accounts";
+import { debtTotals, type DebtTotals } from "../db/debts";
 import { activeHoldTotals } from "../db/holds";
-import { accounts, emiPlans, holds, nudgeLog, recurringRules, transactions } from "../db/schema";
+import { accounts, debtPayments, debts, emiPlans, holds, nudgeLog, recurringRules, transactions } from "../db/schema";
 import type { IstDate } from "../domain/dates";
 import type { CreateAccountData, UpdateAccountData } from "../schemas/account";
 import { nowIso } from "../utils/id";
@@ -105,13 +106,17 @@ export interface BalanceOverview {
   cardsOwedPaise: number;
   /** EMI instalments not yet billed. Counted in net worth, not in safe-to-spend. */
   emiToComePaise: number;
+  /** Still owed to you by people you lent to: an asset in net worth, not in safe-to-spend. */
+  owedToYouPaise: number;
+  /** Still owed by you to people you borrowed from: a liability in net worth. */
+  youOwePaise: number;
   /** Banks minus cards. Investments and loans will join this once they are tracked. */
   netWorthPaise: number;
   safeToSpendPaise: number;
 }
 
 /** Totals across active accounts, computed from figures already loaded (no extra query). */
-export function balanceOverview(figures: readonly AccountWithFigures[]): BalanceOverview {
+export function balanceOverview(figures: readonly AccountWithFigures[], debts: DebtTotals = { owedToYouPaise: 0, youOwePaise: 0 }): BalanceOverview {
   let totalInBanksPaise = 0;
   let countedPaise = 0;
   let blockedPaise = 0;
@@ -137,7 +142,9 @@ export function balanceOverview(figures: readonly AccountWithFigures[]): Balance
     blockedPaise,
     cardsOwedPaise,
     emiToComePaise,
-    netWorthPaise: totalInBanksPaise - cardsOwedPaise - emiToComePaise,
+    owedToYouPaise: debts.owedToYouPaise,
+    youOwePaise: debts.youOwePaise,
+    netWorthPaise: totalInBanksPaise - cardsOwedPaise - emiToComePaise + debts.owedToYouPaise - debts.youOwePaise,
     safeToSpendPaise: countedPaise - blockedPaise - cardsOwedPaise,
   };
 }
@@ -160,8 +167,8 @@ export async function listAccountDtos(
   today: IstDate,
   options: { includeArchived?: boolean } = {},
 ): Promise<{ items: AccountDto[]; overview: BalanceOverview }> {
-  const [figures, counts] = await Promise.all([listAccountsWithFigures(db, userId, today, options), entryCounts(db, userId)]);
-  return { items: figures.map((a) => toAccountDto(a, counts.get(a.id) ?? 0)), overview: balanceOverview(figures) };
+  const [figures, counts, debts] = await Promise.all([listAccountsWithFigures(db, userId, today, options), entryCounts(db, userId), debtTotals(db, userId)]);
+  return { items: figures.map((a) => toAccountDto(a, counts.get(a.id) ?? 0)), overview: balanceOverview(figures, debts) };
 }
 
 async function accountDto(db: Db, userId: string, id: string, today: IstDate): Promise<AccountDto> {
@@ -302,6 +309,8 @@ export async function mergeAccount(db: Db, userId: string, fromId: string, intoI
     db.update(accounts).set(addOpening).where(and(eq(accounts.userId, userId), eq(accounts.id, intoId))),
     db.update(holds).set({ accountId: intoId }).where(and(eq(holds.userId, userId), eq(holds.accountId, fromId))),
     db.update(recurringRules).set({ accountId: intoId }).where(and(eq(recurringRules.userId, userId), eq(recurringRules.accountId, fromId))),
+    db.update(debts).set({ accountId: intoId }).where(and(eq(debts.userId, userId), eq(debts.accountId, fromId))),
+    db.update(debtPayments).set({ accountId: intoId }).where(and(eq(debtPayments.userId, userId), eq(debtPayments.accountId, fromId))),
     // Plans move with their card; from then on their instalments follow the target card's statement day.
     db.update(emiPlans).set({ cardAccountId: intoId }).where(and(eq(emiPlans.userId, userId), eq(emiPlans.cardAccountId, fromId))),
     db.delete(nudgeLog).where(and(eq(nudgeLog.userId, userId), eq(nudgeLog.cardAccountId, fromId))),

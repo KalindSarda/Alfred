@@ -22,7 +22,7 @@ export interface RecurringJobResult {
   sent: number;
 }
 
-async function chatsFor(db: Db): Promise<Map<string, string>> {
+export async function chatsFor(db: Db): Promise<Map<string, string>> {
   const links = await db
     .select({ userId: telegramLinks.userId, chatId: telegramLinks.chatId })
     .from(telegramLinks)

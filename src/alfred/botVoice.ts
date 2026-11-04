@@ -184,6 +184,31 @@ export function recurringReply(items: RecurringLine[]): string {
   return lines.join("\n");
 }
 
+export interface OwedPerson {
+  name: string;
+  trusted: boolean;
+  owedToYouPaise: number;
+  youOwePaise: number;
+}
+
+/** Who owes you and whom you owe. */
+export function owedReply(people: OwedPerson[], owedToYouPaise: number, youOwePaise: number): string {
+  const owing = people.filter((p) => p.owedToYouPaise > 0);
+  const owed = people.filter((p) => p.youOwePaise > 0);
+  if (owing.length === 0 && owed.length === 0) return "Nobody owes you anything, and you owe nobody. To note a loan: /lent 5000 hdfc rahul, or /borrowed 5000 hdfc asha.";
+  const lines: string[] = [];
+  if (owing.length > 0) {
+    lines.push(`Owed to you: ${rupees(owedToYouPaise)}`);
+    for (const p of owing) lines.push(`${p.name}: ${rupees(p.owedToYouPaise)}${p.trusted ? " (trusted, so I will not follow up)" : ""}`);
+  }
+  if (owed.length > 0) {
+    if (lines.length > 0) lines.push("");
+    lines.push(`You owe: ${rupees(youOwePaise)}`);
+    for (const p of owed) lines.push(`${p.name}: ${rupees(p.youOwePaise)}`);
+  }
+  return lines.join("\n");
+}
+
 export const botVoice = {
   welcome(name: string, now: Date): string {
     return [
@@ -216,6 +241,9 @@ export const botVoice = {
     "/today  what you spent today",
     "/budget  how your budgets stand this month",
     "/accounts  your accounts and cards; archive or restore one",
+    "/owed  who owes you and whom you owe",
+    "/lent  note money you lent: /lent 5000 hdfc rahul (or: cash)",
+    "/borrowed  note money you borrowed: /borrowed 5000 hdfc asha",
     "/recurring  what repeats: rent, subscriptions, salary",
     "/emi  your card EMI plans and what is still to be billed",
     "/ipo  money blocked for IPO applications, or: /ipo 15000 hdfc tata tech",
@@ -250,6 +278,24 @@ export const botVoice = {
   recurringConfirmed: (title: string) => `Confirmed. ${title} now counts in your records.`,
   recurringDiscarded: (title: string) => `Removed. ${title} for that day is gone from your records.`,
   recurringSettled: "That one has already been settled.",
+  debtNeedsName: "Whom was it with? For example: /lent 5000 hdfc rahul.",
+  askDebtAccount: (summary: string) => `Which account did it go through? (${summary}) Or say it was cash.`,
+  debtRecorded: (lent: boolean, name: string, amountPaise: number, accountName: string | null, trusted: boolean) =>
+    `Noted. You ${lent ? "lent" : "borrowed"} ${rupees(amountPaise)} ${lent ? "to" : "from"} ${name}${accountName ? `, through ${accountName}` : ", in cash"}.` +
+    (lent ? (trusted ? ` ${name} is trusted, so I will not follow up.` : ` I will follow up if it is not paid back; you can mark ${name} as trusted in the app to stop that.`) : ""),
+  debtUndone: "Removed. That loan is gone from your records.",
+  debtHasPayments: "That loan already has repayments, so please change it in the app.",
+  debtSettled: "That one has already been settled.",
+  followUp: (name: string, outstandingPaise: number, date: string, dueDate: string | null) =>
+    `${name} still owes you ${rupees(outstandingPaise)}, lent on ${shortDate(date)}${dueDate ? `, due ${shortDate(dueDate)}` : ""}. Has it been paid?`,
+  askPaidAccount: (name: string, outstandingPaise: number) => `${name}'s ${rupees(outstandingPaise)} was paid. Which account did it come into? Or say it was cash.`,
+  paidInFull: (name: string, amountPaise: number, accountName: string | null) =>
+    `Marked as paid: ${name}'s ${rupees(amountPaise)}${accountName ? ` has come into ${accountName}` : ", received in cash"}.`,
+  followUpLater: "Very well. I will ask again in a couple of weeks.",
+  followUpStopped: (name: string) => `Understood. I will not follow up about ${name}'s money again. You can change that in the app.`,
+  repayTomorrow: (name: string, amountPaise: number, dueDate: string) => `A reminder: you owe ${name} ${rupees(amountPaise)}, due tomorrow, ${shortDate(dueDate)}.`,
+  repayToday: (name: string, amountPaise: number, dueDate: string, late: boolean) =>
+    late ? `You owe ${name} ${rupees(amountPaise)}, which was due on ${shortDate(dueDate)}.` : `You owe ${name} ${rupees(amountPaise)}, due today.`,
   accountArchived: (name: string) => `Archived ${name}. It is hidden from lists and new entries, and its history is kept. You can restore it below.`,
   accountRestored: (name: string) => `Restored ${name}. It is back in your lists.`,
   accountNotArchived: (name: string, reason: string) => `I could not archive ${name}. ${reason}`,

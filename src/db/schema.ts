@@ -73,7 +73,7 @@ export const transactions = sqliteTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull().references(() => users.id),
-    type: text("type", { enum: ["expense", "income", "transfer", "bill_payment", "investment"] }).notNull(),
+    type: text("type", { enum: ["expense", "income", "transfer", "bill_payment", "investment", "debt_out", "debt_in"] }).notNull(),
     amountPaise: integer("amount_paise").notNull(),
     txnDate: text("txn_date").notNull(),
     accountId: text("account_id").notNull().references(() => accounts.id),
@@ -219,6 +219,71 @@ export const budgets = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [uniqueIndex("budgets_user_category_uq").on(t.userId, t.categoryId), check("budgets_limit_positive", sql`${t.limitPaise} > 0`)],
+);
+
+/** A person money is lent to or borrowed from. A trusted person is never followed up with about what they owe. */
+export const contacts = sqliteTable(
+  "contacts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    name: text("name").notNull(),
+    /** The name in lower case and single-spaced, so "Rahul" and "rahul " are the same person. */
+    nameKey: text("name_key").notNull(),
+    trusted: integer("trusted", { mode: "boolean" }).notNull().default(false),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("contacts_user_name_uq").on(t.userId, t.nameKey)],
+);
+
+/**
+ * Money lent to someone (they owe you) or borrowed from someone (you owe them). When a bank account is chosen the
+ * money moves through it as a debt_out or debt_in entry, never as spending or income; "cash or not tracked" records
+ * only the debt. What is still owed is the amount less the payments.
+ */
+export const debts = sqliteTable(
+  "debts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    contactId: text("contact_id").notNull().references(() => contacts.id),
+    direction: text("direction", { enum: ["lent", "borrowed"] }).notNull(),
+    amountPaise: integer("amount_paise").notNull(),
+    date: text("date").notNull(),
+    dueDate: text("due_date"),
+    note: text("note"),
+    /** The bank account the money moved through, and the entry it made; null for cash or untracked. */
+    accountId: text("account_id").references(() => accounts.id),
+    txnId: text("txn_id"),
+    status: text("status", { enum: ["open", "settled"] }).notNull().default("open"),
+    settledAt: text("settled_at"),
+    /** Written off without being paid back. */
+    forgiven: integer("forgiven", { mode: "boolean" }).notNull().default(false),
+    /** The last day Alfred asked about it; the next ask is counted from here. */
+    lastFollowupOn: text("last_followup_on"),
+    followUpStopped: integer("follow_up_stopped", { mode: "boolean" }).notNull().default(false),
+    /** Borrowed only: 0 nothing sent, 1 the day-before reminder sent, 2 the due-day one sent. */
+    remindStage: integer("remind_stage").notNull().default(0),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("debts_user_status_idx").on(t.userId, t.status), check("debts_amount_positive", sql`${t.amountPaise} > 0`)],
+);
+
+/** A repayment against a debt, optionally through a bank account (and then with its own debt_in or debt_out entry). */
+export const debtPayments = sqliteTable(
+  "debt_payments",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    debtId: text("debt_id").notNull().references(() => debts.id),
+    amountPaise: integer("amount_paise").notNull(),
+    date: text("date").notNull(),
+    accountId: text("account_id").references(() => accounts.id),
+    txnId: text("txn_id"),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("debt_payments_debt_idx").on(t.debtId), check("debt_payments_amount_positive", sql`${t.amountPaise} > 0`)],
 );
 
 /**

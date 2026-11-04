@@ -118,6 +118,8 @@ export interface BalanceOverview {
   blockedPaise: number;
   cardsOwedPaise: number;
   emiToComePaise: number;
+  owedToYouPaise: number;
+  youOwePaise: number;
   netWorthPaise: number;
   safeToSpendPaise: number;
 }
@@ -190,7 +192,48 @@ export interface Category {
   entryCount: number;
 }
 
-export type TxnType = "expense" | "income" | "transfer" | "bill_payment" | "investment";
+export type TxnType = "expense" | "income" | "transfer" | "bill_payment" | "investment" | "debt_out" | "debt_in";
+
+export interface DebtPayment {
+  id: string;
+  amountPaise: number;
+  date: string;
+  accountName: string | null;
+  note: string | null;
+}
+
+export interface Debt {
+  id: string;
+  direction: "lent" | "borrowed";
+  amountPaise: number;
+  paidPaise: number;
+  outstandingPaise: number;
+  date: string;
+  dueDate: string | null;
+  note: string | null;
+  status: "open" | "settled";
+  forgiven: boolean;
+  accountName: string | null;
+  overdue: boolean;
+  followUpStopped: boolean;
+  nextFollowUp: string | null;
+  payments: DebtPayment[];
+}
+
+export interface Person {
+  contactId: string;
+  name: string;
+  trusted: boolean;
+  owedToYouPaise: number;
+  youOwePaise: number;
+  debts: Debt[];
+}
+
+export interface DebtsOverview {
+  owedToYouPaise: number;
+  youOwePaise: number;
+  people: Person[];
+}
 
 export interface Transaction {
   id: string;

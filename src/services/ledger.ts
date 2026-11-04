@@ -24,7 +24,7 @@ import {
 import { type IstDate, isValidIstDate } from "../domain/dates";
 import { emiToComeByCard } from "../db/emi";
 import { activeHoldTotals } from "../db/holds";
-import { hasNoCategory, isMovement } from "../domain/txnTypes";
+import { hasNoCategory, isDebtType, isMovement } from "../domain/txnTypes";
 import {
   checkTransactionShape,
   CreateTransaction,
@@ -81,6 +81,8 @@ function assertAccountKinds(v: Resolved, fromKind: "bank" | "card", toKind: "ban
     if (toKind !== "card") failShape([{ path: "toAccountId", message: "A bill payment is paid to a credit card" }]);
   } else if (v.type === "investment") {
     if (fromKind !== "bank") failShape([{ path: "accountId", message: "An investment is paid from a bank account" }]);
+  } else if (isDebtType(v.type)) {
+    if (fromKind !== "bank") failShape([{ path: "accountId", message: "Lent and borrowed money moves through a bank account" }]);
   }
 }
 
@@ -118,6 +120,8 @@ export async function createTransaction(
     );
   }
   const v = parsed.data;
+  // Lending and borrowing are recorded from Lent and borrowed, which keeps the debt and the bank entry together.
+  if (isDebtType(v.type)) failShape([{ path: "type", message: "Record lent and borrowed money under Commitments, Lent and borrowed" }]);
   const resolved: Resolved = {
     type: v.type,
     amountPaise: v.amountPaise,
@@ -164,6 +168,9 @@ export async function updateTransaction(
   }
   const existing = await getTransactionRow(db, userId, id);
   if (!existing) throw new NotFoundError("Transaction not found");
+  if (isDebtType(existing.type) || (parsed.data.type !== undefined && isDebtType(parsed.data.type))) {
+    throw new ConflictError("This entry belongs to lent and borrowed money. Change it there.");
+  }
 
   const p = parsed.data;
   const merged: Resolved = {
@@ -193,6 +200,7 @@ export async function updateTransaction(
 export async function softDeleteTransaction(db: Db, userId: string, id: string): Promise<void> {
   const row = await getTransactionRow(db, userId, id);
   if (!row) throw new NotFoundError("Transaction not found");
+  if (isDebtType(row.type)) throw new ConflictError("This entry belongs to lent and borrowed money. Remove it there.");
   const now = nowIso();
   await updateTransactionRow(db, userId, id, { deletedAt: now, updatedAt: now });
 }

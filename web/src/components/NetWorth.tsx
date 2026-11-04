@@ -3,7 +3,7 @@ import { rupees } from "../format";
 import { Link } from "../router";
 import { Card } from "./ui";
 
-const LABEL = "Net worth (banks minus cards)";
+const LABEL = "Net worth";
 
 function Row({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -35,11 +35,13 @@ export function NetWorthCard({ overview }: { overview: BalanceOverview }) {
         {overview.emiToComePaise > 0 && (
           <Row label="EMIs still to be billed" value={rupees(overview.emiToComePaise)} hint="Owed, but on no statement yet; not held back from safe-to-spend" />
         )}
+        {overview.owedToYouPaise > 0 && <Row label="Owed to you" value={rupees(overview.owedToYouPaise)} hint="Money you have lent; not counted toward safe-to-spend" />}
+        {overview.youOwePaise > 0 && <Row label="You owe people" value={rupees(overview.youOwePaise)} hint="Money you have borrowed" />}
         {overview.blockedPaise > 0 && (
           <Row label="Blocked for applications" value={rupees(overview.blockedPaise)} hint="Still yours, but not available to spend until the result" />
         )}
       </div>
-      <p className="mt-3 text-xs text-faint">Investments and loans will join this once they are tracked.</p>
+      <p className="mt-3 text-xs text-faint">Investments and bank loans will join this once they are tracked.</p>
     </Card>
   );
 }

@@ -10,8 +10,10 @@ export interface PendingEntry {
   /** "text" entries (typed without a command) wait for a confirming tap; commands record as soon as they are complete. */
   mode: "command" | "text";
   entry: ParsedEntry;
-  /** "hold": the amount is being blocked for an application (/ipo), not spent. */
-  kind?: "hold";
+  /** "hold": the amount is being blocked for an application (/ipo). "lent" and "borrowed": a loan (/lent, /borrowed). Never spent. */
+  kind?: "hold" | "lent" | "borrowed";
+  /** A loan that went through cash or is not tracked in an account. */
+  cash?: boolean;
 }
 
 const iso = (ms: number) => new Date(ms).toISOString();

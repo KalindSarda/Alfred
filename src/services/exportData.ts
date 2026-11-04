@@ -1,6 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { accounts, budgets, categories, emiPlans, holds, recurringRules, transactions } from "../db/schema";
+import { accounts, budgets, categories, contacts, debtPayments, debts, emiPlans, holds, recurringRules, transactions } from "../db/schema";
 import { formatRupees } from "../domain/money";
 import { getSettings } from "./settings";
 
@@ -8,7 +8,7 @@ export const EXPORT_VERSION = 1;
 
 /** Everything the user owns, as plain JSON. Secrets, sessions and login codes are never included. */
 export async function exportJson(db: Db, userId: string, exportedAt: string) {
-  const [accountRows, categoryRows, txnRows, budgetRows, holdRows, emiRows, ruleRows, settings] = await Promise.all([
+  const [accountRows, categoryRows, txnRows, budgetRows, holdRows, emiRows, ruleRows, contactRows, debtRows, paymentRows, settings] = await Promise.all([
     db.select().from(accounts).where(eq(accounts.userId, userId)).orderBy(asc(accounts.createdAt), asc(accounts.id)),
     db.select().from(categories).where(eq(categories.userId, userId)).orderBy(asc(categories.kind), asc(categories.name)),
     db.select().from(transactions).where(eq(transactions.userId, userId)).orderBy(asc(transactions.txnDate), asc(transactions.id)),
@@ -16,6 +16,9 @@ export async function exportJson(db: Db, userId: string, exportedAt: string) {
     db.select().from(holds).where(eq(holds.userId, userId)).orderBy(asc(holds.createdAt), asc(holds.id)),
     db.select().from(emiPlans).where(eq(emiPlans.userId, userId)).orderBy(asc(emiPlans.createdAt), asc(emiPlans.id)),
     db.select().from(recurringRules).where(eq(recurringRules.userId, userId)).orderBy(asc(recurringRules.createdAt), asc(recurringRules.id)),
+    db.select().from(contacts).where(eq(contacts.userId, userId)).orderBy(asc(contacts.name)),
+    db.select().from(debts).where(eq(debts.userId, userId)).orderBy(asc(debts.date), asc(debts.id)),
+    db.select().from(debtPayments).where(eq(debtPayments.userId, userId)).orderBy(asc(debtPayments.date), asc(debtPayments.id)),
     getSettings(db, userId),
   ]);
   const strip = <T extends { userId: string }>({ userId: _omit, ...rest }: T) => rest;
@@ -29,6 +32,9 @@ export async function exportJson(db: Db, userId: string, exportedAt: string) {
     holds: holdRows.map(strip),
     emiPlans: emiRows.map(strip),
     recurringRules: ruleRows.map(strip),
+    contacts: contactRows.map(strip),
+    debts: debtRows.map(strip),
+    debtPayments: paymentRows.map(strip),
     settings,
   };
 }

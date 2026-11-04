@@ -1,5 +1,5 @@
 import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type EmiPlan, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type DebtsOverview, type EmiPlan, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -64,6 +64,10 @@ export const useEmiPlans = () =>
 export const useHolds = () =>
   useQuery({ queryKey: ["holds"], queryFn: async () => (await api.get<{ items: Hold[] }>("/api/holds")).items });
 
+/** Money lent and borrowed, grouped by person; settled loans only when asked for. */
+export const useDebts = (status: "open" | "all" = "open") =>
+  useQuery({ queryKey: ["debts", status], queryFn: () => api.get<DebtsOverview>(`/api/debts?status=${status}`) });
+
 export interface ReviewCounts {
   uncategorizedCount: number;
   draftCount: number;
@@ -111,6 +115,7 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["holds"] }),
       client.invalidateQueries({ queryKey: ["emi"] }),
       client.invalidateQueries({ queryKey: ["recurring"] }),
+      client.invalidateQueries({ queryKey: ["debts"] }),
       client.invalidateQueries({ queryKey: ["review"] }),
     ]);
 }

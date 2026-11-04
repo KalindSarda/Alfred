@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, emiReply, holdsReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
+import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, emiReply, holdsReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
 import { AppError, ConflictError, NotFoundError, RateLimitedError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
@@ -17,6 +17,8 @@ import { getCashflow } from "../services/cashflow";
 import { createCategory } from "../services/categories";
 import { listPlans } from "../services/emi";
 import { listRules } from "../services/recurring";
+import { createDebt, deleteDebt, listDebts, settleDebt, updateDebt } from "../services/debts";
+import { getDebtRow } from "../db/debts";
 import { allotHold, createHold, deleteHold, listHolds, releaseHold } from "../services/holds";
 import { budgetFor, listBudgets } from "../services/budgets";
 import { getSummary } from "../services/dashboard";
@@ -141,9 +143,9 @@ function nextNeed(e: ParsedEntry): Need | null {
 }
 
 /** The accounts worth offering for a question: the ones that fit, the likely one first. */
-function optionsFor(e: ParsedEntry, need: Need, c: BotContext, kind?: "hold"): BotAccount[] {
-  // Money is blocked in a bank account, so a hold only ever offers banks.
-  const wantedKind = kind === "hold" ? "bank" : e.type === "bill_payment" ? (need === "to" ? "card" : "bank") : e.type === "transfer" ? "bank" : null;
+function optionsFor(e: ParsedEntry, need: Need, c: BotContext, kind?: PendingEntry["kind"]): BotAccount[] {
+  // Blocked and lent money moves through a bank account, so those only ever offer banks.
+  const wantedKind = kind ? "bank" : e.type === "bill_payment" ? (need === "to" ? "card" : "bank") : e.type === "transfer" ? "bank" : null;
   const resolution = need === "from" ? e.from : e.to;
   const otherId = idOf(need === "from" ? e.to : e.from);
 
@@ -253,6 +255,28 @@ async function holdsView(deps: BotDeps, who: Actor, today: IstDate, note?: strin
   };
 }
 
+/** Notes money lent or borrowed. The person is whatever name the line carried; the account is a bank, or cash. */
+async function recordDebt(deps: BotDeps, who: Actor, entry: ParsedEntry, c: BotContext, to: Reply, kind: "lent" | "borrowed", cash: boolean): Promise<void> {
+  const name = (entry.merchant ?? "").trim();
+  if (!name) return void (await reply(deps, to, botVoice.debtNeedsName));
+  const from = idOf(entry.from);
+  if (!cash && !from) throw new AppError("validation_failed", 422, "Missing account");
+  const { person, debtId } = await createDebt(
+    deps.db,
+    who.userId,
+    { name, direction: kind, amountPaise: entry.amountPaise, date: entry.txnDate, accountId: cash ? null : from },
+    "telegram",
+    c.today,
+  );
+  const accountName = !cash && from ? (c.accountNames.get(from) ?? null) : null;
+  await reply(deps, to, botVoice.debtRecorded(kind === "lent", person.name, entry.amountPaise, accountName, person.trusted), [[{ text: "Undo", data: `f:${debtId}:u` }]]);
+}
+
+async function cmdOwed(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
+  const o = await listDebts(deps.db, who.userId, today, "open");
+  await deps.telegram.sendMessage(who.chatId, owedReply(o.people, o.owedToYouPaise, o.youOwePaise));
+}
+
 async function cmdRecurring(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
   const rules = await listRules(deps.db, who.userId, today);
   await deps.telegram.sendMessage(
@@ -274,8 +298,9 @@ async function cmdIpo(deps: BotDeps, who: Actor, arg: string, today: IstDate): P
 
 /** Moves an entry forward: ask for what is missing, ask for confirmation, or record it. */
 async function advance(deps: BotDeps, who: Actor, c: BotContext, pending: PendingEntry, pendingId: string | null, to: Reply): Promise<void> {
-  const { entry, mode, kind } = pending;
-  const need = nextNeed(entry);
+  const { entry, mode, kind, cash } = pending;
+  // A loan in cash needs no account.
+  const need = cash ? null : nextNeed(entry);
 
   if (need) {
     const options = optionsFor(entry, need, c, kind);
@@ -286,8 +311,10 @@ async function advance(deps: BotDeps, who: Actor, c: BotContext, pending: Pendin
     }
     const id = pendingId ?? (await createPending(deps.db, who.userId, who.chatId, pending, deps.now()));
     if (pendingId) await updatePending(deps.db, id, pending);
-    const buttons = [...rows(options.map((a) => ({ text: a.name, data: `p:${id}:a:${a.id}` }))), [{ text: "Cancel", data: `p:${id}:no` }]];
-    await reply(deps, to, kind === "hold" ? botVoice.askHoldAccount(describeEntry(factsOf(entry, c))) : askAccount(entry.type, need, describeEntry(factsOf(entry, c))), buttons);
+    const cashButton = kind === "lent" || kind === "borrowed" ? [[{ text: "Cash or not tracked", data: `p:${id}:a:cash` }]] : [];
+    const buttons = [...rows(options.map((a) => ({ text: a.name, data: `p:${id}:a:${a.id}` }))), ...cashButton, [{ text: "Cancel", data: `p:${id}:no` }]];
+    const summary = describeEntry(factsOf(entry, c));
+    await reply(deps, to, kind === "hold" ? botVoice.askHoldAccount(summary) : kind ? botVoice.askDebtAccount(summary) : askAccount(entry.type, need, summary), buttons);
     return;
   }
 
@@ -302,20 +329,23 @@ async function advance(deps: BotDeps, who: Actor, c: BotContext, pending: Pendin
 
   if (pendingId) await deletePending(deps.db, pendingId);
   if (kind === "hold") await recordHold(deps, who, entry, c, to);
+  else if (kind) await recordDebt(deps, who, entry, c, to, kind, cash === true);
   else await recordEntry(deps, who, entry, c, to);
 }
 
-async function startEntry(deps: BotDeps, who: Actor, text: string, type: EntryType, mode: PendingEntry["mode"], kind?: "hold"): Promise<void> {
+async function startEntry(deps: BotDeps, who: Actor, text: string, type: EntryType, mode: PendingEntry["mode"], kind?: PendingEntry["kind"]): Promise<void> {
   const c = await loadContext(deps.db, who.userId, todayIst(new Date(deps.now())));
   // Money is blocked in a bank account, so a word like "hdfc" can only mean the bank.
-  const parseCtx = kind === "hold" ? { ...parseContext(c), accounts: c.accounts.filter((a) => a.kind === "bank") } : parseContext(c);
-  const parsed = parseEntry(text, type, parseCtx);
+  const parseCtx = kind ? { ...parseContext(c), accounts: c.accounts.filter((a) => a.kind === "bank") } : parseContext(c);
+  // "cash" says a loan did not go through a bank account.
+  const cash = (kind === "lent" || kind === "borrowed") && /\b(cash|untracked)\b/i.test(text);
+  const parsed = parseEntry(cash ? text.replace(/\b(cash|untracked)\b/gi, " ") : text, type, parseCtx);
   if (!parsed.ok) {
     const message = parsed.reason === "bad_date" ? botVoice.badDate : botVoice.noAmount;
     await deps.telegram.sendMessage(who.chatId, message);
     return;
   }
-  await advance(deps, who, c, { mode, entry: parsed.entry, ...(kind && { kind }) }, null, { chatId: who.chatId });
+  await advance(deps, who, c, { mode, entry: parsed.entry, ...(kind && { kind }), ...(cash && { cash: true }) }, null, { chatId: who.chatId });
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -514,7 +544,7 @@ async function cmdUndo(deps: BotDeps, who: Actor, c: BotContext): Promise<void> 
 function summaryOfTxn(t: ReturnType<typeof toDto>, c: BotContext): string {
   return describeEntry({
     // An investment reads like a spend in a short summary: the amount, what it was for, and the account.
-    type: t.type === "investment" ? "expense" : t.type,
+    type: t.type === "investment" || t.type === "debt_out" || t.type === "debt_in" ? "expense" : t.type,
     amountPaise: t.amountPaise,
     merchant: t.merchant,
     categoryName: t.categoryId ? (c.categoryNames.get(t.categoryId) ?? null) : null,
@@ -595,6 +625,12 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
       case "budget":
       case "budgets":
         return await cmdBudget(deps, who, today);
+      case "owed":
+        return await cmdOwed(deps, who, today);
+      case "lent":
+        return await startEntry(deps, who, arg, "expense", "command", "lent");
+      case "borrowed":
+        return await startEntry(deps, who, arg, "expense", "command", "borrowed");
       case "recurring":
         return await cmdRecurring(deps, who, today);
       case "emi":
@@ -654,8 +690,11 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
         else await recordEntry(deps, who, pending.entry, c, to);
       } else if (action === "a" && argument) {
         const need = nextNeed(pending.entry);
+        const wantsCash = argument === "cash" && (pending.kind === "lent" || pending.kind === "borrowed");
         const allowed = need ? optionsFor(pending.entry, need, c, pending.kind).some((a) => a.id === argument) : false;
-        if (!need || !allowed) {
+        if (wantsCash) {
+          await advance(deps, who, c, { mode: pending.mode, entry: pending.entry, kind: pending.kind as "lent" | "borrowed", cash: true }, id, to);
+        } else if (!need || !allowed) {
           await reply(deps, to, botVoice.noMatchingAccount);
         } else {
           const entry: ParsedEntry = { ...pending.entry, [need]: { status: "found", id: argument } as Resolution };
@@ -685,6 +724,44 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
       } else {
         const options = c.categories.filter((cat) => cat.kind === t.type).slice(0, 12);
         await reply(deps, to, botVoice.askCategory, rows(options.map((cat) => ({ text: cat.name, data: `k:${id}:${cat.id}` }))));
+      }
+    } else if (kind === "f" && id && (action === "p" || action === "a" || action === "l" || action === "s" || action === "u")) {
+      // A loan: a follow-up answered, or a just-noted loan undone.
+      const today = todayIst(new Date(deps.now()));
+      const row = await getDebtRow(deps.db, userId, id);
+      const overview = await listDebts(deps.db, userId, today, "all");
+      const person = overview.people.find((p) => p.debts.some((d) => d.id === id));
+      const debt = person?.debts.find((d) => d.id === id);
+      if (!row || !person || !debt) {
+        await reply(deps, to, botVoice.debtSettled);
+      } else if (action === "u") {
+        if (debt.payments.length > 0) await reply(deps, to, botVoice.debtHasPayments);
+        else {
+          await deleteDebt(deps.db, userId, id);
+          await reply(deps, to, botVoice.debtUndone);
+        }
+      } else if (row.status !== "open") {
+        await reply(deps, to, botVoice.debtSettled);
+      } else if (action === "p") {
+        const banks = c.accounts.filter((a) => a.kind === "bank").slice(0, MAX_OPTIONS);
+        await reply(deps, to, botVoice.askPaidAccount(person.name, debt.outstandingPaise), [
+          ...rows(banks.map((a) => ({ text: a.name, data: `f:${id}:a:${a.id}` }))),
+          [{ text: "Cash or not tracked", data: `f:${id}:a:cash` }],
+        ]);
+      } else if (action === "a") {
+        const accountId = argument === "cash" ? null : (argument ?? null);
+        if (accountId !== null && !c.accounts.some((a) => a.id === accountId && a.kind === "bank")) {
+          await reply(deps, to, botVoice.noMatchingAccount);
+        } else {
+          const owed = debt.outstandingPaise;
+          await settleDebt(deps.db, userId, id, { accountId }, "telegram", today);
+          await reply(deps, to, botVoice.paidInFull(person.name, owed, accountId ? (c.accountNames.get(accountId) ?? null) : null));
+        }
+      } else if (action === "l") {
+        await reply(deps, to, botVoice.followUpLater);
+      } else {
+        await updateDebt(deps.db, userId, id, { followUpStopped: true }, today);
+        await reply(deps, to, botVoice.followUpStopped(person.name));
       }
     } else if (kind === "r" && id && (action === "ok" || action === "no")) {
       // A draft that a recurring rule added, being confirmed or discarded.

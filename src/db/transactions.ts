@@ -1,8 +1,8 @@
-import { and, desc, eq, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, notInArray, or, sql, type SQL } from "drizzle-orm";
 import type { LedgerTxn } from "../domain/balances";
 import type { ListTransactionsData, TransactionDto } from "../schemas/transaction";
 import { ValidationError } from "../config/errors";
-import { FLOW_TYPES } from "../domain/txnTypes";
+import { DEBT_TYPES, FLOW_TYPES } from "../domain/txnTypes";
 import type { Db } from "./client";
 import { transactions } from "./schema";
 
@@ -204,7 +204,8 @@ export async function lastTransactionRowBySource(
   const [row] = await db
     .select()
     .from(transactions)
-    .where(and(eq(transactions.userId, userId), eq(transactions.source, source), isNull(transactions.deletedAt)))
+    // Lent and borrowed entries are undone from there, not with /undo.
+    .where(and(eq(transactions.userId, userId), eq(transactions.source, source), isNull(transactions.deletedAt), notInArray(transactions.type, [...DEBT_TYPES])))
     .orderBy(desc(transactions.createdAt), desc(transactions.id))
     .limit(1);
   return row;

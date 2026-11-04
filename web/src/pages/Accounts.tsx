@@ -4,6 +4,7 @@ import type { Account, CardAccount } from "../api";
 import { AccountForm } from "../components/AccountForm";
 import { BlockedFunds } from "../components/BlockedFunds";
 import { EmiPlans } from "../components/EmiPlans";
+import { LentBorrowed } from "../components/LentBorrowed";
 import { Button, Card, Empty, Sheet, Spinner } from "../components/ui";
 import { rupees, shortDate } from "../format";
 import { NetWorthCard } from "../components/NetWorth";
@@ -107,16 +108,21 @@ export function Accounts() {
             )}
             <BlockedFunds />
             <EmiPlans />
+            <LentBorrowed />
           </>
         ) : (
         <>
           {overview.data && <NetWorthCard overview={overview.data} />}
-          {overview.data && (overview.data.blockedPaise > 0 || overview.data.emiToComePaise > 0) && (
+          {overview.data && (overview.data.blockedPaise > 0 || overview.data.emiToComePaise > 0 || overview.data.owedToYouPaise > 0 || overview.data.youOwePaise > 0) && (
             <Link to={accountsPath("commitments")} className="flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-line bg-card px-4 py-3 text-sm hover:bg-hover">
               <span className="text-soft">
                 {overview.data.blockedPaise > 0 && <>{rupees(overview.data.blockedPaise)} blocked</>}
                 {overview.data.blockedPaise > 0 && overview.data.emiToComePaise > 0 && " · "}
                 {overview.data.emiToComePaise > 0 && <>{rupees(overview.data.emiToComePaise)} of EMIs to come</>}
+                {(overview.data.blockedPaise > 0 || overview.data.emiToComePaise > 0) && (overview.data.owedToYouPaise > 0 || overview.data.youOwePaise > 0) && " · "}
+                {overview.data.owedToYouPaise > 0 && <>{rupees(overview.data.owedToYouPaise)} owed to you</>}
+                {overview.data.owedToYouPaise > 0 && overview.data.youOwePaise > 0 && " · "}
+                {overview.data.youOwePaise > 0 && <>you owe {rupees(overview.data.youOwePaise)}</>}
               </span>
               <span className="font-medium text-brand">Commitments →</span>
             </Link>

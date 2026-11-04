@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ErrorDetail } from "../config/errors";
-import { isMovement, TXN_TYPES } from "../domain/txnTypes";
+import { isDebtType, isMovement, TXN_TYPES } from "../domain/txnTypes";
 
 export const Paise = z.number().int().positive();
 export const IstDateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD");
@@ -39,6 +39,7 @@ export function checkTransactionShape(v: {
     issues.push({ path: "toAccountId", message: "Only transfers and bill payments have a destination" });
   }
   if (v.type === "investment" && v.categoryId) issues.push({ path: "categoryId", message: "Investments have no category" });
+  if (isDebtType(v.type) && v.categoryId) issues.push({ path: "categoryId", message: "Lent and borrowed money has no category" });
   return issues;
 }
 
