@@ -5,7 +5,7 @@ import { rupeesToPaise } from "../filters";
 import { paiseToInput, rupees, shortDate, today } from "../format";
 import { useAccounts, useCategories, useRecurring, useRefreshMoney } from "../queries";
 import { useToast } from "./toast";
-import { Button, Card, ErrorText, Field, Sheet, inputClass } from "./ui";
+import { Button, Card, Empty, ErrorText, Field, Sheet, inputClass } from "./ui";
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -308,26 +308,24 @@ export function Recurring() {
   };
 
   return (
-    <Card pad="p-0">
-      <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2">
-        <h2 className="text-sm font-medium text-soft">Recurring</h2>
-        <Button className="shrink-0" onClick={() => setSheet({ rule: null })}>Add recurring</Button>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-soft">{items.length === 0 ? "Nothing repeats yet" : `${items.length} ${items.length === 1 ? "rule" : "rules"}`}</p>
+        <Button onClick={() => setSheet({ rule: null })}>Add recurring</Button>
       </div>
       {items.length === 0 ? (
-        <p className="px-4 py-3 text-sm text-soft">Rent, subscriptions, salary, SIPs: add them once and Alfred records them on their day, or asks you to confirm when the amount varies.</p>
+        <Empty title="No recurring entries yet">Rent, subscriptions, salary, SIPs: add them once and Alfred records them on their day, or asks you to confirm when the amount varies.</Empty>
       ) : (
-        <ul className="divide-y divide-line">
-          {items.map((r) => (
-            <Row key={r.id} rule={r} onEdit={() => setSheet({ rule: r })} onAct={(what) => void act(r, what)} />
-          ))}
-        </ul>
+        <Card pad="p-0">
+          <ul className="divide-y divide-line">
+            {items.map((r) => (
+              <Row key={r.id} rule={r} onEdit={() => setSheet({ rule: r })} onAct={(what) => void act(r, what)} />
+            ))}
+          </ul>
+        </Card>
       )}
-      {error && (
-        <div className="px-4 pb-3">
-          <ErrorText>{error}</ErrorText>
-        </div>
-      )}
+      {error && <ErrorText>{error}</ErrorText>}
       {sheet && <RuleSheet key={sheet.rule?.id ?? "new"} rule={sheet.rule} onClose={() => setSheet(null)} />}
-    </Card>
+    </div>
   );
 }
