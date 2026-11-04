@@ -162,7 +162,7 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
     let text = `${rupees(total)} is blocked for ${what}`;
     if (overdue > 0) text += `. ${overdue === 1 ? "An outcome was" : `${overdue} outcomes were`} due earlier; do tell me how ${overdue === 1 ? "it" : "they"} went`;
     else if (next) text += `; the outcome is due ${formatDate(next)}`;
-    lines.push({ key: "blocked", text: `${text}.`, to: "/accounts" });
+    lines.push({ key: "blocked", text: `${text}.`, to: "/accounts?view=commitments" });
   }
 
   const cards = [...facts.cards].sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate));
@@ -190,7 +190,7 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
     lines.push({
       key: "emi",
       text: `${rupees(facts.emi.toComePaise)} of card EMIs is still to be billed${n ? `; the next is ${rupees(n.amountPaise)} for ${n.title} on ${formatDate(n.date)}` : ""}.`,
-      to: "/accounts",
+      to: "/accounts?view=commitments",
     });
   }
 

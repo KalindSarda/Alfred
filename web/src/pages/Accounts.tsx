@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { type AccountsView, accountsPath, searchForView, viewFromSearch } from "../accountsView";
 import type { Account, CardAccount } from "../api";
 import { AccountForm } from "../components/AccountForm";
 import { BlockedFunds } from "../components/BlockedFunds";
@@ -7,6 +8,7 @@ import { Button, Card, Empty, Sheet, Spinner } from "../components/ui";
 import { rupees, shortDate } from "../format";
 import { NetWorthCard } from "../components/NetWorth";
 import { useAccounts, useBalanceOverview } from "../queries";
+import { Link, replaceSearch, useSearch } from "../router";
 
 function CardRow({ card, onOpen }: { card: CardAccount; onOpen: () => void }) {
   const pct = Math.min(100, Math.max(0, card.utilizationPct));
@@ -47,7 +49,13 @@ function CardRow({ card, onOpen }: { card: CardAccount; onOpen: () => void }) {
   );
 }
 
+const VIEWS: { value: AccountsView; label: string }[] = [
+  { value: "accounts", label: "Accounts" },
+  { value: "commitments", label: "Commitments" },
+];
+
 export function Accounts() {
+  const view = viewFromSearch(useSearch());
   const [showArchived, setShowArchived] = useState(false);
   const accounts = useAccounts(showArchived);
   const overview = useBalanceOverview();
@@ -60,7 +68,22 @@ export function Accounts() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl">Accounts and cards</h1>
-        <Button onClick={() => setEditing("new")}>Add</Button>
+        {view === "accounts" && <Button onClick={() => setEditing("new")}>Add</Button>}
+      </div>
+
+      <div role="tablist" aria-label="View" className="grid grid-cols-2 gap-1 rounded-xl bg-sunk p-1">
+        {VIEWS.map((v) => (
+          <button
+            key={v.value}
+            type="button"
+            role="tab"
+            aria-selected={view === v.value}
+            onClick={() => replaceSearch(searchForView(v.value))}
+            className={`min-h-11 rounded-lg text-sm font-medium ${view === v.value ? "bg-card shadow-sm" : "text-soft"}`}
+          >
+            {v.label}
+          </button>
+        ))}
       </div>
 
       {accounts.isPending ? (
@@ -72,9 +95,32 @@ export function Accounts() {
           Add a bank account or credit card to start, or load demo data from More.
         </Empty>
       ) : (
+        view === "commitments" ? (
+          <>
+            {overview.data && (overview.data.blockedPaise > 0 || overview.data.emiToComePaise > 0) && (
+              <p className="rounded-2xl border border-line bg-card px-4 py-3 text-sm text-soft">
+                Money that is spoken for:{" "}
+                {overview.data.blockedPaise > 0 && <strong className="text-ink">{rupees(overview.data.blockedPaise)} blocked for applications</strong>}
+                {overview.data.blockedPaise > 0 && overview.data.emiToComePaise > 0 && " and "}
+                {overview.data.emiToComePaise > 0 && <strong className="text-ink">{rupees(overview.data.emiToComePaise)} of card EMIs still to be billed</strong>}.
+              </p>
+            )}
+            <BlockedFunds />
+            <EmiPlans />
+          </>
+        ) : (
         <>
           {overview.data && <NetWorthCard overview={overview.data} />}
-          <BlockedFunds />
+          {overview.data && (overview.data.blockedPaise > 0 || overview.data.emiToComePaise > 0) && (
+            <Link to={accountsPath("commitments")} className="flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-line bg-card px-4 py-3 text-sm hover:bg-hover">
+              <span className="text-soft">
+                {overview.data.blockedPaise > 0 && <>{rupees(overview.data.blockedPaise)} blocked</>}
+                {overview.data.blockedPaise > 0 && overview.data.emiToComePaise > 0 && " · "}
+                {overview.data.emiToComePaise > 0 && <>{rupees(overview.data.emiToComePaise)} of EMIs to come</>}
+              </span>
+              <span className="font-medium text-brand">Commitments →</span>
+            </Link>
+          )}
           {banks.length > 0 && (
             <Card pad="p-0">
               <h2 className="border-b border-line px-4 py-2 text-sm font-medium text-soft">Bank accounts</h2>
@@ -113,14 +159,16 @@ export function Accounts() {
             </Card>
           )}
 
-          <EmiPlans />
         </>
+        )
       )}
 
-      <label className="flex min-h-11 items-center gap-3 text-sm text-soft">
-        <input type="checkbox" className="size-5 accent-brand" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
-        Show archived accounts
-      </label>
+      {view === "accounts" && (
+        <label className="flex min-h-11 items-center gap-3 text-sm text-soft">
+          <input type="checkbox" className="size-5 accent-brand" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+          Show archived accounts
+        </label>
+      )}
 
       {editing && (
         <Sheet title={editing === "new" ? "Add account" : `Edit ${editing.name}`} onClose={() => setEditing(null)}>

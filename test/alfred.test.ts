@@ -175,7 +175,7 @@ describe("EMIs in the briefing", () => {
   it("says what is still to be billed and what comes next", () => {
     const l = find({ emi: { toComePaise: 1_01_666_67, next: { title: "Phone", amountPaise: 20_333_33, date: "2026-11-23" } } }, "emi");
     expect(l?.text).toBe("₹1,01,666.67 of card EMIs is still to be billed; the next is ₹20,333.33 for Phone on 2026-11-23.");
-    expect(l?.to).toBe("/accounts");
+    expect(l?.to).toBe("/accounts?view=commitments");
   });
 
   it("copes with no next date", () => {
@@ -211,7 +211,7 @@ describe("blocked funds in the briefing", () => {
   it("copes with no outcome date, and links to the accounts page", () => {
     const l = find({ holds: [hold({ expectedDate: null })] }, "blocked");
     expect(l?.text).toBe("₹15,000 is blocked for Tata Tech IPO.");
-    expect(l?.to).toBe("/accounts");
+    expect(l?.to).toBe("/accounts?view=commitments");
   });
 
   it("sits right after the safe-to-spend line", () => {
