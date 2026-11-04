@@ -68,7 +68,7 @@ export function Accounts() {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl">Accounts and cards</h1>
+        <h1 className="text-3xl">Accounts and commitments</h1>
         {view === "accounts" && <Button onClick={() => setEditing("new")}>Add</Button>}
       </div>
 

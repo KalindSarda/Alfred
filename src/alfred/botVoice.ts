@@ -150,7 +150,7 @@ export interface EmiLine {
 /** Running EMI plans: how far along each is and what is still to be billed. */
 export function emiReply(items: EmiLine[]): string {
   const running = items.filter((p) => p.status === "active");
-  if (running.length === 0) return "You have no EMI plans running. You can add one in the app, under Accounts and cards, then Commitments.";
+  if (running.length === 0) return "You have no EMI plans running. You can add one in the app, under Accounts and commitments, then Commitments.";
   const lines = ["Your EMI plans:"];
   for (const p of running) {
     const next = p.nextDate && p.nextAmountPaise !== null ? `, next ${rupees(p.nextAmountPaise)} on ${shortDate(p.nextDate)}` : "";

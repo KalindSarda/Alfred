@@ -311,9 +311,7 @@ export function Recurring() {
     <Card pad="p-0">
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2">
         <h2 className="text-sm font-medium text-soft">Recurring</h2>
-        <button type="button" onClick={() => setSheet({ rule: null })} className="min-h-11 px-2 text-sm font-medium text-brand">
-          Add recurring
-        </button>
+        <Button className="shrink-0" onClick={() => setSheet({ rule: null })}>Add recurring</Button>
       </div>
       {items.length === 0 ? (
         <p className="px-4 py-3 text-sm text-soft">Rent, subscriptions, salary, SIPs: add them once and Alfred records them on their day, or asks you to confirm when the amount varies.</p>

@@ -19,7 +19,7 @@ const NAV = [
   { to: "/", label: "Cash flow", icon: "cashflow" },
   { to: "/transactions", label: "Transactions", icon: "transactions" },
   { to: "/plan", label: "Plan", icon: "budgets" },
-  { to: "/accounts", label: "Accounts and cards", short: "Accounts", icon: "accounts" },
+  { to: "/accounts", label: "Accounts and commitments", short: "Accounts", icon: "accounts" },
   { to: "/more", label: "More", icon: "more" },
 ] as const;
 

@@ -369,9 +369,7 @@ export function LentBorrowed() {
     <Card pad="p-0">
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2">
         <h2 className="text-sm font-medium text-soft">Lent and borrowed</h2>
-        <button type="button" onClick={() => setAdding(true)} className="min-h-11 px-2 text-sm font-medium text-brand">
-          Add
-        </button>
+        <Button className="shrink-0" onClick={() => setAdding(true)}>Add</Button>
       </div>
 
       {data && (data.owedToYouPaise > 0 || data.youOwePaise > 0) && (

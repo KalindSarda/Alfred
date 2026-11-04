@@ -175,9 +175,7 @@ export function BlockedFunds() {
         <h2 className="text-sm font-medium text-soft">
           Blocked for applications{total > 0 && <span className="ml-2 font-semibold text-ink tabular-nums">{rupees(total)}</span>}
         </h2>
-        <button type="button" onClick={() => setSheet({ kind: "edit", hold: null })} className="min-h-11 px-2 text-sm font-medium text-brand">
-          Block an amount
-        </button>
+        <Button className="shrink-0" onClick={() => setSheet({ kind: "edit", hold: null })}>Block an amount</Button>
       </div>
 
       {items.length === 0 ? (

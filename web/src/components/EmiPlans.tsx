@@ -302,9 +302,7 @@ export function EmiPlans() {
         <h2 className="text-sm font-medium text-soft">
           EMI plans{toCome > 0 && <span className="ml-2 font-semibold text-ink tabular-nums">{rupees(toCome)} to come</span>}
         </h2>
-        <button type="button" onClick={() => setSheet({ plan: null })} className="min-h-11 px-2 text-sm font-medium text-brand">
-          Add an EMI plan
-        </button>
+        <Button className="shrink-0" onClick={() => setSheet({ plan: null })}>Add an EMI plan</Button>
       </div>
       {items.length === 0 ? (
         <p className="px-4 py-3 text-sm text-soft">

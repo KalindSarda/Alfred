@@ -406,7 +406,7 @@ async function accountsView(deps: BotDeps, who: Actor, today: IstDate, note?: st
     for (const k of cards) if (k.kind === "card") lines.push(`${k.name}: owes ${rupees(k.outstandingPaise)}`);
   }
   if (archived.length) lines.push("", `Archived: ${archived.map((a) => a.name).join(", ")}.`);
-  lines.push("", "Adding, editing, merging and deleting are in the app, under Accounts and cards.");
+  lines.push("", "Adding, editing, merging and deleting are in the app, under Accounts and commitments.");
 
   const buttons: Button[][] = [
     ...active.map((a) => [{ text: `Archive ${a.name}`, data: `a:${a.id}:x` }]),
