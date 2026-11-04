@@ -144,7 +144,8 @@ function BudgetSheet({
   );
 }
 
-export function Budgets() {
+/** The budgets view of the Plan page: this month's limits and how far each has been used. */
+export function BudgetsView() {
   const budgets = useBudgets();
   const categories = useCategories();
   const [sheet, setSheet] = useState<{ categoryId: string; limitPaise: number | null } | null>(null);
@@ -159,13 +160,10 @@ export function Budgets() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <h1 className="text-3xl">Budgets</h1>
-          <p className="text-sm text-soft">
-            {shortDate(period.from)} to {shortDate(period.to)}
-          </p>
-        </div>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-soft">
+          {shortDate(period.from)} to {shortDate(period.to)}
+        </p>
         {available.length > 0 && (
           <Button onClick={() => setSheet({ categoryId: "", limitPaise: null })}>Add budget</Button>
         )}

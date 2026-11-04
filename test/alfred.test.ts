@@ -176,7 +176,7 @@ describe("recurring entries in the briefing", () => {
   it("mentions an expense that comes up", () => {
     const l = find({ recurring: { title: "Rent", type: "expense", amountPaise: 22_000_00, date: "2026-11-01" } }, "recurring");
     expect(l?.text).toBe("Rent, ₹22,000, comes up on 2026-11-01 (in 5 days).");
-    expect(l?.to).toBe("/accounts?view=commitments");
+    expect(l?.to).toBe("/plan?view=recurring");
   });
 
   it("says an income is expected", () => {
@@ -273,7 +273,7 @@ describe("budgets in the briefing", () => {
   });
 
   it("links to the Budgets page", () => {
-    expect(find({ budgets: [budget({ status: "over", remainingPaise: -1 })] }, "budget")?.to).toBe("/budgets");
+    expect(find({ budgets: [budget({ status: "over", remainingPaise: -1 })] }, "budget")?.to).toBe("/plan");
   });
 });
 

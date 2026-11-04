@@ -4,7 +4,6 @@ import type { Account, CardAccount } from "../api";
 import { AccountForm } from "../components/AccountForm";
 import { BlockedFunds } from "../components/BlockedFunds";
 import { EmiPlans } from "../components/EmiPlans";
-import { Recurring } from "../components/Recurring";
 import { Button, Card, Empty, Sheet, Spinner } from "../components/ui";
 import { rupees, shortDate } from "../format";
 import { NetWorthCard } from "../components/NetWorth";
@@ -106,7 +105,6 @@ export function Accounts() {
                 {overview.data.emiToComePaise > 0 && <strong className="text-ink">{rupees(overview.data.emiToComePaise)} of card EMIs still to be billed</strong>}.
               </p>
             )}
-            <Recurring />
             <BlockedFunds />
             <EmiPlans />
           </>

@@ -8,7 +8,7 @@ describe("/budget", () => {
   it("says so when there are no budgets, and points to the app", async () => {
     const w = await world();
     await w.say("/budget");
-    expect(w.tg.last.text).toBe("You have not set any budgets yet. You can add them in the app, under Budgets.");
+    expect(w.tg.last.text).toBe("You have not set any budgets yet. You can add them in the app, under Plan.");
   });
 
   it("lists each budget with what is left, and a total", async () => {

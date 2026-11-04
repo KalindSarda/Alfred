@@ -3,22 +3,22 @@ import { InviteSwitch } from "./components/InviteSwitch";
 import { QuickAddSheet } from "./components/QuickAddSheet";
 import { Icon, Spinner } from "./components/ui";
 import { Accounts } from "./pages/Accounts";
-import { Budgets } from "./pages/Budgets";
 import { Categories } from "./pages/Categories";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { Setup } from "./pages/Setup";
 import { More } from "./pages/More";
+import { Plan } from "./pages/Plan";
 import { Transactions } from "./pages/Transactions";
 import { inviteEmailFromHash } from "./invite";
 import { clearInviteHash } from "./inviteUrl";
 import { useMe, useReviewCounts } from "./queries";
-import { Link, usePath } from "./router";
+import { Link, replacePath, usePath } from "./router";
 
 const NAV = [
   { to: "/", label: "Cash flow", icon: "cashflow" },
   { to: "/transactions", label: "Transactions", icon: "transactions" },
-  { to: "/budgets", label: "Budgets", icon: "budgets" },
+  { to: "/plan", label: "Plan", icon: "budgets" },
   { to: "/accounts", label: "Accounts and cards", short: "Accounts", icon: "accounts" },
   { to: "/more", label: "More", icon: "more" },
 ] as const;
@@ -27,8 +27,9 @@ function Page({ path }: { path: string }) {
   switch (path) {
     case "/transactions":
       return <Transactions />;
+    case "/plan":
     case "/budgets":
-      return <Budgets />;
+      return <Plan />;
     case "/accounts":
       return <Accounts />;
     case "/more":
@@ -44,7 +45,11 @@ export function App() {
   const me = useMe();
   const path = usePath();
   const [adding, setAdding] = useState(false);
-  const isActive = (to: string) => path === to || (to === "/more" && path === "/categories");
+  const isActive = (to: string) => path === to || (to === "/more" && path === "/categories") || (to === "/plan" && path === "/budgets");
+  // The Budgets tab is now the Plan tab; an old link or bookmark moves over quietly.
+  useEffect(() => {
+    if (path === "/budgets") replacePath(`/plan${window.location.search}`);
+  }, [path]);
   const review = useReviewCounts(Boolean(me.data));
   // An invitation link carries the invited address in its fragment; it matters only when someone else is signed in.
   const [invite, setInvite] = useState(() => inviteEmailFromHash(window.location.hash));

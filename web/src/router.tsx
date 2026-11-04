@@ -30,6 +30,13 @@ export function navigate(to: string): void {
   window.scrollTo(0, 0);
 }
 
+/** Moves to another address without adding a history entry, for an old address that now lives elsewhere. */
+export function replacePath(to: string): void {
+  if (to === window.location.pathname + window.location.search) return;
+  window.history.replaceState({}, "", to);
+  window.dispatchEvent(new Event(NAV_EVENT));
+}
+
 /** Changes only the query string of the current page, without adding a history entry per keystroke. */
 export function replaceSearch(search: string): void {
   if (search === window.location.search) return;

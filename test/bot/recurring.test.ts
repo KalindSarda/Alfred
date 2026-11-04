@@ -10,7 +10,7 @@ describe("/recurring", () => {
     const w = await world();
     await w.say("/recurring");
     expect(w.tg.last.text).toContain("Nothing is set to repeat");
-    expect(w.tg.last.text).toContain("Commitments");
+    expect(w.tg.last.text).toContain("under Plan, then Recurring");
   });
 
   it("lists what repeats with the next date, and marks the ones it will ask about", async () => {

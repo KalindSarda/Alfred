@@ -95,7 +95,7 @@ export interface BudgetLine {
 }
 
 export function budgetsReply(period: { from: string; to: string }, items: BudgetLine[], totalSpentPaise: number, totalLimitPaise: number): string {
-  if (items.length === 0) return "You have not set any budgets yet. You can add them in the app, under Budgets.";
+  if (items.length === 0) return "You have not set any budgets yet. You can add them in the app, under Plan.";
   const lines = [`Your budgets for ${shortDate(period.from)} to ${shortDate(period.to)}:`];
   for (const b of items) {
     const left =
@@ -175,7 +175,7 @@ export interface RecurringLine {
 /** What repeats, soonest first. Paused and ended ones are left out. */
 export function recurringReply(items: RecurringLine[]): string {
   const running = items.filter((r) => r.status === "active" && r.nextDate);
-  if (running.length === 0) return "Nothing is set to repeat. You can add rent, subscriptions or salary in the app, under Accounts and cards, then Commitments.";
+  if (running.length === 0) return "Nothing is set to repeat. You can add rent, subscriptions or salary in the app, under Plan, then Recurring.";
   const lines = ["What repeats:"];
   for (const r of running) {
     const verb = r.type === "income" ? "in" : "from";

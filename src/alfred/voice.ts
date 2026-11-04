@@ -209,7 +209,7 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
     lines.push({
       key: "recurring",
       text: r.type === "income" ? `${r.title}, ${rupees(r.amountPaise)}, is expected on ${when}.` : `${r.title}, ${rupees(r.amountPaise)}, comes up on ${when}.`,
-      to: "/accounts?view=commitments",
+      to: "/plan?view=recurring",
     });
   }
 
@@ -245,7 +245,7 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
       b.status === "over" ? `${b.categoryName} is ${rupees(-b.remainingPaise)} over its budget` : `${b.categoryName} is at ${Math.round(b.pct)}% of its budget`,
     );
     const more = over.length + near.length - pressed.length;
-    lines.push({ key: "budget", text: `${parts.join(", and ")}${more > 0 ? `, with ${more} more to watch` : ""}.`, to: "/budgets" });
+    lines.push({ key: "budget", text: `${parts.join(", and ")}${more > 0 ? `, with ${more} more to watch` : ""}.`, to: "/plan" });
   }
 
   if (facts.uncategorizedCount > 0) {
