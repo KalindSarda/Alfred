@@ -82,7 +82,10 @@ export const transactions = sqliteTable(
     merchant: text("merchant"),
     note: text("note"),
     status: text("status", { enum: ["draft", "confirmed"] }).notNull().default("confirmed"),
-    source: text("source", { enum: ["web", "telegram", "seed", "ai", "emi"] }).notNull().default("web"),
+    source: text("source", { enum: ["web", "telegram", "seed", "ai", "emi", "recurring"] }).notNull().default("web"),
+    /** Set on the entries a recurring rule adds by itself, with the date it was due. No foreign key: rules and their entries are handled together in code. */
+    recurringRuleId: text("recurring_rule_id"),
+    recurringOn: text("recurring_on"),
     /** Set on the instalments an EMI plan adds by itself. No foreign key: plans and their entries are removed together in code. */
     emiPlanId: text("emi_plan_id"),
     emiInstalment: integer("emi_instalment"),
@@ -97,6 +100,8 @@ export const transactions = sqliteTable(
     index("txn_user_category_date_idx").on(t.userId, t.categoryId, t.txnDate),
     // An instalment can be created only once, and a deleted one is never created again.
     uniqueIndex("txn_emi_instalment_uq").on(t.emiPlanId, t.emiInstalment),
+    // An occurrence of a recurring rule is created once, and a deleted one is never created again.
+    uniqueIndex("txn_recurring_occurrence_uq").on(t.recurringRuleId, t.recurringOn),
     check("txn_amount_positive", sql`${t.amountPaise} > 0`),
     check(
       "txn_transfer_shape",
@@ -214,6 +219,44 @@ export const budgets = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [uniqueIndex("budgets_user_category_uq").on(t.userId, t.categoryId), check("budgets_limit_positive", sql`${t.limitPaise} > 0`)],
+);
+
+/**
+ * Something that repeats: rent, a subscription, salary, a SIP. On each due date an entry is added by itself, either
+ * confirmed ("auto") or as a draft for the person to confirm or correct ("draft", for amounts that vary).
+ */
+export const recurringRules = sqliteTable(
+  "recurring_rules",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    title: text("title").notNull(),
+    type: text("type", { enum: ["expense", "income", "investment"] }).notNull(),
+    amountPaise: integer("amount_paise").notNull(),
+    accountId: text("account_id").notNull().references(() => accounts.id),
+    categoryId: text("category_id").references(() => categories.id),
+    frequency: text("frequency", { enum: ["weekly", "monthly", "yearly"] }).notNull(),
+    /** Weekly: 1 (Monday) to 7 (Sunday). Monthly and yearly: the day of the month, a day the month lacks becoming its last. */
+    day: integer("day").notNull(),
+    /** Yearly only: 1 to 12. */
+    month: integer("month"),
+    startDate: text("start_date").notNull(),
+    endDate: text("end_date"),
+    mode: text("mode", { enum: ["auto", "draft"] }).notNull().default("auto"),
+    /** Days ahead (1 to 7) to be told about the next one; null for no reminder. */
+    remindDaysBefore: integer("remind_days_before"),
+    /** The due date Alfred last reminded about, so he reminds once per occurrence. */
+    lastRemindedFor: text("last_reminded_for"),
+    /** Due dates that were skipped on purpose (a skipped one, or the days a pause covered), as a JSON list. */
+    skipsJson: text("skips_json"),
+    pausedAt: text("paused_at"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("recurring_rules_user_idx").on(t.userId),
+    check("recurring_amount_positive", sql`${t.amountPaise} > 0`),
+    check("recurring_day_range", sql`${t.day} BETWEEN 1 AND 31`),
+  ],
 );
 
 /**

@@ -4,6 +4,7 @@ import { type Bindings, getConfig } from "./config/env";
 import { getDb } from "./db/client";
 import { runMaintenance } from "./services/maintenance";
 import { materializeAllEmi } from "./services/emi";
+import { runRecurring } from "./services/recurringJob";
 import { runHoldReminders, runNudges } from "./services/nudges";
 import { todayIst } from "./domain/dates";
 import { logger } from "./utils/logger";
@@ -30,6 +31,12 @@ export default {
       logger.info("emi_instalments_added", { added });
     } catch (error) {
       logger.error("emi_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+    try {
+      const recurring = await runRecurring({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });
+      logger.info("recurring_done", { ...recurring });
+    } catch (error) {
+      logger.error("recurring_failed", { error: error instanceof Error ? error.message : "unknown" });
     }
     try {
       const result = await runNudges({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });

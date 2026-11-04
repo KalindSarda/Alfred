@@ -23,6 +23,7 @@ const facts = (over: Partial<BriefingFacts> = {}): BriefingFacts => ({
   budgets: [],
   holds: [],
   emi: { toComePaise: 0, next: null },
+  recurring: null,
   ...over,
 });
 
@@ -164,6 +165,22 @@ describe("briefing lines", () => {
 
   it("shows neither review line when nothing needs attention", () => {
     expect(lines().some((l) => l.key === "uncategorized" || l.key === "drafts")).toBe(false);
+  });
+});
+
+describe("recurring entries in the briefing", () => {
+  it("is silent when nothing is coming up within a week", () => {
+    expect(lines().some((l) => l.key === "recurring")).toBe(false);
+  });
+
+  it("mentions an expense that comes up", () => {
+    const l = find({ recurring: { title: "Rent", type: "expense", amountPaise: 22_000_00, date: "2026-11-01" } }, "recurring");
+    expect(l?.text).toBe("Rent, ₹22,000, comes up on 2026-11-01 (in 5 days).");
+    expect(l?.to).toBe("/accounts?view=commitments");
+  });
+
+  it("says an income is expected", () => {
+    expect(find({ recurring: { title: "Salary", type: "income", amountPaise: 90_000_00, date: "2026-10-28" } }, "recurring")?.text).toBe("Salary, ₹90,000, is expected on 2026-10-28 (tomorrow).");
   });
 });
 

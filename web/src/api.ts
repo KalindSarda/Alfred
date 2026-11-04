@@ -158,6 +158,29 @@ export interface EmiPlan {
   locked: boolean;
 }
 
+export interface RecurringRule {
+  id: string;
+  title: string;
+  type: "expense" | "income" | "investment";
+  amountPaise: number;
+  accountId: string;
+  accountName: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  frequency: "weekly" | "monthly" | "yearly";
+  day: number;
+  month: number | null;
+  repeat: string;
+  startDate: string;
+  endDate: string | null;
+  mode: "auto" | "draft";
+  remindDaysBefore: number | null;
+  status: "active" | "paused" | "ended";
+  nextDate: string | null;
+  upcoming: string[];
+  entries: number;
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -180,7 +203,7 @@ export interface Transaction {
   merchant: string | null;
   note: string | null;
   status: "draft" | "confirmed";
-  source: "web" | "telegram" | "seed" | "ai" | "emi";
+  source: "web" | "telegram" | "seed" | "ai" | "emi" | "recurring";
 }
 
 export interface Summary {

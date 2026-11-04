@@ -63,5 +63,5 @@ Sign-up is invite-only. The owner (the first account) invites people under **Mor
 
 ## Status
 
-Built: accounts, cards, card EMI plans (instalments added automatically), blocked IPO funds (UPI mandates, with an Investment entry on allotment), transactions, categories, one-time-code login, demo data, safe-to-spend, cash flow, the Alfred briefing, the Telegram bot, budgets, card due-date reminders, export, security headers, installable web app.
+Built: accounts, cards, recurring entries and subscriptions, card EMI plans (instalments added automatically), blocked IPO funds (UPI mandates, with an Investment entry on allotment), transactions, categories, one-time-code login, demo data, safe-to-spend, cash flow, the Alfred briefing, the Telegram bot, budgets, card due-date reminders, export, security headers, installable web app.
 Next: a first deployment, then an optional AI phase (free-text understanding, voice notes, ask-your-ledger).

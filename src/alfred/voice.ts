@@ -94,6 +94,13 @@ export interface BriefingHold {
   expectedDate: string | null;
 }
 
+export interface BriefingRecurring {
+  title: string;
+  type: "expense" | "income" | "investment";
+  amountPaise: number;
+  date: string;
+}
+
 export interface BriefingEmi {
   /** Instalments not yet billed, across all running plans. */
   toComePaise: number;
@@ -128,6 +135,8 @@ export interface BriefingFacts {
   holds: BriefingHold[];
   /** Card EMI instalments still to be billed. */
   emi: BriefingEmi;
+  /** The soonest recurring entry due within a week, if any. */
+  recurring: BriefingRecurring | null;
 }
 
 export interface BriefingLine {
@@ -190,6 +199,16 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
     lines.push({
       key: "emi",
       text: `${rupees(facts.emi.toComePaise)} of card EMIs is still to be billed${n ? `; the next is ${rupees(n.amountPaise)} for ${n.title} on ${formatDate(n.date)}` : ""}.`,
+      to: "/accounts?view=commitments",
+    });
+  }
+
+  if (facts.recurring) {
+    const r = facts.recurring;
+    const when = `${formatDate(r.date)} (${inDays(daysBetween(facts.today, r.date))})`;
+    lines.push({
+      key: "recurring",
+      text: r.type === "income" ? `${r.title}, ${rupees(r.amountPaise)}, is expected on ${when}.` : `${r.title}, ${rupees(r.amountPaise)}, comes up on ${when}.`,
       to: "/accounts?view=commitments",
     });
   }

@@ -3,7 +3,7 @@ import { ConflictError, NotFoundError, ValidationError } from "../config/errors"
 import type { Db } from "../db/client";
 import { getAccount, insertAccount } from "../db/accounts";
 import { activeHoldTotals } from "../db/holds";
-import { accounts, emiPlans, holds, nudgeLog, transactions } from "../db/schema";
+import { accounts, emiPlans, holds, nudgeLog, recurringRules, transactions } from "../db/schema";
 import type { IstDate } from "../domain/dates";
 import type { CreateAccountData, UpdateAccountData } from "../schemas/account";
 import { nowIso } from "../utils/id";
@@ -245,6 +245,8 @@ export async function deleteAccount(db: Db, userId: string, id: string): Promise
   }
   const [running] = await db.select({ n: count() }).from(emiPlans).where(and(eq(emiPlans.userId, userId), eq(emiPlans.cardAccountId, id), isNull(emiPlans.cancelledAt)));
   if ((running?.n ?? 0) > 0) throw new ConflictError("This card has an EMI plan. Close or delete the plan first, then delete the card.");
+  const [repeating] = await db.select({ n: count() }).from(recurringRules).where(and(eq(recurringRules.userId, userId), eq(recurringRules.accountId, id)));
+  if ((repeating?.n ?? 0) > 0) throw new ConflictError("Something recurring uses this account. Delete or move it first, then delete the account.");
   if (((await activeHoldTotals(db, userId)).get(id) ?? 0) > 0) {
     throw new ConflictError("Money is still blocked in this account. Settle it first (allotted or not allotted), then delete the account.");
   }
@@ -299,6 +301,7 @@ export async function mergeAccount(db: Db, userId: string, fromId: string, intoI
     db.update(transactions).set({ toAccountId: intoId }).where(and(eq(transactions.userId, userId), eq(transactions.toAccountId, fromId))),
     db.update(accounts).set(addOpening).where(and(eq(accounts.userId, userId), eq(accounts.id, intoId))),
     db.update(holds).set({ accountId: intoId }).where(and(eq(holds.userId, userId), eq(holds.accountId, fromId))),
+    db.update(recurringRules).set({ accountId: intoId }).where(and(eq(recurringRules.userId, userId), eq(recurringRules.accountId, fromId))),
     // Plans move with their card; from then on their instalments follow the target card's statement day.
     db.update(emiPlans).set({ cardAccountId: intoId }).where(and(eq(emiPlans.userId, userId), eq(emiPlans.cardAccountId, fromId))),
     db.delete(nudgeLog).where(and(eq(nudgeLog.userId, userId), eq(nudgeLog.cardAccountId, fromId))),
@@ -321,6 +324,10 @@ export async function setArchived(
   const current = await accountDto(db, userId, id, today);
   if (archived && current.kind === "card" && current.outstandingPaise !== 0) {
     throw new ConflictError("This card still has an outstanding balance; pay it off before archiving");
+  }
+  if (archived) {
+    const [repeating] = await db.select({ n: count() }).from(recurringRules).where(and(eq(recurringRules.userId, userId), eq(recurringRules.accountId, id), isNull(recurringRules.pausedAt)));
+    if ((repeating?.n ?? 0) > 0) throw new ConflictError("Something recurring still uses this account; pause or move it before archiving");
   }
   if (archived && current.kind === "card" && current.emiToComePaise > 0) {
     throw new ConflictError("This card still has EMI instalments to come; close the plan before archiving");

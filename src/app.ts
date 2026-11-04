@@ -20,6 +20,7 @@ import { exportRoutes } from "./routes/export";
 import { holdRoutes } from "./routes/holds";
 import { me } from "./routes/me";
 import { peopleRoutes } from "./routes/people";
+import { recurringRoutes } from "./routes/recurring";
 import { settingsRoutes } from "./routes/settings";
 import { transactionRoutes } from "./routes/transactions";
 import type { AuthDeps } from "./services/auth";
@@ -86,6 +87,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/people", peopleRoutes);
   app.route("/api/holds", holdRoutes);
   app.route("/api/emi-plans", emiRoutes);
+  app.route("/api/recurring", recurringRoutes);
   app.route("/api/telegram", telegramLinkRoutes);
 
   app.notFound((c) => c.json({ error: { code: "not_found", message: "Not found" } }, 404));

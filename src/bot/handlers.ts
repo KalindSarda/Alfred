@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, emiReply, holdsReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
+import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, emiReply, holdsReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
 import { AppError, ConflictError, NotFoundError, RateLimitedError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
@@ -16,6 +16,7 @@ import { balanceOverview, setArchived, toAccountDto } from "../services/accounts
 import { getCashflow } from "../services/cashflow";
 import { createCategory } from "../services/categories";
 import { listPlans } from "../services/emi";
+import { listRules } from "../services/recurring";
 import { allotHold, createHold, deleteHold, listHolds, releaseHold } from "../services/holds";
 import { budgetFor, listBudgets } from "../services/budgets";
 import { getSummary } from "../services/dashboard";
@@ -250,6 +251,14 @@ async function holdsView(deps: BotDeps, who: Actor, today: IstDate, note?: strin
       { text: `Not allotted: ${short(h.title)}`, data: `h:${h.id}:n` },
     ]),
   };
+}
+
+async function cmdRecurring(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
+  const rules = await listRules(deps.db, who.userId, today);
+  await deps.telegram.sendMessage(
+    who.chatId,
+    recurringReply(rules.map((r) => ({ title: r.title, type: r.type, amountPaise: r.amountPaise, accountName: r.accountName, repeat: r.repeat, nextDate: r.nextDate, mode: r.mode, status: r.status }))),
+  );
 }
 
 async function cmdEmi(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
@@ -586,6 +595,8 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
       case "budget":
       case "budgets":
         return await cmdBudget(deps, who, today);
+      case "recurring":
+        return await cmdRecurring(deps, who, today);
       case "emi":
         return await cmdEmi(deps, who, today);
       case "ipo":
@@ -674,6 +685,18 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
       } else {
         const options = c.categories.filter((cat) => cat.kind === t.type).slice(0, 12);
         await reply(deps, to, botVoice.askCategory, rows(options.map((cat) => ({ text: cat.name, data: `k:${id}:${cat.id}` }))));
+      }
+    } else if (kind === "r" && id && (action === "ok" || action === "no")) {
+      // A draft that a recurring rule added, being confirmed or discarded.
+      const t = await getTransaction(deps.db, userId, id).catch(() => null);
+      if (!t || t.source !== "recurring" || t.status !== "draft") {
+        await reply(deps, to, botVoice.recurringSettled);
+      } else if (action === "ok") {
+        await updateTransaction(deps.db, userId, id, { status: "confirmed" });
+        await reply(deps, to, botVoice.recurringConfirmed(t.merchant ?? "That entry"));
+      } else {
+        await softDeleteTransaction(deps.db, userId, id);
+        await reply(deps, to, botVoice.recurringDiscarded(t.merchant ?? "That entry"));
       }
     } else if (kind === "h" && id && (action === "a" || action === "n" || action === "u")) {
       const today = todayIst(new Date(deps.now()));

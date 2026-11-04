@@ -30,6 +30,7 @@ export const BOT_COMMANDS: BotCommand[] = [
   { command: "budget", description: "How your budgets stand this month" },
   { command: "ipo", description: "Money blocked for IPO applications, or /ipo 15000 hdfc tata tech" },
   { command: "emi", description: "Your card EMI plans and what is still to be billed" },
+  { command: "recurring", description: "What repeats: rent, subscriptions, salary" },
   { command: "accounts", description: "Your accounts and cards; archive or restore one" },
   { command: "category", description: "List categories, or add one: /category add Pets" },
   { command: "due", description: "Card payments coming up" },

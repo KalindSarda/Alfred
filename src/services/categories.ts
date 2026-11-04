@@ -2,7 +2,7 @@ import { and, count, eq, isNull, sql } from "drizzle-orm";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
 import { type CategoryRow, getCategory, getCategoryByName, listCategories } from "../db/categories";
-import { budgets, categories, merchantAliases, transactions } from "../db/schema";
+import { budgets, categories, merchantAliases, recurringRules, transactions } from "../db/schema";
 import type { CategoryDto } from "../schemas/category";
 import { newId, nowIso } from "../utils/id";
 
@@ -73,6 +73,7 @@ export async function deleteCategory(db: Db, userId: string, id: string): Promis
   await db.batch([
     db.update(transactions).set({ categoryId: null }).where(and(eq(transactions.userId, userId), eq(transactions.categoryId, id))),
     db.update(merchantAliases).set({ defaultCategoryId: null }).where(and(eq(merchantAliases.userId, userId), eq(merchantAliases.defaultCategoryId, id))),
+    db.update(recurringRules).set({ categoryId: null }).where(and(eq(recurringRules.userId, userId), eq(recurringRules.categoryId, id))),
     db.delete(budgets).where(and(eq(budgets.userId, userId), eq(budgets.categoryId, id))),
     db.delete(categories).where(and(eq(categories.userId, userId), eq(categories.id, id))),
   ]);
@@ -105,6 +106,7 @@ export async function mergeCategory(db: Db, userId: string, fromId: string, into
           sql`NOT EXISTS (SELECT 1 FROM budgets b2 WHERE b2.user_id = ${userId} AND b2.category_id = ${intoId})`,
         ),
       ),
+    db.update(recurringRules).set({ categoryId: intoId }).where(and(eq(recurringRules.userId, userId), eq(recurringRules.categoryId, fromId))),
     db.delete(budgets).where(and(eq(budgets.userId, userId), eq(budgets.categoryId, fromId))),
     db.delete(categories).where(and(eq(categories.userId, userId), eq(categories.id, fromId))),
   ]);

@@ -99,6 +99,13 @@
       "when": 1793782373132,
       "tag": "0013_emi_amounts",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1793794174401,
+      "tag": "0014_recurring_rules",
+      "breakpoints": true
     }
   ]
 }

@@ -161,6 +161,29 @@ export function emiReply(items: EmiLine[]): string {
   return lines.join("\n");
 }
 
+export interface RecurringLine {
+  title: string;
+  type: "expense" | "income" | "investment";
+  amountPaise: number;
+  accountName: string;
+  repeat: string;
+  nextDate: string | null;
+  mode: "auto" | "draft";
+  status: "active" | "paused" | "ended";
+}
+
+/** What repeats, soonest first. Paused and ended ones are left out. */
+export function recurringReply(items: RecurringLine[]): string {
+  const running = items.filter((r) => r.status === "active" && r.nextDate);
+  if (running.length === 0) return "Nothing is set to repeat. You can add rent, subscriptions or salary in the app, under Accounts and cards, then Commitments.";
+  const lines = ["What repeats:"];
+  for (const r of running) {
+    const verb = r.type === "income" ? "in" : "from";
+    lines.push(`${r.title}: ${rupees(r.amountPaise)} ${verb} ${r.accountName}, ${r.repeat.charAt(0).toLowerCase()}${r.repeat.slice(1)}, next ${shortDate(r.nextDate as string)}${r.mode === "draft" ? " (I will ask you to confirm it)" : ""}`);
+  }
+  return lines.join("\n");
+}
+
 export const botVoice = {
   welcome(name: string, now: Date): string {
     return [
@@ -193,6 +216,7 @@ export const botVoice = {
     "/today  what you spent today",
     "/budget  how your budgets stand this month",
     "/accounts  your accounts and cards; archive or restore one",
+    "/recurring  what repeats: rent, subscriptions, salary",
     "/emi  your card EMI plans and what is still to be billed",
     "/ipo  money blocked for IPO applications, or: /ipo 15000 hdfc tata tech",
     "/category  list your categories, or add one",
@@ -219,6 +243,13 @@ export const botVoice = {
   askHoldAccount: (summary: string) => `Which account is it blocked in? (${summary})`,
   holdDue: (title: string, amountPaise: number, accountName: string) =>
     `The outcome of ${title} is due. ${rupees(amountPaise)} is blocked in ${accountName}. Was it allotted?`,
+  recurringDraft: (title: string, amountPaise: number, accountName: string) =>
+    `${title} came due. I have added ${rupees(amountPaise)} on ${accountName} as a draft, since that amount can vary. Is it right? If not, correct it in the app.`,
+  recurringReminder: (title: string, amountPaise: number, accountName: string, date: string, days: number) =>
+    `A word ahead of time: ${title}, ${rupees(amountPaise)} on ${accountName}, comes up on ${shortDate(date)}, in ${days} ${days === 1 ? "day" : "days"}.`,
+  recurringConfirmed: (title: string) => `Confirmed. ${title} now counts in your records.`,
+  recurringDiscarded: (title: string) => `Removed. ${title} for that day is gone from your records.`,
+  recurringSettled: "That one has already been settled.",
   accountArchived: (name: string) => `Archived ${name}. It is hidden from lists and new entries, and its history is kept. You can restore it below.`,
   accountRestored: (name: string) => `Restored ${name}. It is back in your lists.`,
   accountNotArchived: (name: string, reason: string) => `I could not archive ${name}. ${reason}`,
