@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultInstalmentPaise, dueInstalments, emiToCome, instalmentSchedule, isValidStartMonth, nextInstalment, scheduleIsConsistent, startMonthLabel } from "../../src/domain/emi";
+import { amountsAreValid, defaultInstalmentPaise, dueInstalments, emiToCome, instalmentSchedule, isValidStartMonth, nextInstalment, scheduleIsConsistent, startMonthLabel } from "../../src/domain/emi";
 
 const card = { statementDay: 23, dueDay: 12 };
 const phone = { totalPaise: 1_22_000_00, months: 6, instalmentPaise: 20_333_33, startMonth: "2026-11" };
@@ -82,5 +82,37 @@ describe("helpers", () => {
     expect(isValidStartMonth("2026-11")).toBe(true);
     for (const bad of ["2026-13", "2026-00", "26-11", "2026-1", "", "2026-11-01"]) expect(isValidStartMonth(bad), bad).toBe(false);
     expect(startMonthLabel("2026-11")).toBe("Nov 2026");
+  });
+});
+
+describe("an uneven bank schedule", () => {
+  // HDFC SmartEMI letter: a smaller first instalment (part-month interest) and a rounded last one.
+  const amounts = [20_082_00, 20_500_00, 20_500_00, 20_500_00, 20_500_00, 20_498_00];
+  const smart = { totalPaise: 1_22_580_00, months: 6, instalmentPaise: 20_500_00, startMonth: "2026-10", amountsPaise: amounts };
+
+  it("uses each typed amount on its statement date", () => {
+    const s = instalmentSchedule(smart, card);
+    expect(s.map((i) => [i.date, i.amountPaise])).toEqual([
+      ["2026-10-23", 20_082_00],
+      ["2026-11-23", 20_500_00],
+      ["2026-12-23", 20_500_00],
+      ["2027-01-23", 20_500_00],
+      ["2027-02-23", 20_500_00],
+      ["2027-03-23", 20_498_00],
+    ]);
+  });
+
+  it("billed plus still to come is always the sum of the typed amounts", () => {
+    for (const today of ["2026-10-01", "2026-10-23", "2026-11-24", "2027-03-22", "2027-03-23"]) {
+      const billed = dueInstalments(smart, card, today).reduce((sum, i) => sum + i.amountPaise, 0);
+      expect(billed + emiToCome(smart, card, today), today).toBe(1_22_580_00);
+    }
+  });
+
+  it("validates a typed schedule", () => {
+    expect(amountsAreValid(amounts, 6)).toBe(true);
+    expect(amountsAreValid(amounts, 5)).toBe(false);
+    expect(amountsAreValid([1, 0, 1], 3)).toBe(false);
+    expect(amountsAreValid([1, 2.5, 1], 3)).toBe(false);
   });
 });

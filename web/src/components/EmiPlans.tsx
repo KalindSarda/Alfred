@@ -42,6 +42,8 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
   const [months, setMonths] = useState(plan ? String(plan.months) : "6");
   const [instalment, setInstalment] = useState("");
   const [startMonth, setStartMonth] = useState(plan?.startMonth ?? today().slice(0, 7));
+  // The bank's own schedule, when its instalments are not all alike (a smaller first one, a rounded last one).
+  const [each, setEach] = useState(plan?.uneven ? plan.scheduleAmountsPaise.map(paiseToInput).join(" ") : "");
   const [replaces, setReplaces] = useState("");
   // A closed plan keeps its amounts until it is reopened; any other can be corrected.
   const frozen = plan?.status === "cancelled";
@@ -54,12 +56,27 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
     enabled: !plan && chosenCard !== "",
   });
 
+  // Every instalment typed in order, such as "20082 20500 20500 20500 20500 20498".
+  const eachTokens = each.trim() ? each.trim().split(/[\s;]+/).map((t) => t.replace(/,/g, "")).filter(Boolean) : [];
+  const eachParsed = eachTokens.map((t) => rupeesToPaise(t));
+  const eachInvalid = eachTokens.length > 0 && eachParsed.some((p) => !p);
+  const eachAmounts = eachTokens.length > 0 && !eachInvalid ? (eachParsed as number[]) : null;
+
   // What the plan will do, shown before anything is saved.
   const totalPaise = rupeesToPaise(total);
   const monthsN = Number(months);
   const instalmentPaise = instalment.trim() ? rupeesToPaise(instalment) : null;
   let preview = "";
-  if (card && totalPaise && Number.isInteger(monthsN) && monthsN >= 1 && monthsN <= 60 && isValidStartMonth(startMonth) && (instalmentPaise === null || instalmentPaise > 0)) {
+  if (card && eachAmounts && isValidStartMonth(startMonth) && eachAmounts.length <= 60) {
+    const sum = eachAmounts.reduce((s, a) => s + a, 0);
+    const schedule = instalmentSchedule(
+      { totalPaise: sum, months: eachAmounts.length, instalmentPaise: eachAmounts[Math.min(1, eachAmounts.length - 1)] as number, startMonth, amountsPaise: eachAmounts },
+      { statementDay: card.statementDay, dueDay: card.dueDay },
+    );
+    const first = schedule[0]!;
+    const last = schedule[schedule.length - 1]!;
+    preview = `${eachAmounts.length} instalment${eachAmounts.length === 1 ? "" : "s"} totalling ${rupees(sum)}, from ${shortDate(first.date)} ${first.date.slice(0, 4)} to ${shortDate(last.date)} ${last.date.slice(0, 4)}.`;
+  } else if (card && totalPaise && Number.isInteger(monthsN) && monthsN >= 1 && monthsN <= 60 && isValidStartMonth(startMonth) && (instalmentPaise === null || instalmentPaise > 0)) {
     const each = instalmentPaise ?? defaultInstalmentPaise(totalPaise, monthsN);
     const payable = instalmentPaise !== null ? instalmentPaise * monthsN : totalPaise;
     if (scheduleIsConsistent({ totalPaise: payable, months: monthsN, instalmentPaise: each })) {
@@ -76,9 +93,18 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
       return void run(() => api.patch(`/api/emi-plans/${plan.id}`, body), "Saved.");
     }
     if (!chosenCard) return setError("Add a credit card first.");
+    if (!isValidStartMonth(startMonth)) return setError("Choose the starting month.");
+    if (eachInvalid) return setError("Each instalment must be an amount, separated by spaces, such as 20082 20500 20500.");
+    if (eachAmounts) {
+      if (eachAmounts.length > 60) return setError("An EMI plan can have up to 60 instalments.");
+      const typed = { title: title.trim(), categoryId: categoryId || null, months: eachAmounts.length, startMonth, instalmentsPaise: eachAmounts };
+      return void run(
+        () => (plan ? api.patch(`/api/emi-plans/${plan.id}`, typed) : api.post("/api/emi-plans", { ...typed, cardAccountId: chosenCard, ...(replaces ? { replacesTransactionId: replaces } : {}) })),
+        plan ? "Saved." : "EMI plan added.",
+      );
+    }
     if (!totalPaise) return setError("Enter the amount that was converted, such as 122000.");
     if (!Number.isInteger(monthsN) || monthsN < 1 || monthsN > 60) return setError("Months must be between 1 and 60.");
-    if (!isValidStartMonth(startMonth)) return setError("Choose the starting month.");
     if (instalment.trim() && !instalmentPaise) return setError("The monthly instalment looks wrong.");
     const common = { title: title.trim(), categoryId: categoryId || null, totalPaise, months: monthsN, startMonth, ...(instalmentPaise ? { instalmentPaise } : {}) };
     void run(
@@ -120,7 +146,7 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
               ))}
           </select>
         </Field>
-        <Field label="Amount converted to EMI (₹)">
+        <Field label="Amount converted to EMI (₹)" hint={eachAmounts ? "Not needed: the total is the sum of the instalments below." : undefined}>
           <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="122000" disabled={frozen} value={total} onChange={(e) => setTotal(e.target.value)} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
@@ -133,6 +159,12 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
         </div>
         <Field label="Monthly instalment (optional)" hint="Only if your bank's instalment includes interest. Then the total becomes instalment times months.">
           <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="Leave empty to split evenly" disabled={frozen} value={instalment} onChange={(e) => setInstalment(e.target.value)} />
+        </Field>
+        <Field
+          label="Each instalment, if they differ (optional)"
+          hint="Copy them in order from your bank's schedule, separated by spaces, for example 20082 20500 20500 20500 20500 20498. Banks often bill a smaller first instalment and a rounded last one. The months and total then follow from this list."
+        >
+          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="Leave empty for equal instalments" disabled={frozen} value={each} onChange={(e) => setEach(e.target.value)} />
         </Field>
         {!plan && (
           <Field label="Is this purchase already in your entries?" hint="If so, pick it and it is removed, so the phone is not counted twice.">

@@ -11,10 +11,12 @@ export const CreateEmiPlan = z
     cardAccountId: Id,
     title: Title,
     categoryId: Id.nullable().optional(),
-    /** The amount converted. With an instalment given, the plan's total becomes instalment times months (interest included). */
-    totalPaise: Amount,
+    /** The amount converted. With an instalment given, the plan's total becomes instalment times months (interest included). Not needed when every instalment is given. */
+    totalPaise: Amount.optional(),
     months: Months,
     instalmentPaise: Amount.optional(),
+    /** Every instalment's exact amount, in order, when the bank's schedule is uneven. Its length must equal months; the total is their sum. */
+    instalmentsPaise: z.array(Amount).min(1).max(60).optional(),
     startMonth: StartMonth,
     /** An entry already logged for this purchase on the same card; it is removed so it is not counted twice. */
     replacesTransactionId: Id.optional(),
@@ -29,6 +31,7 @@ export const UpdateEmiPlan = z
     totalPaise: Amount,
     months: Months,
     instalmentPaise: Amount,
+    instalmentsPaise: z.array(Amount).min(1).max(60),
     startMonth: StartMonth,
   })
   .partial()

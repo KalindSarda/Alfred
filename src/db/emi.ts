@@ -11,11 +11,23 @@ export async function getPlanRow(db: Db, userId: string, id: string): Promise<Em
   return row;
 }
 
+/** The typed instalment amounts, or null for an even split (also when the stored list is unreadable). */
+export function parseAmounts(json: string | null): number[] | null {
+  if (!json) return null;
+  try {
+    const value: unknown = JSON.parse(json);
+    return Array.isArray(value) && value.every((v) => Number.isSafeInteger(v) && v > 0) ? (value as number[]) : null;
+  } catch {
+    return null;
+  }
+}
+
 export const toShape = (row: EmiPlanRow) => ({
   totalPaise: row.totalPaise,
   months: row.months,
   instalmentPaise: row.instalmentPaise,
   startMonth: row.startMonth,
+  amountsPaise: parseAmounts(row.amountsJson),
   cancelled: row.cancelledAt !== null,
 });
 

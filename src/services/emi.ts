@@ -3,11 +3,11 @@ import { ConflictError, NotFoundError, ValidationError } from "../config/errors"
 import type { Db } from "../db/client";
 import { getAccount } from "../db/accounts";
 import { getCategory } from "../db/categories";
-import { type EmiPlanRow, getPlanRow, toShape } from "../db/emi";
+import { type EmiPlanRow, getPlanRow, parseAmounts, toShape } from "../db/emi";
 import { getTransactionRow } from "../db/transactions";
 import { accounts, categories, emiPlans, transactions } from "../db/schema";
 import type { IstDate } from "../domain/dates";
-import { defaultInstalmentPaise, dueInstalments, emiToCome, nextInstalment, scheduleIsConsistent } from "../domain/emi";
+import { amountsAreValid, defaultInstalmentPaise, dueInstalments, emiToCome, instalmentSchedule, nextInstalment, scheduleIsConsistent } from "../domain/emi";
 import type { CreateEmiPlanData, UpdateEmiPlanData } from "../schemas/emi";
 import { newId, nowIso } from "../utils/id";
 
@@ -22,6 +22,10 @@ export interface EmiPlanDto {
   totalPaise: number;
   months: number;
   instalmentPaise: number;
+  /** Every instalment's amount in order, so an uneven bank schedule can be shown and corrected. */
+  scheduleAmountsPaise: number[];
+  /** True when the instalment amounts were typed in from the bank's schedule rather than split evenly. */
+  uneven: boolean;
   startMonth: string;
   status: "active" | "finished" | "cancelled";
   /** Instalments already billed, and what they came to. */
@@ -37,14 +41,25 @@ export interface EmiPlanDto {
 
 const invalid = (path: string, message: string) => new ValidationError("Request validation failed", [{ path, message }]);
 
-/** Works out the total and the instalment from what was typed; the total includes interest when an instalment is given. */
-function resolveAmounts(input: { totalPaise: number; months: number; instalmentPaise?: number | undefined }) {
+/**
+ * Works out the total and the instalment from what was typed. Typing every instalment (an uneven bank schedule)
+ * wins: the total is their sum. Otherwise the total includes interest when one instalment is given.
+ */
+function resolveAmounts(input: { totalPaise?: number | undefined; months: number; instalmentPaise?: number | undefined; instalmentsPaise?: number[] | undefined }) {
+  if (input.instalmentsPaise) {
+    if (!amountsAreValid(input.instalmentsPaise, input.months)) throw invalid("instalmentsPaise", `Give one amount for each of the ${input.months} months`);
+    const totalPaise = input.instalmentsPaise.reduce((sum, a) => sum + a, 0);
+    // The usual instalment is the second one: the first is often a part-month and the last a rounding.
+    const instalmentPaise = input.instalmentsPaise[Math.min(1, input.instalmentsPaise.length - 1)] as number;
+    return { totalPaise, instalmentPaise, amountsPaise: input.instalmentsPaise as number[] | null };
+  }
+  if (input.totalPaise === undefined) throw invalid("totalPaise", "Enter the amount converted, or every instalment");
   const instalmentPaise = input.instalmentPaise ?? defaultInstalmentPaise(input.totalPaise, input.months);
   const totalPaise = input.instalmentPaise !== undefined ? input.instalmentPaise * input.months : input.totalPaise;
   if (!scheduleIsConsistent({ totalPaise, months: input.months, instalmentPaise })) {
     throw invalid("instalmentPaise", "The instalment is too large for that many months");
   }
-  return { totalPaise, instalmentPaise };
+  return { totalPaise, instalmentPaise, amountsPaise: null as number[] | null };
 }
 
 async function requireCard(db: Db, userId: string, id: string) {
@@ -74,6 +89,7 @@ async function entryCounts(db: Db, userId: string): Promise<Map<string, number>>
 
 function toDto(row: EmiPlanRow, cardName: string, statement: { statementDay: number; dueDay: number }, categoryName: string | null, entries: number, today: IstDate): EmiPlanDto {
   const shape = toShape(row);
+  const amounts = instalmentSchedule(shape, statement).map((i) => i.amountPaise);
   const billed = dueInstalments(shape, statement, today);
   const next = nextInstalment(shape, statement, today);
   const billedCount = row.cancelledAt ? entries : billed.length;
@@ -87,6 +103,8 @@ function toDto(row: EmiPlanRow, cardName: string, statement: { statementDay: num
     totalPaise: row.totalPaise,
     months: row.months,
     instalmentPaise: row.instalmentPaise,
+    scheduleAmountsPaise: amounts,
+    uneven: parseAmounts(row.amountsJson) !== null,
     startMonth: row.startMonth,
     status: row.cancelledAt ? "cancelled" : billed.length >= row.months ? "finished" : "active",
     billedCount,
@@ -190,7 +208,7 @@ export async function materializeAllEmi(db: Db, today: IstDate, onError: (error:
 export async function createPlan(db: Db, userId: string, input: CreateEmiPlanData, today: IstDate): Promise<EmiPlanDto> {
   const card = await requireCard(db, userId, input.cardAccountId);
   await requireCategory(db, userId, input.categoryId);
-  const { totalPaise, instalmentPaise } = resolveAmounts(input);
+  const { totalPaise, instalmentPaise, amountsPaise } = resolveAmounts(input);
 
   let replaced: string | null = null;
   if (input.replacesTransactionId) {
@@ -211,6 +229,7 @@ export async function createPlan(db: Db, userId: string, input: CreateEmiPlanDat
     months: input.months,
     instalmentPaise,
     startMonth: input.startMonth,
+    amountsJson: amountsPaise ? JSON.stringify(amountsPaise) : null,
     createdAt: nowIso(),
   });
   if (replaced) {
@@ -225,26 +244,41 @@ export async function createPlan(db: Db, userId: string, input: CreateEmiPlanDat
 export async function updatePlan(db: Db, userId: string, id: string, patch: UpdateEmiPlanData, today: IstDate): Promise<EmiPlanDto> {
   const row = await getPlanRow(db, userId, id);
   if (!row) throw new NotFoundError("EMI plan not found");
-  const structural = patch.totalPaise !== undefined || patch.months !== undefined || patch.instalmentPaise !== undefined || patch.startMonth !== undefined;
+  const structural =
+    patch.totalPaise !== undefined || patch.months !== undefined || patch.instalmentPaise !== undefined || patch.instalmentsPaise !== undefined || patch.startMonth !== undefined;
   if (structural && row.cancelledAt) throw new ConflictError("This plan is closed. Reopen it to change the amounts.");
   if (patch.categoryId !== undefined) await requireCategory(db, userId, patch.categoryId);
 
   const months = patch.months ?? row.months;
+  // A new total, instalment or month count means a new even split, unless every instalment was typed; a changed
+  // start month alone keeps whatever schedule the plan has.
+  const reshaped = patch.totalPaise !== undefined || patch.months !== undefined || patch.instalmentPaise !== undefined;
+  const existing = parseAmounts(row.amountsJson);
   const amounts = structural
-    ? resolveAmounts({
-        totalPaise: patch.totalPaise ?? row.totalPaise,
-        months,
-        // A new total or month count means a new even split, unless an instalment was typed.
-        instalmentPaise: patch.instalmentPaise ?? (patch.totalPaise !== undefined || patch.months !== undefined ? undefined : row.instalmentPaise),
-      })
-    : { totalPaise: row.totalPaise, instalmentPaise: row.instalmentPaise };
+    ? patch.instalmentsPaise || reshaped || !existing
+      ? resolveAmounts({
+          totalPaise: patch.totalPaise ?? row.totalPaise,
+          months,
+          instalmentPaise: patch.instalmentPaise ?? (patch.totalPaise !== undefined || patch.months !== undefined ? undefined : row.instalmentPaise),
+          instalmentsPaise: patch.instalmentsPaise,
+        })
+      : { totalPaise: row.totalPaise, instalmentPaise: row.instalmentPaise, amountsPaise: existing }
+    : { totalPaise: row.totalPaise, instalmentPaise: row.instalmentPaise, amountsPaise: existing };
 
   const title = patch.title ?? row.title;
   const categoryId = patch.categoryId === undefined ? row.categoryId : patch.categoryId;
   await db.batch([
     db
       .update(emiPlans)
-      .set({ title, categoryId, months, totalPaise: amounts.totalPaise, instalmentPaise: amounts.instalmentPaise, startMonth: patch.startMonth ?? row.startMonth })
+      .set({
+        title,
+        categoryId,
+        months,
+        totalPaise: amounts.totalPaise,
+        instalmentPaise: amounts.instalmentPaise,
+        startMonth: patch.startMonth ?? row.startMonth,
+        amountsJson: amounts.amountsPaise ? JSON.stringify(amounts.amountsPaise) : null,
+      })
       .where(and(eq(emiPlans.userId, userId), eq(emiPlans.id, id))),
     // New amounts or dates rebuild the instalments from scratch (they are re-added just below); otherwise the
     // instalments already added simply take the new name and category.

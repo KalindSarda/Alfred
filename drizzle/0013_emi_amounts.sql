@@ -1,0 +1,1 @@
+ALTER TABLE `emi_plans` ADD `amounts_json` text;

@@ -235,6 +235,8 @@ export const emiPlans = sqliteTable(
     instalmentPaise: integer("instalment_paise").notNull(),
     /** The month of the first instalment's statement, "YYYY-MM". */
     startMonth: text("start_month").notNull(),
+    /** The exact amount of each instalment as a JSON list, when the bank's schedule is uneven (a smaller first one, a rounded last one). Null means an even split. */
+    amountsJson: text("amounts_json"),
     createdAt: text("created_at").notNull(),
     /** Set when the plan was closed early; instalments already added stay. */
     cancelledAt: text("cancelled_at"),

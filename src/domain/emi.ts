@@ -13,6 +13,8 @@ export interface EmiPlanShape {
   instalmentPaise: number;
   /** "YYYY-MM": the month of the first instalment's statement. */
   startMonth: string;
+  /** Each instalment's exact amount, when the bank's schedule is uneven. Otherwise the split is even. */
+  amountsPaise?: readonly number[] | null | undefined;
   /** A plan closed early adds no more instalments and owes nothing further here. */
   cancelled?: boolean;
 }
@@ -36,7 +38,8 @@ export function instalmentSchedule(plan: EmiPlanShape, card: CardCycleInput): Em
   const out: EmiInstalment[] = [];
   for (let n = 1; n <= plan.months; n++) {
     const m = shiftMonth(year, month, n - 1);
-    const amountPaise = n < plan.months ? plan.instalmentPaise : plan.totalPaise - plan.instalmentPaise * (plan.months - 1);
+    const exact = plan.amountsPaise?.[n - 1];
+    const amountPaise = exact ?? (n < plan.months ? plan.instalmentPaise : plan.totalPaise - plan.instalmentPaise * (plan.months - 1));
     out.push({ n, date: statementDateFor(card, m.year, m.month), amountPaise });
   }
   return out;
@@ -59,6 +62,11 @@ export function emiToCome(plan: EmiPlanShape, card: CardCycleInput, today: IstDa
 export function nextInstalment(plan: EmiPlanShape, card: CardCycleInput, today: IstDate): EmiInstalment | null {
   if (plan.cancelled) return null;
   return instalmentSchedule(plan, card).find((i) => i.date > today) ?? null;
+}
+
+/** A typed schedule must have one positive whole-paise amount for every month. */
+export function amountsAreValid(amounts: readonly number[], months: number): boolean {
+  return amounts.length === months && amounts.every((a) => Number.isSafeInteger(a) && a > 0);
 }
 
 /** The total must be reachable: all but the last instalment together stay below it, so the last is positive. */

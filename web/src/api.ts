@@ -146,6 +146,8 @@ export interface EmiPlan {
   totalPaise: number;
   months: number;
   instalmentPaise: number;
+  scheduleAmountsPaise: number[];
+  uneven: boolean;
   startMonth: string;
   status: "active" | "finished" | "cancelled";
   billedCount: number;

@@ -329,3 +329,78 @@ describe("plans and the rest of the app", () => {
     expect((await makeApp().call("GET", "/api/emi-plans")).status).toBe(401);
   });
 });
+
+describe("a plan with the bank's own instalment amounts", () => {
+  // The HDFC SmartEMI letter: Rs 1,17,455.45 over 6 months from the 23 Oct 2026 statement, uneven first and last.
+  const letter = [20_082_00, 20_500_00, 20_500_00, 20_500_00, 20_500_00, 20_498_00];
+  const smart = (s: Awaited<ReturnType<typeof setup>>, extra: object = {}) =>
+    s.api("POST", "/api/emi-plans", { cardAccountId: s.card.id, title: "iPhone", categoryId: s.shopping, months: 6, startMonth: "2026-10", instalmentsPaise: letter, ...extra });
+
+  it("takes every instalment as typed, and the total is their sum", async () => {
+    const s = await setup();
+    const res = await smart(s);
+    expect(res.status).toBe(201);
+    expect(res.json).toMatchObject({ totalPaise: 1_22_580_00, months: 6, uneven: true, scheduleAmountsPaise: letter, billedCount: 1, toComePaise: 1_22_580_00 - 20_082_00 });
+    expect((await s.entries()).map((t) => [t.txnDate, t.amountPaise])).toEqual([["2026-10-23", 20_082_00]]);
+  });
+
+  it("each later month adds its own amount, ending on the rounded last instalment", async () => {
+    const s = await setup();
+    await smart(s);
+    await materializeEmi(db, s.user.id, "2027-05-01");
+    const made = (await s.entries()).sort((a, b) => a.txnDate.localeCompare(b.txnDate));
+    expect(made.map((t) => t.amountPaise)).toEqual(letter);
+    expect(made.reduce((sum, t) => sum + t.amountPaise, 0)).toBe(1_22_580_00);
+  });
+
+  it("the card's figures follow: the statement asks for the first instalment, the rest is held back", async () => {
+    const s = await setup();
+    await smart(s);
+    const c = await s.cardFigures();
+    expect(c).toMatchObject({ outstandingPaise: 20_082_00, statementOutstandingPaise: 20_082_00, emiToComePaise: 1_02_498_00 });
+    expect(c.availableCreditPaise).toBe(2_00_000_00 - 1_22_580_00);
+  });
+
+  it("needs one positive amount for every month, and either those or a total", async () => {
+    const s = await setup();
+    expect((await smart(s, { months: 5 })).status).toBe(422);
+    expect((await smart(s, { instalmentsPaise: [20_082_00, 0, 1, 1, 1, 1] })).status).toBe(422);
+    expect((await smart(s, { instalmentsPaise: [] })).status).toBe(422);
+    const neither = await s.api("POST", "/api/emi-plans", { cardAccountId: s.card.id, title: "x", months: 6, startMonth: "2026-10" });
+    expect(neither.status).toBe(422);
+  });
+
+  it("an even plan reports itself as even", async () => {
+    const s = await setup();
+    expect((await s.plan()).json).toMatchObject({ uneven: false });
+  });
+
+  it("correcting a plan to the bank's amounts rebuilds its instalments", async () => {
+    const s = await setup();
+    const p = (await s.plan({ totalPaise: 1_23_000_00 })).json; // the usual mistake: six equal instalments of 20,500
+    expect((await s.entries()).map((t) => t.amountPaise)).toEqual([20_500_00]);
+    const res = await s.api("PATCH", `/api/emi-plans/${p.id}`, { instalmentsPaise: letter });
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({ totalPaise: 1_22_580_00, uneven: true });
+    expect((await s.entries()).map((t) => t.amountPaise)).toEqual([20_082_00]);
+    expect((await s.cardFigures()).outstandingPaise).toBe(20_082_00);
+  });
+
+  it("moving only the start month keeps the typed amounts; changing the months goes back to an even split", async () => {
+    const s = await setup();
+    const p = (await smart(s)).json;
+    const moved = await s.api("PATCH", `/api/emi-plans/${p.id}`, { startMonth: "2026-11" });
+    expect(moved.json).toMatchObject({ uneven: true, scheduleAmountsPaise: letter, nextDate: "2026-11-23" });
+    const evened = await s.api("PATCH", `/api/emi-plans/${p.id}`, { months: 3 });
+    expect(evened.json).toMatchObject({ uneven: false, months: 3, totalPaise: 1_22_580_00 });
+  });
+
+  it("an uneven plan can be reopened and exported", async () => {
+    const s = await setup();
+    const p = (await smart(s)).json;
+    await s.api("POST", `/api/emi-plans/${p.id}/cancel`);
+    expect((await s.api("POST", `/api/emi-plans/${p.id}/reopen`)).json).toMatchObject({ uneven: true, status: "active" });
+    const body = (await s.api("GET", "/api/export/json")).json;
+    expect(body.emiPlans[0].amountsJson).toBe(JSON.stringify(letter));
+  });
+});
