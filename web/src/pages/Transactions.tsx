@@ -197,7 +197,7 @@ export function Transactions() {
               <h2 className="border-b border-line px-4 py-2 text-sm font-medium text-soft">{longDate(date)}</h2>
               <ul className="divide-y divide-line">
                 {items.map((txn) => (
-                  <Row key={txn.id} txn={txn} accounts={accountMap} categories={categoryMap} onOpen={() => (managedAt(txn.type) ? navigate(managedAt(txn.type) as string) : setEditing(txn))} />
+                  <Row key={txn.id} txn={txn} accounts={accountMap} categories={categoryMap} onOpen={() => (managedAt(txn) ? navigate(managedAt(txn) as string) : setEditing(txn))} />
                 ))}
               </ul>
             </Card>

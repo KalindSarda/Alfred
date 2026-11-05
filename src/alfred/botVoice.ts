@@ -256,7 +256,31 @@ export function valueNudge(items: HoldingLine[]): string {
   return ["A new month. Would you care to refresh what your investments are worth?", "", ...lines, "", "Send /value with the name and amount, for example /value tata 15200."].join("\n");
 }
 
+export interface LoanLine {
+  name: string;
+  outstandingPaise: number;
+  emiPaise: number;
+  dueDay: number;
+  nextDueDate: string | null;
+  monthsLeft: number;
+}
+
+/** What is owed on bank loans, and what comes next. */
+export function loansReply(items: LoanLine[]): string {
+  if (items.length === 0) return "You have no bank loans recorded. Add one in the app, under Accounts and commitments, then Commitments.";
+  const total = items.reduce((s, l) => s + l.outstandingPaise, 0);
+  const emi = items.reduce((s, l) => s + l.emiPaise, 0);
+  const lines = items.map((l) => `${l.name}: ${rupees(l.outstandingPaise)} owed, EMI ${rupees(l.emiPaise)}${l.nextDueDate ? `, next on ${shortDate(l.nextDueDate)}` : ""}, about ${l.monthsLeft} ${l.monthsLeft === 1 ? "month" : "months"} left`);
+  return [`You owe ${rupees(total)} on bank loans, with ${rupees(emi)} going out each month.`, "", ...lines].join("\n");
+}
+
 export const botVoice = {
+  loanCheck: (name: string, totalPaise: number, interestPaise: number, principalPaise: number, accountName: string) =>
+    `${name}: ${rupees(totalPaise)} was taken from ${accountName} (interest ${rupees(interestPaise)}, principal ${rupees(principalPaise)}). Does that agree with your bank?`,
+  loanAgrees: "Splendid. That matches your bank.",
+  loanAskAmount: (name: string, on: string) => `What did the bank take for ${name} on ${shortDate(on)}? Send the full amount, such as 32500.`,
+  loanFixed: (name: string, totalPaise: number, owedPaise: number) => `Corrected. ${name} took ${rupees(totalPaise)} that month, and ${rupees(owedPaise)} is still owed.`,
+  loanGone: "I cannot find that instalment any more, so there is nothing to correct.",
   valueNeedsAmount: "How much is it worth now? For example: /value tata 15200.",
   valueNoHoldings: "You have no investments recorded yet. Add one in the app, under Accounts and commitments, then Investments.",
   valueNoMatch: "I could not find that investment. /invest lists them.",
@@ -317,6 +341,7 @@ export const botVoice = {
     "/recurring  what repeats: rent, subscriptions, salary",
     "/goals  your savings goals; put money toward one: /save 5000 laptop",
     "/invest  your investments; update one: /value tata 15200",
+    "/loans  what you owe on bank loans, and the next EMI",
     "/menu  buttons for the main things I can show you",
     "/emi  your card EMI plans and what is still to be billed",
     "/ipo  money blocked for IPO applications, or: /ipo 15000 hdfc tata tech",

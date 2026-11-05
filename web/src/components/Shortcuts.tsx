@@ -1,7 +1,7 @@
 import type { BalanceOverview } from "../api";
 import { FEATURES } from "../features";
 import { rupees } from "../format";
-import { useGoals, useHoldings } from "../queries";
+import { useGoals, useHoldings, useLoans } from "../queries";
 import { Link } from "../router";
 import { rememberFeature } from "./JumpSearch";
 
@@ -24,6 +24,7 @@ function Tile({ id, title, status, quiet }: { id: string; title: string; status:
 export function Shortcuts({ overview }: { overview: BalanceOverview }) {
   const goals = useGoals("active").data;
   const held = useHoldings("active").data;
+  const loanData = useLoans("active").data;
   const count = goals?.goals.length ?? 0;
   const owed = overview.owedToYouPaise;
   const owe = overview.youOwePaise;
@@ -49,6 +50,12 @@ export function Shortcuts({ overview }: { overview: BalanceOverview }) {
         title="Investments"
         status={held && held.holdings.length > 0 ? `${rupees(held.totalValuePaise)} · ${held.gainPaise >= 0 ? "up" : "down"} ${rupees(Math.abs(held.gainPaise))}` : "Track what you own"}
         quiet={!held || held.holdings.length === 0}
+      />
+      <Tile
+        id="loans"
+        title="Bank loans"
+        status={loanData && loanData.loans.length > 0 ? `${rupees(loanData.totalOutstandingPaise)} owed · ${rupees(loanData.monthlyEmiPaise)} a month` : "Track what you owe"}
+        quiet={!loanData || loanData.loans.length === 0}
       />
       <Tile id="budgets" title="Budgets" status="Monthly limits" />
       <Tile id="recurring" title="Recurring" status="Rent, subscriptions, salary" />

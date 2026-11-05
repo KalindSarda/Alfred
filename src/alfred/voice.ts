@@ -121,6 +121,11 @@ export interface BriefingHoldings {
   oldestDays: number | null;
 }
 
+export interface BriefingLoans {
+  /** The nearest loan instalment, when it falls within a week. */
+  next: { name: string; totalPaise: number; date: string; accountName: string } | null;
+}
+
 export interface BriefingEmi {
   /** Instalments not yet billed, across all running plans. */
   toComePaise: number;
@@ -163,6 +168,8 @@ export interface BriefingFacts {
   debts?: BriefingDebts;
   /** Investments; leave out when there are none. */
   holdings?: BriefingHoldings;
+  /** Bank loans; leave out when there are none. */
+  loans?: BriefingLoans;
 }
 
 export interface BriefingLine {
@@ -237,6 +244,15 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
         ? `${d.name} still owes you ${rupees(d.outstandingPaise)}, which was due ${formatDate(d.dueDate)}.`
         : `You owe ${d.name} ${rupees(d.outstandingPaise)}, which was due ${formatDate(d.dueDate)}.`;
     lines.push({ key: "debts", text: late.length > 1 ? `${first} ${late.length - 1} more ${late.length === 2 ? "loan is" : "loans are"} overdue too.` : first, to: "/accounts?view=commitments#lent" });
+  }
+
+  const loan = facts.loans?.next;
+  if (loan) {
+    lines.push({
+      key: "loans",
+      text: `${loan.name}: ${rupees(loan.totalPaise)} is due on ${formatDate(loan.date)} (${inDays(daysBetween(facts.today, loan.date))}), from ${loan.accountName}.`,
+      to: "/accounts?view=commitments#loans",
+    });
   }
 
   const held = facts.holdings;

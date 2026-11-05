@@ -16,6 +16,7 @@ import { contactRoutes, debtRoutes } from "./routes/debts";
 import { goalRoutes } from "./routes/goals";
 import { hintRoutes } from "./routes/hints";
 import { holdingRoutes } from "./routes/holdings";
+import { loanRoutes } from "./routes/loans";
 import { dashboardRoutes } from "./routes/dashboard";
 import { demoRoutes } from "./routes/demo";
 import { health } from "./routes/health";
@@ -97,6 +98,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/goals", goalRoutes);
   app.route("/api/entry-hints", hintRoutes);
   app.route("/api/holdings", holdingRoutes);
+  app.route("/api/loans", loanRoutes);
   app.route("/api/telegram", telegramLinkRoutes);
 
   app.notFound((c) => c.json({ error: { code: "not_found", message: "Not found" } }, 404));

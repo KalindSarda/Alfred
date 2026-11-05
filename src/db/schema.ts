@@ -73,7 +73,7 @@ export const transactions = sqliteTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull().references(() => users.id),
-    type: text("type", { enum: ["expense", "income", "transfer", "bill_payment", "investment", "investment_sale", "debt_out", "debt_in"] }).notNull(),
+    type: text("type", { enum: ["expense", "income", "transfer", "bill_payment", "investment", "investment_sale", "loan_payment", "debt_out", "debt_in"] }).notNull(),
     amountPaise: integer("amount_paise").notNull(),
     txnDate: text("txn_date").notNull(),
     accountId: text("account_id").notNull().references(() => accounts.id),
@@ -82,7 +82,7 @@ export const transactions = sqliteTable(
     merchant: text("merchant"),
     note: text("note"),
     status: text("status", { enum: ["draft", "confirmed"] }).notNull().default("confirmed"),
-    source: text("source", { enum: ["web", "telegram", "seed", "ai", "emi", "recurring"] }).notNull().default("web"),
+    source: text("source", { enum: ["web", "telegram", "seed", "ai", "emi", "recurring", "loan"] }).notNull().default("web"),
     /** Set on the entries a recurring rule adds by itself, with the date it was due. No foreign key: rules and their entries are handled together in code. */
     recurringRuleId: text("recurring_rule_id"),
     recurringOn: text("recurring_on"),
@@ -91,6 +91,9 @@ export const transactions = sqliteTable(
     emiInstalment: integer("emi_instalment"),
     /** The holding an investment (a purchase) or an investment_sale (proceeds) belongs to. No foreign key: holdings and their entries are handled together in code. */
     holdingId: text("holding_id"),
+    /** Set on the entries a loan instalment makes (interest and principal), with the due date. Managed under Loans. */
+    loanId: text("loan_id"),
+    loanOn: text("loan_on"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
     deletedAt: text("deleted_at"),
@@ -101,6 +104,8 @@ export const transactions = sqliteTable(
     index("txn_user_to_account_idx").on(t.userId, t.toAccountId),
     index("txn_user_category_date_idx").on(t.userId, t.categoryId, t.txnDate),
     index("txn_holding_idx").on(t.holdingId),
+    // One interest entry and one principal entry per due date; a removed one is never created again.
+    uniqueIndex("txn_loan_instalment_uq").on(t.loanId, t.loanOn, t.type),
     // An instalment can be created only once, and a deleted one is never created again.
     uniqueIndex("txn_emi_instalment_uq").on(t.emiPlanId, t.emiInstalment),
     // An occurrence of a recurring rule is created once, and a deleted one is never created again.
@@ -494,4 +499,40 @@ export const holdingValues = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (t) => [uniqueIndex("holding_values_day_uq").on(t.holdingId, t.date), check("holding_values_nonnegative", sql`${t.valuePaise} >= 0`)],
+);
+
+/**
+ * A bank loan. What is still owed is `principalPaise` (outstanding when tracking began) less the principal repaid since,
+ * which comes from the loan_payment entries; interest is each month's outstanding at the rate. Instalments are added on
+ * the due date from the paying bank.
+ */
+export const loans = sqliteTable(
+  "loans",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    name: text("name").notNull(),
+    lender: text("lender"),
+    kind: text("kind", { enum: ["home", "car", "personal", "education", "other"] }).notNull(),
+    /** The bank account the instalments are paid from. */
+    accountId: text("account_id").notNull().references(() => accounts.id),
+    dueDay: integer("due_day").notNull(),
+    /** Outstanding when Alfred began tracking it. */
+    principalPaise: integer("principal_paise").notNull(),
+    anchorDate: text("anchor_date").notNull(),
+    /** Yearly rate in basis points: 16.5% is 1650. */
+    ratePctBp: integer("rate_pct_bp").notNull(),
+    emiPaise: integer("emi_paise").notNull(),
+    /** The first instalment Alfred adds. */
+    firstDueDate: text("first_due_date").notNull(),
+    status: text("status", { enum: ["active", "closed"] }).notNull().default("active"),
+    closedAt: text("closed_at"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("loans_user_status_idx").on(t.userId, t.status),
+    check("loans_principal_positive", sql`${t.principalPaise} > 0`),
+    check("loans_emi_positive", sql`${t.emiPaise} > 0`),
+    check("loans_due_day", sql`${t.dueDay} BETWEEN 1 AND 31`),
+  ],
 );

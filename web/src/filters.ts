@@ -33,7 +33,7 @@ export const emptyFilters: TxnFilters = {
   max: "",
 };
 
-const TYPES = new Set(["expense", "income", "transfer", "bill_payment", "investment", "investment_sale", "debt_out", "debt_in"]);
+const TYPES = new Set(["expense", "income", "transfer", "bill_payment", "investment", "investment_sale", "loan_payment", "debt_out", "debt_in"]);
 
 export function filtersFromSearch(search: string): TxnFilters {
   const p = new URLSearchParams(search);

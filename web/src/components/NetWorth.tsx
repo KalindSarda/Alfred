@@ -37,6 +37,7 @@ export function NetWorthCard({ overview }: { overview: BalanceOverview }) {
         )}
         {overview.owedToYouPaise > 0 && <Row label="Owed to you" value={rupees(overview.owedToYouPaise)} hint="Money you have lent; not counted toward safe-to-spend" />}
         {overview.youOwePaise > 0 && <Row label="You owe people" value={rupees(overview.youOwePaise)} hint="Money you have borrowed" />}
+        {overview.loansPaise > 0 && <Row label="Owed on bank loans" value={rupees(overview.loansPaise)} hint="Principal still to repay; not held back from safe-to-spend" />}
         {overview.investmentsPaise > 0 && <Row label="Investments" value={rupees(overview.investmentsPaise)} hint="At the values you last typed" />}
         {overview.goalsSetAsidePaise > 0 && (
           <Row label="Put toward goals" value={rupees(overview.goalsSetAsidePaise)} hint="Still yours, but not counted as spendable" />
@@ -45,7 +46,7 @@ export function NetWorthCard({ overview }: { overview: BalanceOverview }) {
           <Row label="Blocked for applications" value={rupees(overview.blockedPaise)} hint="Still yours, but not available to spend until the result" />
         )}
       </div>
-      <p className="mt-3 text-xs text-faint">Bank loans will join this once they are tracked.</p>
+      <p className="mt-3 text-xs text-faint">Everything you own and owe is counted here.</p>
     </Card>
   );
 }
@@ -64,6 +65,7 @@ export function NetWorthStrip({ overview }: { overview: BalanceOverview }) {
           {overview.blockedPaise > 0 && <> · {rupees(overview.blockedPaise)} blocked for applications</>}
           {overview.goalsSetAsidePaise > 0 && <> · {rupees(overview.goalsSetAsidePaise)} put toward goals</>}
           {overview.investmentsPaise > 0 && <> · {rupees(overview.investmentsPaise)} invested</>}
+          {overview.loansPaise > 0 && <> · {rupees(overview.loansPaise)} owed on loans</>}
         </span>
       </span>
       <span className="font-display text-2xl tabular-nums">{rupees(overview.netWorthPaise)}</span>

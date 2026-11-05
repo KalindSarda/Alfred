@@ -122,6 +122,7 @@ export interface BalanceOverview {
   youOwePaise: number;
   goalsSetAsidePaise: number;
   investmentsPaise: number;
+  loansPaise: number;
   netWorthPaise: number;
   safeToSpendPaise: number;
 }
@@ -195,7 +196,7 @@ export interface Category {
   entryCount: number;
 }
 
-export type TxnType = "expense" | "income" | "transfer" | "bill_payment" | "investment" | "investment_sale" | "debt_out" | "debt_in";
+export type TxnType = "expense" | "income" | "transfer" | "bill_payment" | "investment" | "investment_sale" | "loan_payment" | "debt_out" | "debt_in";
 
 export interface DebtPayment {
   id: string;
@@ -250,7 +251,7 @@ export interface Transaction {
   note: string | null;
   holdingId: string | null;
   status: "draft" | "confirmed";
-  source: "web" | "telegram" | "seed" | "ai" | "emi" | "recurring";
+  source: "web" | "telegram" | "seed" | "ai" | "emi" | "recurring" | "loan";
 }
 
 export interface Summary {
@@ -354,6 +355,7 @@ export interface NetWorthPoint {
   asOf: string;
   netWorthPaise: number;
   investmentsPaise: number;
+  loansPaise: number;
   banksPaise: number;
   cardsOwedPaise: number;
   emiToComePaise: number;
@@ -399,4 +401,48 @@ export interface HoldingsOverview {
   totalInvestedPaise: number;
   gainPaise: number;
   holdings: Holding[];
+}
+
+export interface LoanInstalment {
+  loanOn: string;
+  interestPaise: number;
+  principalPaise: number;
+  totalPaise: number;
+}
+
+export interface Loan {
+  id: string;
+  name: string;
+  lender: string | null;
+  kind: "home" | "car" | "personal" | "education" | "other";
+  accountId: string;
+  accountName: string;
+  dueDay: number;
+  ratePct: number;
+  emiPaise: number;
+  status: "active" | "closed";
+  outstandingPaise: number;
+  repaidPaise: number;
+  interestPaidPaise: number;
+  monthsLeft: number;
+  payoffDate: string | null;
+  interestToGoPaise: number;
+  nextDueDate: string | null;
+  nextInstalment: { interestPaise: number; principalPaise: number; totalPaise: number } | null;
+  instalments: LoanInstalment[];
+}
+
+export interface LoansOverview {
+  totalOutstandingPaise: number;
+  monthlyEmiPaise: number;
+  loans: Loan[];
+}
+
+export interface LoanScheduleRow {
+  n: number;
+  date: string;
+  interestPaise: number;
+  principalPaise: number;
+  totalPaise: number;
+  balancePaise: number;
 }

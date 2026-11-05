@@ -8,7 +8,7 @@ export const Id = z.string().min(1);
 
 export const TransactionType = z.enum(TXN_TYPES);
 export const TxnStatus = z.enum(["draft", "confirmed"]);
-export const TxnSource = z.enum(["web", "telegram", "seed", "ai", "emi", "recurring"]);
+export const TxnSource = z.enum(["web", "telegram", "seed", "ai", "emi", "recurring", "loan"]);
 
 const TransactionFields = z.object({
   type: TransactionType,
@@ -41,7 +41,7 @@ export function checkTransactionShape(v: {
   } else if (v.toAccountId) {
     issues.push({ path: "toAccountId", message: "Only transfers and bill payments have a destination" });
   }
-  if ((v.type === "investment" || v.type === "investment_sale") && v.categoryId) issues.push({ path: "categoryId", message: "Investments have no category" });
+  if ((v.type === "investment" || v.type === "investment_sale" || v.type === "loan_payment") && v.categoryId) issues.push({ path: "categoryId", message: "Investments have no category" });
   if (v.holdingId && v.type !== "investment") issues.push({ path: "holdingId", message: "Only an investment can belong to a holding" });
   if (isDebtType(v.type) && v.categoryId) issues.push({ path: "categoryId", message: "Lent and borrowed money has no category" });
   return issues;

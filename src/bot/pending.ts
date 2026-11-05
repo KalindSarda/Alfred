@@ -40,8 +40,8 @@ export async function getPending(db: Db, userId: string, chatId: string, id: str
     .limit(1);
   if (!row) return null;
   try {
-    const parsed = JSON.parse(row.payload) as PendingEntry & { emiFix?: unknown };
-    return parsed.emiFix ? null : parsed;
+    const parsed = JSON.parse(row.payload) as PendingEntry & { emiFix?: unknown; loanFix?: unknown };
+    return parsed.emiFix || parsed.loanFix ? null : parsed;
   } catch {
     return null;
   }
@@ -59,24 +59,42 @@ export async function createEmiFix(db: Db, userId: string, chatId: string, txnId
   });
 }
 
+/** Waiting for the amount the bank took for one loan instalment (the person tapped "Different amount"). */
+export async function createLoanFix(db: Db, userId: string, chatId: string, loanId: string, on: string, nowMs: number): Promise<void> {
+  await db.insert(botPending).values({
+    id: randomString(10, "abcdefghijkmnpqrstuvwxyz23456789"),
+    userId,
+    chatId,
+    payload: JSON.stringify({ loanFix: { loanId, on } }),
+    expiresAt: iso(nowMs + PENDING_TTL_MS),
+    createdAt: iso(nowMs),
+  });
+}
+
+/** What an amount typed next is for: an EMI entry or a loan instalment. */
+export type AmountFix = { kind: "emi"; txnId: string } | { kind: "loan"; loanId: string; on: string };
+
 /** The latest fresh amount-wait for this person and chat, removed so it is used once; null when there is none. */
-export async function takeEmiFix(db: Db, userId: string, chatId: string, nowMs: number): Promise<string | null> {
+export async function takeAmountFix(db: Db, userId: string, chatId: string, nowMs: number): Promise<AmountFix | null> {
   const rows = await db
     .select()
     .from(botPending)
     .where(and(eq(botPending.userId, userId), eq(botPending.chatId, chatId), gt(botPending.expiresAt, iso(nowMs))));
-  let found: { id: string; txnId: string; createdAt: string } | null = null;
+  let found: { id: string; fix: AmountFix; createdAt: string } | null = null;
   for (const row of rows) {
     try {
-      const value = (JSON.parse(row.payload) as { emiFix?: { txnId?: unknown } }).emiFix;
-      if (typeof value?.txnId === "string" && (!found || row.createdAt > found.createdAt)) found = { id: row.id, txnId: value.txnId, createdAt: row.createdAt };
+      const parsed = JSON.parse(row.payload) as { emiFix?: { txnId?: unknown }; loanFix?: { loanId?: unknown; on?: unknown } };
+      let fix: AmountFix | null = null;
+      if (typeof parsed.emiFix?.txnId === "string") fix = { kind: "emi", txnId: parsed.emiFix.txnId };
+      else if (typeof parsed.loanFix?.loanId === "string" && typeof parsed.loanFix.on === "string") fix = { kind: "loan", loanId: parsed.loanFix.loanId, on: parsed.loanFix.on };
+      if (fix && (!found || row.createdAt > found.createdAt)) found = { id: row.id, fix, createdAt: row.createdAt };
     } catch {
       // Not ours; ignore.
     }
   }
   if (!found) return null;
   await db.delete(botPending).where(eq(botPending.id, found.id));
-  return found.txnId;
+  return found.fix;
 }
 
 export async function updatePending(db: Db, id: string, payload: PendingEntry): Promise<void> {

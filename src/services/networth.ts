@@ -10,6 +10,7 @@ import { emiToCome, instalmentSchedule } from "../domain/emi";
 import { type DebtFact, debtOutstandingAsOf, monthPoints, type NetWorthPoint, netWorthOf, trimLeading } from "../domain/networth";
 import { valuePaise } from "../domain/holdings";
 import { loadHoldings } from "./holdings";
+import { loanFacts } from "./loans";
 import { toLedgerAccount } from "./ledger";
 
 export interface NetWorthTrend {
@@ -22,7 +23,7 @@ export interface NetWorthTrend {
  * stored. Months before the first entry are left out, and the latest point is today, so it equals the headline figure.
  */
 export async function getNetWorthTrend(db: Db, userId: string, today: IstDate, months: number): Promise<NetWorthTrend> {
-  const [accountRows, txns, planRows, debtRows, paymentRows, held] = await Promise.all([
+  const [accountRows, txns, planRows, debtRows, paymentRows, held, loanList] = await Promise.all([
     listAccounts(db, userId),
     loadLedgerTxns(db, userId),
     db
@@ -33,6 +34,7 @@ export async function getNetWorthTrend(db: Db, userId: string, today: IstDate, m
     db.select().from(debts).where(eq(debts.userId, userId)),
     db.select().from(debtPayments).where(eq(debtPayments.userId, userId)),
     loadHoldings(db, userId),
+    loanFacts(db, userId),
   ]);
 
   const ledger = accountRows.map(toLedgerAccount);
@@ -74,7 +76,9 @@ export async function getNetWorthTrend(db: Db, userId: string, today: IstDate, m
     }
     let investmentsPaise = 0;
     for (const f of held.facts.values()) investmentsPaise += valuePaise(f, p.asOf);
-    const parts = { banksPaise, cardsOwedPaise, emiToComePaise, owedToYouPaise, youOwePaise, investmentsPaise };
+    let loansPaise = 0;
+    for (const l of loanList) loansPaise += Math.max(0, l.principalPaise - l.payments.filter((x) => x.date <= p.asOf).reduce((sum, x) => sum + x.amountPaise, 0));
+    const parts = { banksPaise, cardsOwedPaise, emiToComePaise, owedToYouPaise, youOwePaise, investmentsPaise, loansPaise };
     return { ...p, ...parts, netWorthPaise: netWorthOf(parts) };
   });
 

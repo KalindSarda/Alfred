@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, emiReply, goalsReply, holdsReply, investReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
+import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, emiReply, goalsReply, holdsReply, investReply, loansReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
 import { AppError, ConflictError, NotFoundError, RateLimitedError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
@@ -15,9 +15,10 @@ import { getMe } from "../services/auth";
 import { getGoalRow, goalsSetAside } from "../db/goals";
 import { setInstalmentAmount } from "../services/emi";
 import { holdingsValue, listHoldings, setValue } from "../services/holdings";
+import { getLoan, listLoans, loansOutstanding, setInstalmentTotal } from "../services/loans";
 import { addContribution, listGoals, removeContribution } from "../services/goals";
 import { parseAmountToken } from "./parser";
-import { createEmiFix, takeEmiFix } from "./pending";
+import { createEmiFix, createLoanFix, takeAmountFix } from "./pending";
 import { balanceOverview, setArchived, toAccountDto } from "../services/accounts";
 import { getCashflow } from "../services/cashflow";
 import { createCategory } from "../services/categories";
@@ -313,6 +314,7 @@ const MENU: { id: string; label: string }[] = [
   { id: "emi", label: "EMIs" },
   { id: "ipo", label: "IPO blocks" },
   { id: "recurring", label: "Recurring" },
+  { id: "loans", label: "Loans" },
 ];
 
 async function cmdMenu(deps: BotDeps, who: Actor): Promise<void> {
@@ -339,8 +341,26 @@ async function runMenuItem(deps: BotDeps, who: Actor, id: string, today: IstDate
       return await cmdIpo(deps, who, "", today);
     case "recurring":
       return await cmdRecurring(deps, who, today);
+    case "loans":
+      return await cmdLoans(deps, who);
     default:
       return void (await deps.telegram.sendMessage(who.chatId, botVoice.unknownCommand));
+  }
+}
+
+async function cmdLoans(deps: BotDeps, who: Actor): Promise<void> {
+  const o = await listLoans(deps.db, who.userId, "active");
+  await deps.telegram.sendMessage(who.chatId, loansReply(o.loans));
+}
+
+/** Sets what the bank took for one loan instalment, then says what is still owed. */
+async function fixLoanAmount(deps: BotDeps, who: Actor, loanId: string, on: string, paise: number): Promise<void> {
+  try {
+    const loan = await setInstalmentTotal(deps.db, who.userId, loanId, on, paise);
+    await deps.telegram.sendMessage(who.chatId, botVoice.loanFixed(loan.name, paise, loan.outstandingPaise));
+  } catch (error) {
+    if (error instanceof NotFoundError || error instanceof ConflictError) return void (await deps.telegram.sendMessage(who.chatId, botVoice.loanGone));
+    throw error;
   }
 }
 
@@ -474,7 +494,7 @@ async function cmdBalance(deps: BotDeps, who: Actor, today: IstDate): Promise<vo
   const figures = await listAccountsWithFigures(deps.db, who.userId, today);
   if (figures.length === 0) return void (await deps.telegram.sendMessage(who.chatId, botVoice.noAccountsYet));
   const dtos = figures.map((f) => toAccountDto(f));
-  const overview = balanceOverview(figures, undefined, await goalsSetAside(deps.db, who.userId), await holdingsValue(deps.db, who.userId, today));
+  const overview = balanceOverview(figures, undefined, await goalsSetAside(deps.db, who.userId), await holdingsValue(deps.db, who.userId, today), await loansOutstanding(deps.db, who.userId));
 
   const banks = dtos.filter((a) => a.kind === "bank");
   const cards = dtos.filter((a) => a.kind === "card");
@@ -663,7 +683,7 @@ async function cmdUndo(deps: BotDeps, who: Actor, c: BotContext): Promise<void> 
 function summaryOfTxn(t: ReturnType<typeof toDto>, c: BotContext): string {
   return describeEntry({
     // An investment reads like a spend in a short summary: the amount, what it was for, and the account.
-    type: t.type === "investment" || t.type === "investment_sale" || t.type === "debt_out" || t.type === "debt_in" ? "expense" : t.type,
+    type: t.type === "investment" || t.type === "investment_sale" || t.type === "loan_payment" || t.type === "debt_out" || t.type === "debt_in" ? "expense" : t.type,
     amountPaise: t.amountPaise,
     merchant: t.merchant,
     categoryName: t.categoryId ? (c.categoryNames.get(t.categoryId) ?? null) : null,
@@ -715,10 +735,10 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
   try {
     if (!command) {
       // After "Different amount", the next message is the figure from the statement.
-      const waiting = await takeEmiFix(deps.db, userId, chatId, deps.now());
+      const waiting = await takeAmountFix(deps.db, userId, chatId, deps.now());
       if (waiting) {
         const paise = parseAmountToken(text);
-        if (paise !== null) return await fixEmiAmount(deps, who, waiting, paise, today);
+        if (paise !== null) return waiting.kind === "emi" ? await fixEmiAmount(deps, who, waiting.txnId, paise, today) : await fixLoanAmount(deps, who, waiting.loanId, waiting.on, paise);
       }
       return await startEntry(deps, who, text, inferType(text), "text");
     }
@@ -762,6 +782,8 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
         return await cmdRecurring(deps, who, today);
       case "goals":
         return await cmdGoals(deps, who, today);
+      case "loans":
+        return await cmdLoans(deps, who);
       case "invest":
       case "investments":
         return await cmdInvest(deps, who, today);
@@ -911,6 +933,18 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
       } else {
         await createEmiFix(deps.db, userId, chatId, id, deps.now());
         await reply(deps, to, botVoice.emiAskAmount(txn.merchant ?? "that plan", txn.emiInstalment));
+      }
+    } else if (kind === "l" && id && (action === "y" || action === "d") && argument) {
+      // "Does that agree with your bank?" for a loan instalment Alfred just added.
+      const loan = await getLoan(deps.db, userId, id).catch(() => null);
+      const known = loan?.instalments.some((i) => i.loanOn === argument);
+      if (!loan || !known) {
+        await reply(deps, to, botVoice.loanGone);
+      } else if (action === "y") {
+        await reply(deps, to, botVoice.loanAgrees);
+      } else {
+        await createLoanFix(deps.db, userId, chatId, id, argument, deps.now());
+        await reply(deps, to, botVoice.loanAskAmount(loan.name, argument));
       }
     } else if (kind === "i" && id && action === "v") {
       // An investment chosen from several for "/value".

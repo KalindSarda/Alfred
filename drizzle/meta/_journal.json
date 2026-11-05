@@ -127,6 +127,13 @@
       "when": 1793882696881,
       "tag": "0017_holdings",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1793884459345,
+      "tag": "0018_loans",
+      "breakpoints": true
     }
   ]
 }

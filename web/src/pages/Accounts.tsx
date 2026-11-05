@@ -7,6 +7,7 @@ import { NetWorthTrend } from "../components/NetWorthTrend";
 import { EmiPlans } from "../components/EmiPlans";
 import { Investments } from "../components/Investments";
 import { LentBorrowed } from "../components/LentBorrowed";
+import { Loans } from "../components/Loans";
 import { Button, Card, Empty, Sheet, Spinner } from "../components/ui";
 import { rupees, shortDate } from "../format";
 import { NetWorthCard } from "../components/NetWorth";
@@ -113,6 +114,7 @@ export function Accounts() {
             )}
             <BlockedFunds />
             <EmiPlans />
+            <Loans />
             <LentBorrowed />
           </>
         ) : (

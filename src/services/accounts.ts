@@ -5,6 +5,7 @@ import { getAccount, insertAccount } from "../db/accounts";
 import { debtTotals, type DebtTotals } from "../db/debts";
 import { goalsSetAside } from "../db/goals";
 import { holdingsValue } from "./holdings";
+import { loansOutstanding } from "./loans";
 import { activeHoldTotals } from "../db/holds";
 import { accounts, debtPayments, debts, emiPlans, holds, nudgeLog, recurringRules, transactions } from "../db/schema";
 import type { IstDate } from "../domain/dates";
@@ -116,13 +117,15 @@ export interface BalanceOverview {
   goalsSetAsidePaise: number;
   /** What your holdings are worth now, as last valued: an asset in net worth, not in safe-to-spend. */
   investmentsPaise: number;
+  /** What is still owed on active bank loans: a liability in net worth, not held back from safe-to-spend. */
+  loansPaise: number;
   /** Banks, plus what you own and are owed, minus cards and what you owe. Investments and loans will join this once they are tracked. */
   netWorthPaise: number;
   safeToSpendPaise: number;
 }
 
 /** Totals across active accounts, computed from figures already loaded (no extra query). */
-export function balanceOverview(figures: readonly AccountWithFigures[], debts: DebtTotals = { owedToYouPaise: 0, youOwePaise: 0 }, goalsSetAsidePaise = 0, investmentsPaise = 0): BalanceOverview {
+export function balanceOverview(figures: readonly AccountWithFigures[], debts: DebtTotals = { owedToYouPaise: 0, youOwePaise: 0 }, goalsSetAsidePaise = 0, investmentsPaise = 0, loansPaise = 0): BalanceOverview {
   let totalInBanksPaise = 0;
   let countedPaise = 0;
   let blockedPaise = 0;
@@ -152,7 +155,8 @@ export function balanceOverview(figures: readonly AccountWithFigures[], debts: D
     youOwePaise: debts.youOwePaise,
     goalsSetAsidePaise,
     investmentsPaise,
-    netWorthPaise: totalInBanksPaise - cardsOwedPaise - emiToComePaise + debts.owedToYouPaise - debts.youOwePaise + investmentsPaise,
+    loansPaise,
+    netWorthPaise: totalInBanksPaise - cardsOwedPaise - emiToComePaise + debts.owedToYouPaise - debts.youOwePaise + investmentsPaise - loansPaise,
     safeToSpendPaise: countedPaise - blockedPaise - goalsSetAsidePaise - cardsOwedPaise,
   };
 }
@@ -175,14 +179,15 @@ export async function listAccountDtos(
   today: IstDate,
   options: { includeArchived?: boolean } = {},
 ): Promise<{ items: AccountDto[]; overview: BalanceOverview }> {
-  const [figures, counts, debts, setAside, investments] = await Promise.all([
+  const [figures, counts, debts, setAside, investments, loanBalance] = await Promise.all([
     listAccountsWithFigures(db, userId, today, options),
     entryCounts(db, userId),
     debtTotals(db, userId),
     goalsSetAside(db, userId),
     holdingsValue(db, userId, today),
+    loansOutstanding(db, userId),
   ]);
-  return { items: figures.map((a) => toAccountDto(a, counts.get(a.id) ?? 0)), overview: balanceOverview(figures, debts, setAside, investments) };
+  return { items: figures.map((a) => toAccountDto(a, counts.get(a.id) ?? 0)), overview: balanceOverview(figures, debts, setAside, investments, loanBalance) };
 }
 
 async function accountDto(db: Db, userId: string, id: string, today: IstDate): Promise<AccountDto> {
