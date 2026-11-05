@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { defaultInstalmentPaise, instalmentSchedule, isValidStartMonth, scheduleIsConsistent, startMonthLabel } from "../../../src/domain/emi";
+import { useMemo, useState } from "react";
+import { instalmentSchedule, isValidStartMonth, startMonthLabel } from "../../../src/domain/emi";
+import { calcSchedule, feeWithGst } from "../../../src/domain/emiCalc";
 import { type CardAccount, type EmiPlan, type Transaction, api, describeError } from "../api";
 import { rupeesToPaise } from "../filters";
 import { paiseToInput, rupees, shortDate, today } from "../format";
@@ -40,10 +41,17 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
   const [categoryId, setCategoryId] = useState(plan?.categoryId ?? "");
   const [total, setTotal] = useState(plan ? paiseToInput(plan.totalPaise) : "");
   const [months, setMonths] = useState(plan ? String(plan.months) : "6");
+  const [rate, setRate] = useState("");
   const [instalment, setInstalment] = useState("");
+  const [fee, setFee] = useState("");
+  const [gst, setGst] = useState("18");
+  const [gstOnInterest, setGstOnInterest] = useState(false);
+  const [feeDate, setFeeDate] = useState(today());
   const [startMonth, setStartMonth] = useState(plan?.startMonth ?? today().slice(0, 7));
-  // The bank's own schedule, when its instalments are not all alike (a smaller first one, a rounded last one).
-  const [each, setEach] = useState(plan?.uneven ? plan.scheduleAmountsPaise.map(paiseToInput).join(" ") : "");
+  // Months the person typed over, by position. Anything else follows the calculation.
+  const [edits, setEdits] = useState<Record<number, string>>(() =>
+    plan?.uneven ? Object.fromEntries(plan.scheduleAmountsPaise.map((a, i) => [i, paiseToInput(a)])) : {},
+  );
   const [replaces, setReplaces] = useState("");
   // A closed plan keeps its amounts until it is reopened; any other can be corrected.
   const frozen = plan?.status === "cancelled";
@@ -56,35 +64,43 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
     enabled: !plan && chosenCard !== "",
   });
 
-  // Every instalment typed in order, such as "20082 20500 20500 20500 20500 20498".
-  const eachTokens = each.trim() ? each.trim().split(/[\s;]+/).map((t) => t.replace(/,/g, "")).filter(Boolean) : [];
-  const eachParsed = eachTokens.map((t) => rupeesToPaise(t));
-  const eachInvalid = eachTokens.length > 0 && eachParsed.some((p) => !p);
-  const eachAmounts = eachTokens.length > 0 && !eachInvalid ? (eachParsed as number[]) : null;
-
-  // What the plan will do, shown before anything is saved.
-  const totalPaise = rupeesToPaise(total);
+  const principal = rupeesToPaise(total);
   const monthsN = Number(months);
+  const monthsOk = Number.isInteger(monthsN) && monthsN >= 1 && monthsN <= 60;
+  const ratePct = rate.trim() === "" ? 0 : Number(rate);
+  const rateOk = Number.isFinite(ratePct) && ratePct >= 0 && ratePct <= 100;
+  const gstPct = gst.trim() === "" ? 0 : Number(gst);
   const instalmentPaise = instalment.trim() ? rupeesToPaise(instalment) : null;
-  let preview = "";
-  if (card && eachAmounts && isValidStartMonth(startMonth) && eachAmounts.length <= 60) {
-    const sum = eachAmounts.reduce((s, a) => s + a, 0);
-    const schedule = instalmentSchedule(
-      { totalPaise: sum, months: eachAmounts.length, instalmentPaise: eachAmounts[Math.min(1, eachAmounts.length - 1)] as number, startMonth, amountsPaise: eachAmounts },
-      { statementDay: card.statementDay, dueDay: card.dueDay },
-    );
-    const first = schedule[0]!;
-    const last = schedule[schedule.length - 1]!;
-    preview = `${eachAmounts.length} instalment${eachAmounts.length === 1 ? "" : "s"} totalling ${rupees(sum)}, from ${shortDate(first.date)} ${first.date.slice(0, 4)} to ${shortDate(last.date)} ${last.date.slice(0, 4)}.`;
-  } else if (card && totalPaise && Number.isInteger(monthsN) && monthsN >= 1 && monthsN <= 60 && isValidStartMonth(startMonth) && (instalmentPaise === null || instalmentPaise > 0)) {
-    const each = instalmentPaise ?? defaultInstalmentPaise(totalPaise, monthsN);
-    const payable = instalmentPaise !== null ? instalmentPaise * monthsN : totalPaise;
-    if (scheduleIsConsistent({ totalPaise: payable, months: monthsN, instalmentPaise: each })) {
-      const schedule = instalmentSchedule({ totalPaise: payable, months: monthsN, instalmentPaise: each, startMonth }, { statementDay: card.statementDay, dueDay: card.dueDay });
-      const last = schedule[schedule.length - 1];
-      preview = `${monthsN} instalment${monthsN === 1 ? "" : "s"} of ${rupees(each)}, the first on ${shortDate(schedule[0]!.date)} ${startMonth.slice(0, 4)}${last && last.amountPaise !== each ? `, the last ${rupees(last.amountPaise)}` : ""}${instalmentPaise !== null ? `. In total ${rupees(payable)}.` : "."}`;
-    }
-  }
+
+  // What the bank's formula gives; every row can still be typed over.
+  const calculated = useMemo(() => {
+    if (!principal || !monthsOk || !rateOk) return [];
+    if (instalmentPaise) return Array.from({ length: monthsN }, (_, i) => ({ n: i + 1, principalPaise: 0, interestPaise: 0, gstPaise: 0, instalmentPaise }));
+    return calcSchedule({ principalPaise: principal, annualRatePct: ratePct, months: monthsN, gstPct, gstOnInterest });
+  }, [principal, monthsOk, rateOk, instalmentPaise, monthsN, ratePct, gstPct, gstOnInterest]);
+
+  const rowText = (i: number) => edits[i] ?? (calculated[i] ? paiseToInput(calculated[i]!.instalmentPaise) : "");
+  const rowsParsed = calculated.map((_, i) => rupeesToPaise(rowText(i)));
+  const rowsValid = calculated.length > 0 && rowsParsed.every((p) => p !== null && p > 0);
+  const amounts = rowsValid ? (rowsParsed as number[]) : null;
+  const typedOver = Object.keys(edits).length > 0;
+  const sum = amounts ? amounts.reduce((s, a) => s + a, 0) : 0;
+  const interest = calculated.reduce((s, r) => s + r.interestPaise, 0);
+  const gstTotal = calculated.reduce((s, r) => s + r.gstPaise, 0);
+  const feeBase = fee.trim() ? rupeesToPaise(fee) : 0;
+  const feeTotal = feeBase ? feeWithGst(feeBase, Number.isFinite(gstPct) ? gstPct : 0) : 0;
+
+  // The date each month is billed, from the card's statement day.
+  const dates = useMemo(
+    () => (card && isValidStartMonth(startMonth) && monthsOk ? instalmentSchedule({ totalPaise: monthsN, months: monthsN, instalmentPaise: 1, startMonth }, { statementDay: card.statementDay, dueDay: card.dueDay }).map((i) => i.date) : []),
+    [card, startMonth, monthsN, monthsOk],
+  );
+
+  // A change to the figures behind the calculation starts the rows afresh.
+  const restart = (fn: () => void) => {
+    fn();
+    setEdits({});
+  };
 
   const save = () => {
     if (!title.trim()) return setError("Say what it is, such as the phone.");
@@ -94,21 +110,31 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
     }
     if (!chosenCard) return setError("Add a credit card first.");
     if (!isValidStartMonth(startMonth)) return setError("Choose the starting month.");
-    if (eachInvalid) return setError("Each instalment must be an amount, separated by spaces, such as 20082 20500 20500.");
-    if (eachAmounts) {
-      if (eachAmounts.length > 60) return setError("An EMI plan can have up to 60 instalments.");
-      const typed = { title: title.trim(), categoryId: categoryId || null, months: eachAmounts.length, startMonth, instalmentsPaise: eachAmounts };
-      return void run(
-        () => (plan ? api.patch(`/api/emi-plans/${plan.id}`, typed) : api.post("/api/emi-plans", { ...typed, cardAccountId: chosenCard, ...(replaces ? { replacesTransactionId: replaces } : {}) })),
-        plan ? "Saved." : "EMI plan added.",
-      );
-    }
-    if (!totalPaise) return setError("Enter the amount that was converted, such as 122000.");
-    if (!Number.isInteger(monthsN) || monthsN < 1 || monthsN > 60) return setError("Months must be between 1 and 60.");
+    if (!principal) return setError("Enter the amount that was converted, such as 122000.");
+    if (!monthsOk) return setError("Months must be between 1 and 60.");
+    if (!rateOk) return setError("The interest rate looks wrong. Leave it empty for none.");
     if (instalment.trim() && !instalmentPaise) return setError("The monthly instalment looks wrong.");
-    const common = { title: title.trim(), categoryId: categoryId || null, totalPaise, months: monthsN, startMonth, ...(instalmentPaise ? { instalmentPaise } : {}) };
+    if (!amounts) return setError("Every month needs an amount, such as 20500.");
+    if (fee.trim() && !feeBase) return setError("The processing fee looks wrong. Leave it empty for none.");
+    // Equal months with nothing typed over are saved as an even plan; anything else is saved month by month.
+    const even = !typedOver && !instalmentPaise && ratePct === 0;
+    const body = {
+      title: title.trim(),
+      categoryId: categoryId || null,
+      months: monthsN,
+      startMonth,
+      ...(even ? { totalPaise: principal } : { instalmentsPaise: amounts }),
+    };
     void run(
-      () => (plan ? api.patch(`/api/emi-plans/${plan.id}`, common) : api.post("/api/emi-plans", { ...common, cardAccountId: chosenCard, ...(replaces ? { replacesTransactionId: replaces } : {}) })),
+      () =>
+        plan
+          ? api.patch(`/api/emi-plans/${plan.id}`, body)
+          : api.post("/api/emi-plans", {
+              ...body,
+              cardAccountId: chosenCard,
+              ...(replaces ? { replacesTransactionId: replaces } : {}),
+              ...(feeTotal ? { feePaise: feeTotal, feeDate } : {}),
+            }),
       plan ? "Saved." : "EMI plan added.",
     );
   };
@@ -146,26 +172,106 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
               ))}
           </select>
         </Field>
-        <Field label="Amount converted to EMI (₹)" hint={eachAmounts ? "Not needed: the total is the sum of the instalments below." : undefined}>
-          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="122000" disabled={frozen} value={total} onChange={(e) => setTotal(e.target.value)} />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Months">
-            <input className={inputClass} type="number" min={1} max={60} disabled={frozen} value={months} onChange={(e) => setMonths(e.target.value)} />
-          </Field>
-          <Field label="Starting month">
-            <input className={inputClass} type="month" disabled={frozen} value={startMonth} onChange={(e) => setStartMonth(e.target.value)} />
-          </Field>
-        </div>
-        <Field label="Monthly instalment (optional)" hint="Only if your bank's instalment includes interest. Then the total becomes instalment times months.">
-          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="Leave empty to split evenly" disabled={frozen} value={instalment} onChange={(e) => setInstalment(e.target.value)} />
-        </Field>
-        <Field
-          label="Each instalment, if they differ (optional)"
-          hint="Copy them in order from your bank's schedule, separated by spaces, for example 20082 20500 20500 20500 20500 20498. Banks often bill a smaller first instalment and a rounded last one. The months and total then follow from this list."
-        >
-          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="Leave empty for equal instalments" disabled={frozen} value={each} onChange={(e) => setEach(e.target.value)} />
-        </Field>
+
+        {!frozen && (
+          <>
+            <Field label="Amount converted to EMI (₹)" hint="The purchase amount the bank converted, before interest.">
+              <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="122000" value={total} onChange={(e) => restart(() => setTotal(e.target.value))} />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Months">
+                <input className={inputClass} type="number" min={1} max={60} value={months} onChange={(e) => restart(() => setMonths(e.target.value))} />
+              </Field>
+              <Field label="Interest, % a year">
+                <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="16, or empty for none" value={rate} onChange={(e) => restart(() => setRate(e.target.value))} />
+              </Field>
+            </div>
+            <Field label="Starting month" hint="The month of the first statement that carries an instalment.">
+              <input className={inputClass} type="month" value={startMonth} onChange={(e) => setStartMonth(e.target.value)} />
+            </Field>
+            {!plan && (
+              <div className="space-y-3 rounded-xl bg-sunk p-3">
+                <p className="text-sm font-medium">One-off processing fee (optional)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Fee (₹)">
+                    <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="299" value={fee} onChange={(e) => setFee(e.target.value)} />
+                  </Field>
+                  <Field label="GST, %">
+                    <input className={inputClass} inputMode="decimal" autoComplete="off" value={gst} onChange={(e) => restart(() => setGst(e.target.value))} />
+                  </Field>
+                </div>
+                {feeTotal > 0 && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <p className="text-sm">
+                      Added as one expense of <strong>{rupees(feeTotal)}</strong>.
+                    </p>
+                    <Field label="Billed on">
+                      <input className={inputClass} type="date" value={feeDate} max={today()} onChange={(e) => setFeeDate(e.target.value)} />
+                    </Field>
+                  </div>
+                )}
+                <label className="flex min-h-11 items-start gap-3 text-sm">
+                  <input type="checkbox" className="mt-1 size-5 accent-brand" checked={gstOnInterest} onChange={(e) => restart(() => setGstOnInterest(e.target.checked))} />
+                  <span>
+                    The bank also adds GST to the interest
+                    <span className="block text-xs text-soft">Leave off unless your statement shows it. HDFC's showed GST only on the fee.</span>
+                  </span>
+                </label>
+              </div>
+            )}
+            <Field label="Monthly instalment (optional)" hint="If you already know it, type it and every month is filled with it.">
+              <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="Leave empty to calculate" value={instalment} onChange={(e) => restart(() => setInstalment(e.target.value))} />
+            </Field>
+
+            {calculated.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="text-sm font-medium">Each month</p>
+                  {typedOver && (
+                    <button type="button" className="min-h-11 text-sm text-brand" onClick={() => setEdits({})}>
+                      Reset to calculated
+                    </button>
+                  )}
+                </div>
+                <ul className="divide-y divide-line rounded-xl border border-line bg-card" aria-label="Instalments">
+                  {calculated.map((r, i) => (
+                    <li key={r.n} className="flex items-center justify-between gap-3 px-3 py-1.5">
+                      <span className="min-w-0 text-sm">
+                        <span className="block">
+                          {r.n}. {dates[i] ? `${shortDate(dates[i]!)} ${dates[i]!.slice(0, 4)}` : ""}
+                        </span>
+                        {r.interestPaise > 0 && <span className="block text-xs text-soft">interest {rupees(r.interestPaise)}</span>}
+                      </span>
+                      <input
+                        aria-label={`Instalment ${r.n}`}
+                        className={`${inputClass} w-32 text-right tabular-nums`}
+                        inputMode="decimal"
+                        autoComplete="off"
+                        value={rowText(i)}
+                        onChange={(e) => setEdits({ ...edits, [i]: e.target.value })}
+                      />
+                    </li>
+                  ))}
+                </ul>
+                <p className="rounded-lg bg-sunk px-3 py-2 text-sm">
+                  {amounts ? (
+                    <>
+                      Total payable <strong>{rupees(sum)}</strong>
+                      {!typedOver && interest > 0 && <> · interest {rupees(interest)}</>}
+                      {!typedOver && gstTotal > 0 && <> · GST {rupees(gstTotal)}</>}
+                      {typedOver && principal && sum > principal && <> · {rupees(sum - principal)} more than converted</>}
+                      {feeTotal > 0 && <> · plus the fee {rupees(feeTotal)}</>}.
+                    </>
+                  ) : (
+                    "Fill in every month to see the total."
+                  )}
+                </p>
+                <p className="text-xs text-soft">Worked out the way banks do it. Your bank's first and last months can differ a little: type over any month with what its schedule shows.</p>
+              </div>
+            )}
+          </>
+        )}
+
         {!plan && (
           <Field label="Is this purchase already in your entries?" hint="If so, pick it and it is removed, so the phone is not counted twice.">
             <select className={inputClass} value={replaces} onChange={(e) => setReplaces(e.target.value)}>
@@ -181,10 +287,9 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
         {frozen && <p className="text-xs text-soft">This plan is closed, so only the name and category can change. Reopen it to correct the amounts.</p>}
         {plan?.locked && !frozen && (
           <p className="rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn-ink">
-            Instalments have already been added. If you change the amounts, months or starting month, Alfred removes them and adds them again from the new details. Any you edited by hand are lost.
+            Instalments have already been added. Saving new amounts, months or a starting month removes them and adds them again from these details. To correct just one month, close this and use Schedule on the plan instead.
           </p>
         )}
-        {!frozen && preview && <p className="rounded-lg bg-sunk px-3 py-2 text-sm">{preview}</p>}
         {!frozen && (
           <p className="text-xs text-soft">
             Each month Alfred adds the instalment as an expense on the card, on its statement day. The full amount stays held against the limit
@@ -217,7 +322,91 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
   );
 }
 
-function Row({ plan, onEdit, onClose, onReopen }: { plan: EmiPlan; onEdit: () => void; onClose: () => void; onReopen: () => void }) {
+/** Every month of a plan with its amount, billed or still to come. Any month can be set to what the statement shows. */
+function Schedule({ plan, statement }: { plan: EmiPlan; statement: { statementDay: number; dueDay: number } | null }) {
+  const refresh = useRefreshMoney();
+  const toast = useToast();
+  const [editing, setEditing] = useState<number | null>(null);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const rows = statement
+    ? instalmentSchedule({ totalPaise: plan.totalPaise, months: plan.months, instalmentPaise: plan.instalmentPaise, startMonth: plan.startMonth, amountsPaise: plan.scheduleAmountsPaise }, statement)
+    : plan.scheduleAmountsPaise.map((amountPaise, i) => ({ n: i + 1, date: "", amountPaise }));
+
+  const save = async (n: number) => {
+    const paise = rupeesToPaise(value);
+    if (!paise) return setError("Enter the amount, such as 20500.");
+    setBusy(true);
+    setError("");
+    try {
+      await api.patch(`/api/emi-plans/${plan.id}/instalments/${n}`, { amountPaise: paise });
+      await refresh();
+      toast.show(`Instalment ${n} is now ${rupees(paise)}.`);
+      setEditing(null);
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1">
+      <ul className="divide-y divide-line rounded-xl border border-line bg-card" aria-label={`${plan.title} schedule`}>
+        {rows.map((r) => (
+          <li key={r.n} className="flex min-h-12 items-center justify-between gap-3 px-3 py-1.5 text-sm">
+            <span className="min-w-0">
+              <span className="block">
+                {r.n}. {r.date ? `${shortDate(r.date)} ${r.date.slice(0, 4)}` : ""}
+              </span>
+              <span className="block text-xs text-soft">{r.n <= plan.billedCount ? "billed" : "to come"}</span>
+            </span>
+            {editing === r.n ? (
+              <span className="flex items-center gap-2">
+                <input
+                  aria-label={`Instalment ${r.n} amount`}
+                  className={`${inputClass} w-28 text-right tabular-nums`}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                />
+                <Button className="min-h-11 py-1.5 text-sm" disabled={busy} onClick={() => void save(r.n)}>
+                  Save
+                </Button>
+                <button type="button" className="min-h-11 px-1 text-soft" onClick={() => setEditing(null)}>
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <span className="font-medium tabular-nums">{rupees(r.amountPaise)}</span>
+                {plan.status !== "cancelled" && (
+                  <button
+                    type="button"
+                    className="min-h-11 px-2 text-brand"
+                    onClick={() => {
+                      setEditing(r.n);
+                      setValue(paiseToInput(r.amountPaise));
+                      setError("");
+                    }}
+                  >
+                    Edit
+                  </button>
+                )}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      <ErrorText>{error}</ErrorText>
+    </div>
+  );
+}
+
+function Row({ plan, statement, onEdit, onClose, onReopen }: { plan: EmiPlan; statement: { statementDay: number; dueDay: number } | null; onEdit: () => void; onClose: () => void; onReopen: () => void }) {
+  const [showing, setShowing] = useState(false);
   const pct = Math.min(100, Math.round((plan.billedCount / plan.months) * 100));
   return (
     <li className="space-y-2 px-4 py-3">
@@ -242,6 +431,9 @@ function Row({ plan, onEdit, onClose, onReopen }: { plan: EmiPlan; onEdit: () =>
         )}
       </p>
       <div className="flex flex-wrap gap-2">
+        <Button variant="ghost" className="min-h-11 py-1.5 text-sm" aria-expanded={showing} onClick={() => setShowing(!showing)}>
+          {showing ? "Hide schedule" : "Schedule"}
+        </Button>
         <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={onEdit}>
           Edit
         </Button>
@@ -256,6 +448,7 @@ function Row({ plan, onEdit, onClose, onReopen }: { plan: EmiPlan; onEdit: () =>
           </Button>
         )}
       </div>
+      {showing && <Schedule plan={plan} statement={statement} />}
     </li>
   );
 }
@@ -271,6 +464,10 @@ export function EmiPlans() {
 
   if (!(accounts.data ?? []).some((a) => a.kind === "card" && !a.archived)) return null;
   const items = plans.data ?? [];
+  const statementOf = (cardId: string) => {
+    const c = (accounts.data ?? []).find((a): a is CardAccount => a.kind === "card" && a.id === cardId);
+    return c ? { statementDay: c.statementDay, dueDay: c.dueDay } : null;
+  };
   const toCome = items.filter((p) => p.status === "active").reduce((sum, p) => sum + p.toComePaise, 0);
 
   const closePlan = async (p: EmiPlan) => {
@@ -311,7 +508,7 @@ export function EmiPlans() {
       ) : (
         <ul className="divide-y divide-line">
           {items.map((p) => (
-            <Row key={p.id} plan={p} onEdit={() => setSheet({ plan: p })} onClose={() => void closePlan(p)} onReopen={() => void reopenPlan(p)} />
+            <Row key={p.id} plan={p} statement={statementOf(p.cardAccountId)} onEdit={() => setSheet({ plan: p })} onClose={() => void closePlan(p)} onReopen={() => void reopenPlan(p)} />
           ))}
         </ul>
       )}

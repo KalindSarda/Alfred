@@ -229,6 +229,14 @@ export function goalsReply(goals: GoalLine[], setAsidePaise: number): string {
 }
 
 export const botVoice = {
+  emiCheck: (title: string, n: number, months: number, amountPaise: number, cardName: string) =>
+    `${title}, instalment ${n} of ${months}: ${rupees(amountPaise)} has been added to ${cardName}. Does your statement agree?`,
+  emiAgrees: "Splendid. It matches your statement.",
+  emiAskAmount: (title: string, n: number) => `What does the statement show for ${title}, instalment ${n}? Just send the amount, such as 20100.`,
+  emiFixed: (title: string, n: number, amountPaise: number, toComePaise: number) =>
+    `Corrected. ${title}, instalment ${n}, is now ${rupees(amountPaise)}.${toComePaise > 0 ? ` ${rupees(toComePaise)} is still to come.` : ""}`,
+  emiGone: "I cannot find that instalment any more, so there is nothing to correct.",
+  emiClosed: "That plan is closed, so I cannot change it. Reopen it in the app first.",
   menu: "What would you like to see? Or write to me plainly, such as \"450 food swiggy\". /help lists everything.",
   goalNeedsAmount: "How much? For example: /save 5000 laptop.",
   goalNoGoals: "You have no savings goals yet. Add one in the app, under Plan, then Goals.",

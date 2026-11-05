@@ -40,10 +40,43 @@ export async function getPending(db: Db, userId: string, chatId: string, id: str
     .limit(1);
   if (!row) return null;
   try {
-    return JSON.parse(row.payload) as PendingEntry;
+    const parsed = JSON.parse(row.payload) as PendingEntry & { emiFix?: unknown };
+    return parsed.emiFix ? null : parsed;
   } catch {
     return null;
   }
+}
+
+/** Waiting for the amount the statement shows for one EMI entry (the person tapped "Different amount"). */
+export async function createEmiFix(db: Db, userId: string, chatId: string, txnId: string, nowMs: number): Promise<void> {
+  await db.insert(botPending).values({
+    id: randomString(10, "abcdefghijkmnpqrstuvwxyz23456789"),
+    userId,
+    chatId,
+    payload: JSON.stringify({ emiFix: { txnId } }),
+    expiresAt: iso(nowMs + PENDING_TTL_MS),
+    createdAt: iso(nowMs),
+  });
+}
+
+/** The latest fresh amount-wait for this person and chat, removed so it is used once; null when there is none. */
+export async function takeEmiFix(db: Db, userId: string, chatId: string, nowMs: number): Promise<string | null> {
+  const rows = await db
+    .select()
+    .from(botPending)
+    .where(and(eq(botPending.userId, userId), eq(botPending.chatId, chatId), gt(botPending.expiresAt, iso(nowMs))));
+  let found: { id: string; txnId: string; createdAt: string } | null = null;
+  for (const row of rows) {
+    try {
+      const value = (JSON.parse(row.payload) as { emiFix?: { txnId?: unknown } }).emiFix;
+      if (typeof value?.txnId === "string" && (!found || row.createdAt > found.createdAt)) found = { id: row.id, txnId: value.txnId, createdAt: row.createdAt };
+    } catch {
+      // Not ours; ignore.
+    }
+  }
+  if (!found) return null;
+  await db.delete(botPending).where(eq(botPending.id, found.id));
+  return found.txnId;
 }
 
 export async function updatePending(db: Db, id: string, payload: PendingEntry): Promise<void> {

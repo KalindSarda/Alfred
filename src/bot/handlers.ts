@@ -6,15 +6,17 @@ import type { Db } from "../db/client";
 import { getAccount, listAccounts } from "../db/accounts";
 import { getHold } from "../db/holds";
 import { listCategories } from "../db/categories";
-import { lastTransactionRowBySource, toDto } from "../db/transactions";
+import { getTransactionRow, lastTransactionRowBySource, toDto } from "../db/transactions";
 import { telegramUpdates, transactions } from "../db/schema";
 import { formatRupees } from "../domain/money";
 import { FLOW_TYPES } from "../domain/txnTypes";
 import { type IstDate, todayIst } from "../domain/dates";
 import { getMe } from "../services/auth";
 import { getGoalRow, goalsSetAside } from "../db/goals";
+import { setInstalmentAmount } from "../services/emi";
 import { addContribution, listGoals, removeContribution } from "../services/goals";
 import { parseAmountToken } from "./parser";
+import { createEmiFix, takeEmiFix } from "./pending";
 import { balanceOverview, setArchived, toAccountDto } from "../services/accounts";
 import { getCashflow } from "../services/cashflow";
 import { createCategory } from "../services/categories";
@@ -355,6 +357,21 @@ async function runMenuItem(deps: BotDeps, who: Actor, id: string, today: IstDate
   }
 }
 
+/** Sets what the statement shows for one EMI entry, then says how much is still to come. */
+async function fixEmiAmount(deps: BotDeps, who: Actor, txnId: string, paise: number, today: IstDate, to?: Reply): Promise<void> {
+  const say = (text: string) => (to ? reply(deps, to, text) : deps.telegram.sendMessage(who.chatId, text).then(() => undefined));
+  const txn = await getTransactionRow(deps.db, who.userId, txnId);
+  if (!txn || txn.source !== "emi" || !txn.emiPlanId || txn.emiInstalment === null) return await say(botVoice.emiGone);
+  try {
+    const plan = await setInstalmentAmount(deps.db, who.userId, txn.emiPlanId, txn.emiInstalment, paise, today);
+    await say(botVoice.emiFixed(plan.title, txn.emiInstalment, paise, plan.toComePaise));
+  } catch (error) {
+    if (error instanceof ConflictError) return await say(botVoice.emiClosed);
+    if (error instanceof NotFoundError) return await say(botVoice.emiGone);
+    throw error;
+  }
+}
+
 async function cmdRecurring(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
   const rules = await listRules(deps.db, who.userId, today);
   await deps.telegram.sendMessage(
@@ -673,7 +690,15 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
   const today = todayIst(new Date(deps.now()));
 
   try {
-    if (!command) return await startEntry(deps, who, text, inferType(text), "text");
+    if (!command) {
+      // After "Different amount", the next message is the figure from the statement.
+      const waiting = await takeEmiFix(deps.db, userId, chatId, deps.now());
+      if (waiting) {
+        const paise = parseAmountToken(text);
+        if (paise !== null) return await fixEmiAmount(deps, who, waiting, paise, today);
+      }
+      return await startEntry(deps, who, text, inferType(text), "text");
+    }
     switch (name) {
       case "start": {
         if (arg) return await handleLinking(deps, chatId, arg);
@@ -847,6 +872,17 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
       } else {
         await updateDebt(deps.db, userId, id, { followUpStopped: true }, today);
         await reply(deps, to, botVoice.followUpStopped(person.name));
+      }
+    } else if (kind === "e" && id && (action === "y" || action === "d")) {
+      // "Does your statement agree?" for an instalment Alfred just added.
+      const txn = await getTransactionRow(deps.db, userId, id);
+      if (!txn || txn.source !== "emi" || !txn.emiPlanId || txn.emiInstalment === null) {
+        await reply(deps, to, botVoice.emiGone);
+      } else if (action === "y") {
+        await reply(deps, to, botVoice.emiAgrees);
+      } else {
+        await createEmiFix(deps.db, userId, chatId, id, deps.now());
+        await reply(deps, to, botVoice.emiAskAmount(txn.merchant ?? "that plan", txn.emiInstalment));
       }
     } else if (kind === "m" && id && MENU.some((m) => m.id === id)) {
       // A button on /menu: answers as the command would.

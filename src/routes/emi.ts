@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
-import { CreateEmiPlan, UpdateEmiPlan } from "../schemas/emi";
-import { cancelPlan, createPlan, deletePlan, listPlans, reopenPlan, updatePlan } from "../services/emi";
+import { CreateEmiPlan, SetInstalment, UpdateEmiPlan } from "../schemas/emi";
+import { cancelPlan, createPlan, deletePlan, listPlans, reopenPlan, setInstalmentAmount, updatePlan } from "../services/emi";
 import { requestToday } from "../utils/clock";
 import { parseJson } from "../utils/validate";
 
@@ -14,6 +14,10 @@ export const emiRoutes = new Hono<AppEnv>()
   .patch("/:id", async (c) => {
     const body = await parseJson(c, UpdateEmiPlan);
     return c.json(await updatePlan(c.var.auth.db, c.var.userId, c.req.param("id"), body, requestToday(c.var.auth)));
+  })
+  .patch("/:id/instalments/:n", async (c) => {
+    const body = await parseJson(c, SetInstalment);
+    return c.json(await setInstalmentAmount(c.var.auth.db, c.var.userId, c.req.param("id"), Number(c.req.param("n")), body.amountPaise, requestToday(c.var.auth)));
   })
   .post("/:id/cancel", async (c) => c.json(await cancelPlan(c.var.auth.db, c.var.userId, c.req.param("id"), requestToday(c.var.auth))))
   .post("/:id/reopen", async (c) => c.json(await reopenPlan(c.var.auth.db, c.var.userId, c.req.param("id"), requestToday(c.var.auth))))

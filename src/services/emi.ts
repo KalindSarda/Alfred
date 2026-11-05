@@ -1,4 +1,5 @@
 import { and, count, eq, isNull } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
 import { getAccount } from "../db/accounts";
@@ -144,10 +145,10 @@ async function dtoFor(db: Db, userId: string, id: string, today: IstDate): Promi
  * Adds, as ordinary expenses on the card, every instalment whose statement date has come and that does not exist
  * yet. Safe to run as often as you like: an instalment is created once, and one the user deleted is not brought back.
  */
-async function materializePlan(db: Db, row: EmiPlanRow, card: { statementDay: number; dueDay: number }, today: IstDate): Promise<number> {
-  if (row.cancelledAt) return 0;
+async function materializePlan(db: Db, row: EmiPlanRow, card: { statementDay: number; dueDay: number }, today: IstDate): Promise<string[]> {
+  if (row.cancelledAt) return [];
   const due = dueInstalments(toShape(row), card, today);
-  if (due.length === 0) return 0;
+  if (due.length === 0) return [];
   const now = nowIso();
   const rows = due.map((i) => ({
     id: newId(),
@@ -167,28 +168,32 @@ async function materializePlan(db: Db, row: EmiPlanRow, card: { statementDay: nu
     createdAt: now,
     updatedAt: now,
   }));
-  let added = 0;
+  const added: string[] = [];
   // D1 allows 100 bound variables a statement, so insert a few rows at a time.
   for (let i = 0; i < rows.length; i += 4) {
     const made = await db.insert(transactions).values(rows.slice(i, i + 4)).onConflictDoNothing().returning({ id: transactions.id });
-    added += made.length;
+    added.push(...made.map((m) => m.id));
   }
   return added;
 }
 
-async function materializeById(db: Db, userId: string, id: string, today: IstDate): Promise<number> {
+async function materializeById(db: Db, userId: string, id: string, today: IstDate): Promise<string[]> {
   const row = await getPlanRow(db, userId, id);
-  if (!row) return 0;
+  if (!row) return [];
   const card = await getAccount(db, userId, row.cardAccountId);
   return materializePlan(db, row, { statementDay: card?.statementDay ?? 1, dueDay: card?.dueDay ?? 1 }, today);
 }
 
-/** One person's instalments that have come due. */
-export async function materializeEmi(db: Db, userId: string, today: IstDate): Promise<number> {
+/** One person's instalments that have come due; returns the entries newly added (to ask whether they match the statement). */
+export async function materializeEmiEntries(db: Db, userId: string, today: IstDate): Promise<string[]> {
   const rows = await db.select({ id: emiPlans.id }).from(emiPlans).where(and(eq(emiPlans.userId, userId), isNull(emiPlans.cancelledAt)));
-  let added = 0;
-  for (const { id } of rows) added += await materializeById(db, userId, id, today);
+  const added: string[] = [];
+  for (const { id } of rows) added.push(...(await materializeById(db, userId, id, today)));
   return added;
+}
+
+export async function materializeEmi(db: Db, userId: string, today: IstDate): Promise<number> {
+  return (await materializeEmiEntries(db, userId, today)).length;
 }
 
 /** The daily job: everyone's instalments that have come due. One person failing does not stop the rest. */
@@ -218,6 +223,7 @@ export async function createPlan(db: Db, userId: string, input: CreateEmiPlanDat
     replaced = txn.id;
   }
 
+  if (input.feeDate && input.feeDate > today) throw invalid("feeDate", "That date is in the future");
   const id = newId();
   const plan = db.insert(emiPlans).values({
     id,
@@ -232,11 +238,35 @@ export async function createPlan(db: Db, userId: string, input: CreateEmiPlanDat
     amountsJson: amountsPaise ? JSON.stringify(amountsPaise) : null,
     createdAt: nowIso(),
   });
-  if (replaced) {
-    await db.batch([plan, db.update(transactions).set({ deletedAt: nowIso() }).where(and(eq(transactions.userId, userId), eq(transactions.id, replaced)))]);
-  } else {
-    await plan;
+  const ops: BatchItem<"sqlite">[] = [plan];
+  if (replaced) ops.push(db.update(transactions).set({ deletedAt: nowIso() }).where(and(eq(transactions.userId, userId), eq(transactions.id, replaced))));
+  if (input.feePaise) {
+    const [fees] = await db
+      .select({ id: categories.id })
+      .from(categories)
+      .where(and(eq(categories.userId, userId), eq(categories.name, "Fees & Charges"), eq(categories.kind, "expense"), isNull(categories.archivedAt)))
+      .limit(1);
+    const now = nowIso();
+    ops.push(
+      db.insert(transactions).values({
+        id: newId(),
+        userId,
+        type: "expense",
+        amountPaise: input.feePaise,
+        txnDate: input.feeDate ?? today,
+        accountId: card.id,
+        toAccountId: null,
+        categoryId: fees?.id ?? null,
+        merchant: `${input.title} EMI processing fee`,
+        note: "Fee and GST for converting to EMI",
+        status: "confirmed",
+        source: "web",
+        createdAt: now,
+        updatedAt: now,
+      }),
+    );
   }
+  await db.batch(ops as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
   await materializeById(db, userId, id, today);
   return dtoFor(db, userId, id, today);
 }
@@ -288,6 +318,31 @@ export async function updatePlan(db: Db, userId: string, id: string, patch: Upda
   ]);
   await materializeById(db, userId, id, today);
   return dtoFor(db, userId, id, today);
+}
+
+/**
+ * Corrects one month's instalment to what the bank actually billed. The plan's schedule and total follow, and so does
+ * the entry if that month has already been added. An even plan becomes an uneven one.
+ */
+export async function setInstalmentAmount(db: Db, userId: string, planId: string, n: number, amountPaise: number, today: IstDate): Promise<EmiPlanDto> {
+  const row = await getPlanRow(db, userId, planId);
+  if (!row) throw new NotFoundError("EMI plan not found");
+  if (row.cancelledAt) throw new ConflictError("This plan is closed. Reopen it to change the amounts.");
+  if (!Number.isInteger(n) || n < 1 || n > row.months) throw invalid("n", `Choose a month from 1 to ${row.months}`);
+  const card = await getAccount(db, userId, row.cardAccountId);
+  const amounts = instalmentSchedule(toShape(row), { statementDay: card?.statementDay ?? 1, dueDay: card?.dueDay ?? 1 }).map((i) => i.amountPaise);
+  amounts[n - 1] = amountPaise;
+  await db.batch([
+    db
+      .update(emiPlans)
+      .set({ totalPaise: amounts.reduce((sum, a) => sum + a, 0), instalmentPaise: amounts[Math.min(1, amounts.length - 1)] as number, amountsJson: JSON.stringify(amounts) })
+      .where(and(eq(emiPlans.userId, userId), eq(emiPlans.id, planId))),
+    db
+      .update(transactions)
+      .set({ amountPaise, updatedAt: nowIso() })
+      .where(and(eq(transactions.userId, userId), eq(transactions.emiPlanId, planId), eq(transactions.emiInstalment, n), isNull(transactions.deletedAt))),
+  ]);
+  return dtoFor(db, userId, planId, today);
 }
 
 /** Closes a plan early (foreclosure): no more instalments are added; the ones already there stay. */

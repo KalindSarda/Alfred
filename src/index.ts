@@ -3,7 +3,7 @@ import { createTelegramApi } from "./bot/telegramApi";
 import { type Bindings, getConfig } from "./config/env";
 import { getDb } from "./db/client";
 import { runMaintenance } from "./services/maintenance";
-import { materializeAllEmi } from "./services/emi";
+import { runEmiCheckIns } from "./services/emiJob";
 import { runDebtReminders } from "./services/debtJob";
 import { runRecurring } from "./services/recurringJob";
 import { runHoldReminders, runNudges } from "./services/nudges";
@@ -26,10 +26,8 @@ export default {
 
     // Instalments first, so a statement that has just come round already holds its EMI when reminders are worked out.
     try {
-      const added = await materializeAllEmi(db, todayIst(new Date(now())), (error) =>
-        logger.error("emi_user_failed", { error: error instanceof Error ? error.message : "unknown" }),
-      );
-      logger.info("emi_instalments_added", { added });
+      const emi = await runEmiCheckIns({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });
+      logger.info("emi_instalments_added", { ...emi });
     } catch (error) {
       logger.error("emi_failed", { error: error instanceof Error ? error.message : "unknown" });
     }

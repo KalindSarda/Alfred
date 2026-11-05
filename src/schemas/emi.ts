@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Id } from "./transaction";
+import { Id, IstDateString } from "./transaction";
 
 const Title = z.string().trim().min(1).max(80);
 const Amount = z.number().int().positive().max(100_000_000_000_00);
@@ -20,6 +20,10 @@ export const CreateEmiPlan = z
     startMonth: StartMonth,
     /** An entry already logged for this purchase on the same card; it is removed so it is not counted twice. */
     replacesTransactionId: Id.optional(),
+    /** The one-off processing fee with its GST, added as an expense on the card (not part of the instalments). */
+    feePaise: Amount.optional(),
+    /** The day the fee was billed; defaults to today and cannot be in the future. */
+    feeDate: IstDateString.optional(),
   })
   .strict();
 export type CreateEmiPlanData = z.output<typeof CreateEmiPlan>;
@@ -37,3 +41,6 @@ export const UpdateEmiPlan = z
   .partial()
   .strict();
 export type UpdateEmiPlanData = z.output<typeof UpdateEmiPlan>;
+
+export const SetInstalment = z.object({ amountPaise: Amount }).strict();
+export type SetInstalmentData = z.output<typeof SetInstalment>;
