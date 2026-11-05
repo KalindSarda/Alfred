@@ -121,6 +121,7 @@ export interface BalanceOverview {
   owedToYouPaise: number;
   youOwePaise: number;
   goalsSetAsidePaise: number;
+  investmentsPaise: number;
   netWorthPaise: number;
   safeToSpendPaise: number;
 }
@@ -170,6 +171,7 @@ export interface RecurringRule {
   accountName: string;
   categoryId: string | null;
   categoryName: string | null;
+  holdingId: string | null;
   frequency: "weekly" | "monthly" | "yearly";
   day: number;
   month: number | null;
@@ -193,7 +195,7 @@ export interface Category {
   entryCount: number;
 }
 
-export type TxnType = "expense" | "income" | "transfer" | "bill_payment" | "investment" | "debt_out" | "debt_in";
+export type TxnType = "expense" | "income" | "transfer" | "bill_payment" | "investment" | "investment_sale" | "debt_out" | "debt_in";
 
 export interface DebtPayment {
   id: string;
@@ -246,6 +248,7 @@ export interface Transaction {
   categoryId: string | null;
   merchant: string | null;
   note: string | null;
+  holdingId: string | null;
   status: "draft" | "confirmed";
   source: "web" | "telegram" | "seed" | "ai" | "emi" | "recurring";
 }
@@ -350,6 +353,7 @@ export interface NetWorthPoint {
   month: string;
   asOf: string;
   netWorthPaise: number;
+  investmentsPaise: number;
   banksPaise: number;
   cardsOwedPaise: number;
   emiToComePaise: number;
@@ -362,4 +366,37 @@ export interface EntryHints {
   merchants: { merchant: string; categoryId: string | null; accountId: string; count: number }[];
   /** Accounts, the one used most recently first. */
   lastUsedAccountIds: string[];
+}
+
+export interface HoldingEntry {
+  id: string;
+  kind: "buy" | "sell";
+  amountPaise: number;
+  date: string;
+  accountName: string | null;
+  note: string | null;
+}
+
+export interface Holding {
+  id: string;
+  name: string;
+  kind: "stock" | "gold" | "crypto" | "other";
+  status: "active" | "closed";
+  openingInvestedPaise: number;
+  investedPaise: number;
+  soldPaise: number;
+  valuePaise: number;
+  valueDate: string | null;
+  staleDays: number | null;
+  gainPaise: number;
+  gainPct: number | null;
+  entries: HoldingEntry[];
+  values: { date: string; valuePaise: number }[];
+}
+
+export interface HoldingsOverview {
+  totalValuePaise: number;
+  totalInvestedPaise: number;
+  gainPaise: number;
+  holdings: Holding[];
 }

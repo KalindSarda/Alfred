@@ -41,6 +41,8 @@ export function debtOutstandingAsOf(d: DebtFact, asOf: IstDate): number {
 
 export interface NetWorthPoint extends MonthPoint {
   netWorthPaise: number;
+  /** What the holdings were worth. */
+  investmentsPaise: number;
   banksPaise: number;
   cardsOwedPaise: number;
   emiToComePaise: number;
@@ -48,9 +50,9 @@ export interface NetWorthPoint extends MonthPoint {
   youOwePaise: number;
 }
 
-/** Same formula as the headline figure: banks - cards owed - EMIs to come + owed to you - you owe. */
-export function netWorthOf(f: Omit<NetWorthPoint, "netWorthPaise" | keyof MonthPoint>): number {
-  return f.banksPaise - f.cardsOwedPaise - f.emiToComePaise + f.owedToYouPaise - f.youOwePaise;
+/** Same formula as the headline figure: banks + investments + owed to you - cards owed - EMIs to come - you owe. */
+export function netWorthOf(f: { banksPaise: number; cardsOwedPaise: number; emiToComePaise: number; owedToYouPaise: number; youOwePaise: number; investmentsPaise?: number }): number {
+  return f.banksPaise - f.cardsOwedPaise - f.emiToComePaise + f.owedToYouPaise - f.youOwePaise + (f.investmentsPaise ?? 0);
 }
 
 /** Drops the quiet months before anything was recorded, always keeping the latest. */

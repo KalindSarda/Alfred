@@ -4,6 +4,7 @@ import { type Bindings, getConfig } from "./config/env";
 import { getDb } from "./db/client";
 import { runMaintenance } from "./services/maintenance";
 import { runEmiCheckIns } from "./services/emiJob";
+import { runHoldingNudges } from "./services/holdingsJob";
 import { runDebtReminders } from "./services/debtJob";
 import { runRecurring } from "./services/recurringJob";
 import { runHoldReminders, runNudges } from "./services/nudges";
@@ -48,6 +49,12 @@ export default {
       logger.info("nudges_done", { ...result });
     } catch (error) {
       logger.error("nudges_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+    try {
+      const valueResult = await runHoldingNudges({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });
+      logger.info("holding_nudges_done", { ...valueResult });
+    } catch (error) {
+      logger.error("holding_nudges_failed", { error: error instanceof Error ? error.message : "unknown" });
     }
     try {
       const holdsResult = await runHoldReminders({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });

@@ -26,6 +26,7 @@ import { emiToComeByCard } from "../db/emi";
 import { goalsSetAside } from "../db/goals";
 import { activeHoldTotals } from "../db/holds";
 import { hasNoCategory, isDebtType, isMovement } from "../domain/txnTypes";
+import { getHoldingRow } from "../db/holdings";
 import {
   checkTransactionShape,
   CreateTransaction,
@@ -51,6 +52,7 @@ interface Resolved {
   categoryId: string | null;
   merchant: string | null;
   note: string | null;
+  holdingId: string | null;
   status: TransactionDto["status"];
 }
 
@@ -82,6 +84,8 @@ function assertAccountKinds(v: Resolved, fromKind: "bank" | "card", toKind: "ban
     if (toKind !== "card") failShape([{ path: "toAccountId", message: "A bill payment is paid to a credit card" }]);
   } else if (v.type === "investment") {
     if (fromKind !== "bank") failShape([{ path: "accountId", message: "An investment is paid from a bank account" }]);
+  } else if (v.type === "investment_sale") {
+    if (fromKind !== "bank") failShape([{ path: "accountId", message: "The proceeds of a sale come into a bank account" }]);
   } else if (isDebtType(v.type)) {
     if (fromKind !== "bank") failShape([{ path: "accountId", message: "Lent and borrowed money moves through a bank account" }]);
   }
@@ -90,6 +94,11 @@ function assertAccountKinds(v: Resolved, fromKind: "bank" | "card", toKind: "ban
 /** Enforces the cross-record rules that Zod alone cannot: ownership, archived accounts, category kind. */
 async function validateReferences(db: Db, userId: string, v: Resolved): Promise<void> {
   assertValidDate(v.txnDate);
+  if (v.holdingId) {
+    const holding = await getHoldingRow(db, userId, v.holdingId);
+    if (!holding) throw new NotFoundError("Holding not found");
+    if (holding.status !== "active") failShape([{ path: "holdingId", message: "That holding is closed" }]);
+  }
   const from = await requireUsableAccount(db, userId, v.accountId);
   const to = v.toAccountId ? await requireUsableAccount(db, userId, v.toAccountId) : undefined;
   assertAccountKinds(v, from.kind, to?.kind);
@@ -123,6 +132,8 @@ export async function createTransaction(
   const v = parsed.data;
   // Lending and borrowing are recorded from Lent and borrowed, which keeps the debt and the bank entry together.
   if (isDebtType(v.type)) failShape([{ path: "type", message: "Record lent and borrowed money under Commitments, Lent and borrowed" }]);
+  // A sale is recorded from the holding, which keeps its value and the bank entry together.
+  if (v.type === "investment_sale") failShape([{ path: "type", message: "Record a sale under Accounts, Investments" }]);
   const resolved: Resolved = {
     type: v.type,
     amountPaise: v.amountPaise,
@@ -132,6 +143,7 @@ export async function createTransaction(
     categoryId: v.categoryId ?? null,
     merchant: v.merchant ?? null,
     note: v.note ?? null,
+    holdingId: v.holdingId ?? null,
     status: v.status,
   };
   await validateReferences(db, userId, resolved);
@@ -172,6 +184,9 @@ export async function updateTransaction(
   if (isDebtType(existing.type) || (parsed.data.type !== undefined && isDebtType(parsed.data.type))) {
     throw new ConflictError("This entry belongs to lent and borrowed money. Change it there.");
   }
+  if (existing.type === "investment_sale" || parsed.data.type === "investment_sale") {
+    throw new ConflictError("This entry is the sale of a holding. Change it under Accounts, Investments.");
+  }
 
   const p = parsed.data;
   const merged: Resolved = {
@@ -183,8 +198,11 @@ export async function updateTransaction(
     categoryId: p.categoryId === undefined ? existing.categoryId : p.categoryId,
     merchant: p.merchant === undefined ? existing.merchant : p.merchant,
     note: p.note === undefined ? existing.note : p.note,
+    holdingId: p.holdingId === undefined ? existing.holdingId : p.holdingId,
     status: p.status ?? existing.status,
   };
+  // Only an investment can belong to a holding; changing it into something else lets go of it.
+  if (merged.type !== "investment" && p.holdingId === undefined) merged.holdingId = null;
   // Changing to a movement (transfer or bill payment) or an investment clears the category; changing away clears the destination.
   if (hasNoCategory(merged.type) && p.categoryId === undefined) merged.categoryId = null;
   if (!isMovement(merged.type) && p.toAccountId === undefined) merged.toAccountId = null;

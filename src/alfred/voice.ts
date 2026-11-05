@@ -114,6 +114,13 @@ export interface BriefingDebts {
   overdue: { name: string; direction: "lent" | "borrowed"; outstandingPaise: number; dueDate: string }[];
 }
 
+export interface BriefingHoldings {
+  /** Active holdings whose value was typed more than 35 days ago, or never. */
+  staleCount: number;
+  /** The oldest of them, in days; null when one has no value at all. */
+  oldestDays: number | null;
+}
+
 export interface BriefingEmi {
   /** Instalments not yet billed, across all running plans. */
   toComePaise: number;
@@ -154,6 +161,8 @@ export interface BriefingFacts {
   goals?: BriefingGoals;
   /** Lent and borrowed money; leave out when there is none. */
   debts?: BriefingDebts;
+  /** Investments; leave out when there are none. */
+  holdings?: BriefingHoldings;
 }
 
 export interface BriefingLine {
@@ -228,6 +237,17 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
         ? `${d.name} still owes you ${rupees(d.outstandingPaise)}, which was due ${formatDate(d.dueDate)}.`
         : `You owe ${d.name} ${rupees(d.outstandingPaise)}, which was due ${formatDate(d.dueDate)}.`;
     lines.push({ key: "debts", text: late.length > 1 ? `${first} ${late.length - 1} more ${late.length === 2 ? "loan is" : "loans are"} overdue too.` : first, to: "/accounts?view=commitments#lent" });
+  }
+
+  const held = facts.holdings;
+  if (held && held.staleCount > 0) {
+    const n = held.staleCount;
+    const how = held.oldestDays === null ? "has no value yet" : `was last valued ${held.oldestDays} days ago`;
+    lines.push({
+      key: "investments",
+      text: n === 1 ? `One of your investments ${how}. A fresh value keeps your net worth honest.` : `${n} of your investments need a fresh value; the oldest ${held.oldestDays === null ? "has none yet" : `was last valued ${held.oldestDays} days ago`}.`,
+      to: "/accounts?view=investments",
+    });
   }
 
   const goals = facts.goals;

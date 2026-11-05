@@ -8,6 +8,7 @@ import { type IstDate, isValidIstDate } from "../domain/dates";
 import type { AllotHoldData, CreateHoldData, UpdateHoldData } from "../schemas/hold";
 import type { TransactionDto } from "../schemas/transaction";
 import { newId, nowIso } from "../utils/id";
+import { attachAllotment } from "./holdings";
 import { createTransaction } from "./ledger";
 
 export interface HoldDto {
@@ -164,7 +165,9 @@ export async function allotHold(
       { source },
     );
     await db.update(holds).set({ resolvedTxnId: transaction.id }).where(eq(holds.id, id));
-    return { hold: await dtoFor(db, userId, id, today), transaction };
+    // What was allotted is now something owned: it appears under Investments, worth what was paid until you update it.
+    const holdingId = await attachAllotment(db, userId, { name: claimed.title, txnId: transaction.id, amountPaise, date: transaction.txnDate });
+    return { hold: await dtoFor(db, userId, id, today), transaction: { ...transaction, holdingId } };
   } catch (error) {
     await db.update(holds).set({ status: "active", resolvedAt: null }).where(eq(holds.id, id));
     throw error;

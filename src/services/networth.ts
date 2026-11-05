@@ -8,6 +8,8 @@ import { bankBalance, cardOwed } from "../domain/balances";
 import { type IstDate, toIstDate } from "../domain/dates";
 import { emiToCome, instalmentSchedule } from "../domain/emi";
 import { type DebtFact, debtOutstandingAsOf, monthPoints, type NetWorthPoint, netWorthOf, trimLeading } from "../domain/networth";
+import { valuePaise } from "../domain/holdings";
+import { loadHoldings } from "./holdings";
 import { toLedgerAccount } from "./ledger";
 
 export interface NetWorthTrend {
@@ -20,7 +22,7 @@ export interface NetWorthTrend {
  * stored. Months before the first entry are left out, and the latest point is today, so it equals the headline figure.
  */
 export async function getNetWorthTrend(db: Db, userId: string, today: IstDate, months: number): Promise<NetWorthTrend> {
-  const [accountRows, txns, planRows, debtRows, paymentRows] = await Promise.all([
+  const [accountRows, txns, planRows, debtRows, paymentRows, held] = await Promise.all([
     listAccounts(db, userId),
     loadLedgerTxns(db, userId),
     db
@@ -30,6 +32,7 @@ export async function getNetWorthTrend(db: Db, userId: string, today: IstDate, m
       .where(and(eq(emiPlans.userId, userId), isNull(accounts.archivedAt))),
     db.select().from(debts).where(eq(debts.userId, userId)),
     db.select().from(debtPayments).where(eq(debtPayments.userId, userId)),
+    loadHoldings(db, userId),
   ]);
 
   const ledger = accountRows.map(toLedgerAccount);
@@ -69,7 +72,9 @@ export async function getNetWorthTrend(db: Db, userId: string, today: IstDate, m
       if (d.direction === "lent") owedToYouPaise += left;
       else youOwePaise += left;
     }
-    const parts = { banksPaise, cardsOwedPaise, emiToComePaise, owedToYouPaise, youOwePaise };
+    let investmentsPaise = 0;
+    for (const f of held.facts.values()) investmentsPaise += valuePaise(f, p.asOf);
+    const parts = { banksPaise, cardsOwedPaise, emiToComePaise, owedToYouPaise, youOwePaise, investmentsPaise };
     return { ...p, ...parts, netWorthPaise: netWorthOf(parts) };
   });
 

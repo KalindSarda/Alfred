@@ -228,7 +228,41 @@ export function goalsReply(goals: GoalLine[], setAsidePaise: number): string {
   return [...lines, "", `Put toward goals: ${rupees(setAsidePaise)}. It stays in your bank, but is not counted as spendable.`].join("\n");
 }
 
+export interface HoldingLine {
+  name: string;
+  valuePaise: number;
+  investedPaise: number;
+  gainPaise: number;
+  gainPct: number | null;
+  staleDays: number | null;
+}
+
+const upDown = (paise: number) => (paise === 0 ? "no change" : `${paise > 0 ? "up" : "down"} ${rupees(Math.abs(paise))}`);
+const age = (days: number | null) => (days === null ? "no value typed yet" : days === 0 ? "valued today" : `valued ${days} ${days === 1 ? "day" : "days"} ago`);
+
+/** The holdings, what they are worth and how they have done. */
+export function investReply(items: HoldingLine[]): string {
+  if (items.length === 0) return "You have no investments recorded yet. Add one in the app, under Accounts and commitments, then Investments.";
+  const value = items.reduce((s, h) => s + h.valuePaise, 0);
+  const put = items.reduce((s, h) => s + h.investedPaise, 0);
+  const gain = items.reduce((s, h) => s + h.gainPaise, 0);
+  const lines = items.map((h) => `${h.name}: ${rupees(h.valuePaise)}, ${upDown(h.gainPaise)}${h.gainPct === null ? "" : ` (${h.gainPct}%)`}, ${age(h.staleDays)}`);
+  return [`Your investments are worth ${rupees(value)}: ${rupees(put)} put in, ${upDown(gain)}.`, "", ...lines, "", "To update one: /value tata 15200."].join("\n");
+}
+
+/** The first-of-the-month nudge. */
+export function valueNudge(items: HoldingLine[]): string {
+  const lines = items.map((h) => `${h.name}: ${rupees(h.valuePaise)}, ${age(h.staleDays)}`);
+  return ["A new month. Would you care to refresh what your investments are worth?", "", ...lines, "", "Send /value with the name and amount, for example /value tata 15200."].join("\n");
+}
+
 export const botVoice = {
+  valueNeedsAmount: "How much is it worth now? For example: /value tata 15200.",
+  valueNoHoldings: "You have no investments recorded yet. Add one in the app, under Accounts and commitments, then Investments.",
+  valueNoMatch: "I could not find that investment. /invest lists them.",
+  valueAskWhich: (paise: number) => `Which investment is worth ${rupees(paise)}?`,
+  valueSet: (name: string, valuePaise: number, gainPaise: number) => `Noted. ${name} is worth ${rupees(valuePaise)}, ${upDown(gainPaise)} on what you put in.`,
+  valueClosed: "That investment is closed, so I have left it alone.",
   emiCheck: (title: string, n: number, months: number, amountPaise: number, cardName: string) =>
     `${title}, instalment ${n} of ${months}: ${rupees(amountPaise)} has been added to ${cardName}. Does your statement agree?`,
   emiAgrees: "Splendid. It matches your statement.",
@@ -282,6 +316,7 @@ export const botVoice = {
     "/borrowed  note money you borrowed: /borrowed 5000 hdfc asha",
     "/recurring  what repeats: rent, subscriptions, salary",
     "/goals  your savings goals; put money toward one: /save 5000 laptop",
+    "/invest  your investments; update one: /value tata 15200",
     "/menu  buttons for the main things I can show you",
     "/emi  your card EMI plans and what is still to be billed",
     "/ipo  money blocked for IPO applications, or: /ipo 15000 hdfc tata tech",

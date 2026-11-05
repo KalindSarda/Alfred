@@ -7,8 +7,7 @@ import { activeFilterCount, activePreset, emptyFilters, filtersFromSearch, filte
 import { longDate, rupees, shortDate } from "../format";
 import { useAccounts, useCategories, useTransactions } from "../queries";
 import { Link, navigate, replaceSearch, useSearch } from "../router";
-import { accountsPath } from "../accountsView";
-import { amountSign, amountTone, describeTxn, isDebt, needsCategory } from "../txn";
+import { amountSign, amountTone, describeTxn, managedAt, needsCategory } from "../txn";
 
 const TYPE_FILTERS = [
   { value: "", label: "All" },
@@ -198,7 +197,7 @@ export function Transactions() {
               <h2 className="border-b border-line px-4 py-2 text-sm font-medium text-soft">{longDate(date)}</h2>
               <ul className="divide-y divide-line">
                 {items.map((txn) => (
-                  <Row key={txn.id} txn={txn} accounts={accountMap} categories={categoryMap} onOpen={() => (isDebt(txn.type) ? navigate(accountsPath("commitments")) : setEditing(txn))} />
+                  <Row key={txn.id} txn={txn} accounts={accountMap} categories={categoryMap} onOpen={() => (managedAt(txn.type) ? navigate(managedAt(txn.type) as string) : setEditing(txn))} />
                 ))}
               </ul>
             </Card>

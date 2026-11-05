@@ -19,6 +19,8 @@ const TransactionFields = z.object({
   categoryId: Id.nullable().optional(),
   merchant: z.string().trim().max(80).nullable().optional(),
   note: z.string().trim().max(280).nullable().optional(),
+  /** An investment can belong to a holding; nothing else can. */
+  holdingId: Id.nullable().optional(),
 });
 
 /** Shape rules shared by create (zod refinement) and update (service, on the merged result). */
@@ -27,6 +29,7 @@ export function checkTransactionShape(v: {
   accountId: string;
   toAccountId?: string | null | undefined;
   categoryId?: string | null | undefined;
+  holdingId?: string | null | undefined;
 }): ErrorDetail[] {
   const issues: ErrorDetail[] = [];
   if (isMovement(v.type)) {
@@ -38,7 +41,8 @@ export function checkTransactionShape(v: {
   } else if (v.toAccountId) {
     issues.push({ path: "toAccountId", message: "Only transfers and bill payments have a destination" });
   }
-  if (v.type === "investment" && v.categoryId) issues.push({ path: "categoryId", message: "Investments have no category" });
+  if ((v.type === "investment" || v.type === "investment_sale") && v.categoryId) issues.push({ path: "categoryId", message: "Investments have no category" });
+  if (v.holdingId && v.type !== "investment") issues.push({ path: "holdingId", message: "Only an investment can belong to a holding" });
   if (isDebtType(v.type) && v.categoryId) issues.push({ path: "categoryId", message: "Lent and borrowed money has no category" });
   return issues;
 }
@@ -67,6 +71,7 @@ export const Transaction = z.object({
   categoryId: Id.nullable(),
   merchant: z.string().nullable(),
   note: z.string().nullable(),
+  holdingId: Id.nullable(),
   status: TxnStatus,
   source: TxnSource,
   createdAt: z.string(),

@@ -13,6 +13,9 @@ export function describeTxn(
   if (txn.type === "bill_payment") {
     return { title: `Paid ${to}`, sub: ["Bill payment", `from ${account}`, txn.note].filter(Boolean).join(" · ") };
   }
+  if (txn.type === "investment_sale") {
+    return { title: `Sold ${txn.merchant || "an investment"}`, sub: ["Sale", account, txn.note].filter(Boolean).join(" · ") };
+  }
   if (txn.type === "investment") {
     return { title: txn.merchant || "Investment", sub: ["Investment", account, txn.note].filter(Boolean).join(" · ") };
   }
@@ -31,10 +34,17 @@ export const isDebt = (type: Transaction["type"]): boolean => type === "debt_out
 const isMovement = (type: Transaction["type"]) => type === "transfer" || type === "bill_payment";
 
 /** Income or expense with no category: needs one before it shows properly in cash flow. */
-export const needsCategory = (txn: Transaction): boolean => !isMovement(txn.type) && txn.type !== "investment" && !isDebt(txn.type) && txn.categoryId === null;
+export const needsCategory = (txn: Transaction): boolean => !isMovement(txn.type) && txn.type !== "investment" && txn.type !== "investment_sale" && !isDebt(txn.type) && txn.categoryId === null;
 
 export const amountTone = (type: Transaction["type"]): string =>
-  type === "income" ? "text-good" : isMovement(type) || type === "investment" || isDebt(type) ? "text-soft" : "";
+  type === "income" ? "text-good" : isMovement(type) || type === "investment" || type === "investment_sale" || isDebt(type) ? "text-soft" : "";
 
 export const amountSign = (type: Transaction["type"]): string =>
-  type === "income" || type === "debt_in" ? "+" : type === "expense" || type === "investment" || type === "debt_out" ? "−" : "";
+  type === "income" || type === "debt_in" || type === "investment_sale" ? "+" : type === "expense" || type === "investment" || type === "debt_out" ? "−" : "";
+
+/** Where an entry is managed when it is not edited like the others: lent and borrowed, or the sale of an investment. */
+export function managedAt(type: Transaction["type"]): string | null {
+  if (isDebt(type)) return "/accounts?view=commitments";
+  if (type === "investment_sale") return "/accounts?view=investments";
+  return null;
+}

@@ -1,6 +1,7 @@
 import { and, count, eq, isNull } from "drizzle-orm";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
+import { getHoldingRow } from "../db/holdings";
 import { getAccount } from "../db/accounts";
 import { getCategory } from "../db/categories";
 import { getRuleRow, parseSkips, type RuleRow, toRuleShape } from "../db/recurring";
@@ -22,6 +23,8 @@ export interface RecurringDto {
   accountName: string;
   categoryId: string | null;
   categoryName: string | null;
+  /** The holding a SIP adds to, if any. */
+  holdingId: string | null;
   frequency: "weekly" | "monthly" | "yearly";
   day: number;
   month: number | null;
@@ -81,6 +84,7 @@ function toDto(row: RuleRow, accountName: string, categoryName: string | null, m
     accountName,
     categoryId: row.categoryId,
     categoryName,
+    holdingId: row.holdingId,
     frequency: row.frequency,
     day: row.day,
     month: row.month,
@@ -124,12 +128,18 @@ async function dtoFor(db: Db, userId: string, id: string, today: IstDate): Promi
   return found;
 }
 
-async function checkReferences(db: Db, userId: string, rule: { type: RuleRow["type"]; accountId: string; categoryId: string | null }) {
+async function checkReferences(db: Db, userId: string, rule: { type: RuleRow["type"]; accountId: string; categoryId: string | null; holdingId?: string | null }) {
   const account = await getAccount(db, userId, rule.accountId);
   if (!account) throw new NotFoundError("Account not found");
   if (account.archivedAt) throw invalid("accountId", "That account is archived");
   if (rule.type === "investment" && account.kind !== "bank") throw invalid("accountId", "An investment is paid from a bank account");
   if (rule.type === "investment" && rule.categoryId) throw invalid("categoryId", "Investments have no category");
+  if (rule.holdingId) {
+    if (rule.type !== "investment") throw invalid("holdingId", "Only an investment can add to a holding");
+    const holding = await getHoldingRow(db, userId, rule.holdingId);
+    if (!holding) throw new NotFoundError("Holding not found");
+    if (holding.status !== "active") throw invalid("holdingId", "That holding is closed");
+  }
   if (rule.categoryId) {
     const category = await getCategory(db, userId, rule.categoryId);
     if (!category) throw new NotFoundError("Category not found");
@@ -167,6 +177,7 @@ async function materializeRule(db: Db, row: RuleRow, today: IstDate): Promise<{ 
     accountId: row.accountId,
     toAccountId: null,
     categoryId: row.categoryId,
+    holdingId: row.holdingId,
     merchant: row.title,
     note: row.mode === "draft" ? "Recurring: please confirm the amount" : "Recurring",
     status: row.mode === "draft" ? ("draft" as const) : ("confirmed" as const),
@@ -194,7 +205,7 @@ export async function createRule(db: Db, userId: string, input: CreateRecurringD
     endDate: input.endDate ?? null,
   };
   checkSchedule(rule);
-  await checkReferences(db, userId, { type: input.type, accountId: input.accountId, categoryId: input.categoryId ?? null });
+  await checkReferences(db, userId, { type: input.type, accountId: input.accountId, categoryId: input.categoryId ?? null, holdingId: input.holdingId ?? null });
 
   const id = newId();
   await db.insert(recurringRules).values({
@@ -205,6 +216,7 @@ export async function createRule(db: Db, userId: string, input: CreateRecurringD
     amountPaise: input.amountPaise,
     accountId: input.accountId,
     categoryId: input.type === "investment" ? null : (input.categoryId ?? null),
+    holdingId: input.type === "investment" ? (input.holdingId ?? null) : null,
     ...rule,
     mode: input.mode,
     remindDaysBefore: input.remindDaysBefore ?? null,
@@ -235,7 +247,8 @@ export async function updateRule(db: Db, userId: string, id: string, patch: Upda
   checkSchedule(next);
   const accountId = patch.accountId ?? row.accountId;
   const categoryId = patch.categoryId === undefined ? row.categoryId : patch.categoryId;
-  await checkReferences(db, userId, { type: row.type, accountId, categoryId });
+  const holdingId = patch.holdingId === undefined ? row.holdingId : patch.holdingId;
+  await checkReferences(db, userId, { type: row.type, accountId, categoryId, holdingId });
 
   await db
     .update(recurringRules)
@@ -244,6 +257,7 @@ export async function updateRule(db: Db, userId: string, id: string, patch: Upda
       amountPaise: patch.amountPaise ?? row.amountPaise,
       accountId,
       categoryId,
+      holdingId,
       ...next,
       mode: patch.mode ?? row.mode,
       remindDaysBefore: patch.remindDaysBefore === undefined ? row.remindDaysBefore : patch.remindDaysBefore,

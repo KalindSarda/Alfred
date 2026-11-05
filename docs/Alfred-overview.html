@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alfred: a one-page overview</title>
+<style>
+  @page { size: A4; margin: 12mm; }
+  :root { --ink: #1c2330; --soft: #5b6573; --line: #d9d2c2; --brand: #1f5d4a; --paper: #fbf8f1; --navy: #101a2e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #ece7da; color: var(--ink); font: 10.5px/1.45 "Segoe UI", system-ui, -apple-system, Arial, sans-serif; }
+  .page { width: 210mm; min-height: 297mm; margin: 0 auto; background: var(--paper); padding: 12mm; }
+  header { display: flex; align-items: center; gap: 12px; padding-bottom: 8px; border-bottom: 2px solid var(--brand); }
+  .orb { width: 34px; height: 34px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #7aa7ff, #1f3d8f 70%); flex: none; }
+  h1 { margin: 0; font: 600 24px/1.1 Georgia, "Times New Roman", serif; letter-spacing: -0.01em; }
+  header p { margin: 2px 0 0; color: var(--soft); font-size: 11px; }
+  h2 { margin: 12px 0 5px; font: 700 10px/1 "Segoe UI", system-ui, sans-serif; letter-spacing: 0.09em; text-transform: uppercase; color: var(--brand); }
+  p { margin: 0 0 5px; }
+  .lede { font-size: 11.5px; margin-top: 9px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: #fff; }
+  .card b { display: block; font-size: 10.5px; margin-bottom: 1px; }
+  .card span { color: var(--soft); }
+  .how { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .how div { background: var(--navy); color: #eef1f8; border-radius: 8px; padding: 7px 9px; }
+  .how b { display: block; color: #fff; margin-bottom: 2px; }
+  .soon { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .soon div { border: 1px dashed var(--brand); border-radius: 8px; padding: 7px 9px; background: #f3f8f5; }
+  .soon b { display: block; margin-bottom: 2px; }
+  ul { margin: 0; padding-left: 14px; }
+  li { margin: 1px 0; }
+  footer { margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--soft); font-size: 9.5px; }
+  @media print { body { background: none; } .page { margin: 0; padding: 0; width: auto; min-height: 0; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <span class="orb" aria-hidden="true"></span>
+    <div>
+      <h1>Alfred</h1>
+      <p>Your personal finance assistant. Finances first.</p>
+    </div>
+  </header>
+
+  <p class="lede"><strong>Alfred keeps your money in order.</strong> You tell him what you spent, earned, lent or bought, in a chat message or a quick form. He keeps every account, card, loan and investment up to date, shows what is safe to spend, and speaks up before something slips: a card bill coming due, a friend who has not repaid, an IPO result, an EMI that does not match your statement. Built for one person, ready for a household.</p>
+
+  <h2>How you use him</h2>
+  <div class="how">
+    <div><b>Telegram chat</b>Write plainly: "450 swiggy hdfc yesterday". Alfred files it, and asks only what he cannot work out. Buttons for undo, follow-ups and quick answers.</div>
+    <div><b>The web app</b>Works on phone and desktop, installable like an app. Home shows a daily briefing, what is safe to spend, and shortcuts. One search finds any feature.</div>
+    <div><b>Daily nudges</b>Each morning Alfred checks what is due and messages you: card payments, repayments, IPO outcomes, instalments to confirm, and a monthly prompt to refresh investment values.</div>
+  </div>
+
+  <h2>What he does today</h2>
+  <div class="grid">
+    <div class="card"><b>Accounts and cards</b><span>Bank accounts and credit cards with live balances, card statement and due dates, and a clear safe-to-spend figure.</span></div>
+    <div class="card"><b>Transactions</b><span>Expenses, income, transfers, card bill payments, with categories, search and filters. A one-line add remembers your usual merchants.</span></div>
+    <div class="card"><b>Net worth and trend</b><span>Banks, investments and money owed to you, less cards, EMIs and what you owe, with a month-by-month chart.</span></div>
+    <div class="card"><b>Budgets and recurring</b><span>Monthly limits by category, and rent, subscriptions, salary and SIPs added automatically on their day.</span></div>
+    <div class="card"><b>Savings goals</b><span>Set money aside for something. It stays in the bank but is held back from what you can spend, with the monthly amount needed.</span></div>
+    <div class="card"><b>Card EMI plans</b><span>Works out each instalment from the rate, adds the fee and GST, books each month, and asks if it matches your statement.</span></div>
+    <div class="card"><b>Blocked IPO funds</b><span>Tracks money held for IPO applications, removes it from what you can spend, and asks for the result. An allotment becomes an investment.</span></div>
+    <div class="card"><b>Lent and borrowed</b><span>Who owes you and whom you owe, repayments, due dates, and polite follow-ups. People you trust are never chased.</span></div>
+    <div class="card"><b>Investments</b><span>Stocks and IPO holdings, gold, crypto and more: what you put in, what they are worth now, gain or loss, with buying and selling linked to your bank.</span></div>
+    <div class="card"><b>Yours to keep</b><span>One-click export of everything. Invite-only access, sign-in by emailed code, and you can delete your account and records at any time.</span></div>
+  </div>
+
+  <h2>What is planned</h2>
+  <div class="soon">
+    <div>
+      <b>Bank loans</b>
+      Home, car and personal loans: the instalment schedule worked out from the rate and tenure, each payment split into interest and principal, what is still owed counted in net worth, and room for part-prepayment and floating rates.
+    </div>
+    <div>
+      <b>The AI phase</b>
+      Ask Alfred in plain words ("How much did I spend on food last month?"), briefings written around your own figures, and entries drafted from messages or statements for you to confirm. Always shown to you first; nothing is changed without a yes.
+    </div>
+  </div>
+
+  <h2>Under the hood</h2>
+  <ul>
+    <li>Runs on Cloudflare's free tier (Workers and D1), so it costs next to nothing to keep running.</li>
+    <li>Amounts are stored in whole paise and dates in Indian time, so figures always add up. Everything is checked by an automated test suite before each release.</li>
+    <li>Telegram first, web second, and the AI features are an addition, not a requirement: Alfred is useful without them.</li>
+  </ul>
+
+  <footer>Alfred. A private project, in daily use. To save this page as a PDF, open it in a browser and print.</footer>
+</div>
+</body>
+</html>

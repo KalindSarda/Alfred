@@ -4,7 +4,7 @@ import { parsePaise } from "../../../src/domain/money";
 import { type Transaction, type TxnType, api, describeError } from "../api";
 import { newKey, paiseToInput, rupees, today } from "../format";
 import { defaultAccountId, describeQuickLine, memoryFor, parseQuickLine, quickFailure, topMerchants } from "../quickLine";
-import { useAccounts, useCategories, useEntryHints, useRefreshMoney } from "../queries";
+import { useAccounts, useCategories, useEntryHints, useHoldings, useRefreshMoney } from "../queries";
 import { Button, ErrorText, Field, inputClass } from "./ui";
 import { useToast } from "./toast";
 
@@ -28,6 +28,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
   const idempotencyKey = useRef(newKey());
   const lineRef = useRef<HTMLInputElement>(null);
   const hintsQuery = useEntryHints();
+  const holdingsQuery = useHoldings("active");
   const hints = hintsQuery.data;
 
   const [type, setType] = useState<TxnType>(initial?.type ?? "expense");
@@ -38,6 +39,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? "");
   const [merchant, setMerchant] = useState(initial?.merchant ?? "");
   const [note, setNote] = useState(initial?.note ?? "");
+  const [holdingId, setHoldingId] = useState(initial?.holdingId ?? "");
   const [localError, setLocalError] = useState("");
   // The sheet takes focus when it opens; the one-line add gets it straight after, so typing can begin at once.
   useEffect(() => {
@@ -124,6 +126,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
         categoryId: noCategory(type) || !categoryId ? null : categoryId,
         merchant: merchant.trim() || null,
         note: note.trim() || null,
+        holdingId: type === "investment" && holdingId ? holdingId : null,
       };
       return initial
         ? api.patch<Transaction>(`/api/transactions/${initial.id}`, body)
@@ -322,6 +325,19 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
               ))}
             </datalist>
           )}
+        </Field>
+      )}
+
+      {type === "investment" && (holdingsQuery.data?.holdings.length ?? 0) > 0 && (
+        <Field label="Belongs to" hint="Pick the investment this buys, so it counts toward what you have put in.">
+          <select className={inputClass} value={holdingId} onChange={(e) => setHoldingId(e.target.value)}>
+            <option value="">None</option>
+            {(holdingsQuery.data?.holdings ?? []).map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.name}
+              </option>
+            ))}
+          </select>
         </Field>
       )}
 

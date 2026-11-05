@@ -22,6 +22,8 @@ export const CreateRecurring = z
     /** auto adds a confirmed entry; draft adds one for the person to confirm or correct. */
     mode: z.enum(["auto", "draft"]).default("auto"),
     remindDaysBefore: Remind.nullable().optional(),
+    /** A SIP can add to a holding: the entries it makes belong to it. Investments only. */
+    holdingId: Id.nullable().optional(),
   })
   .strict();
 export type CreateRecurringData = z.output<typeof CreateRecurring>;
@@ -39,6 +41,7 @@ export const UpdateRecurring = z
     endDate: IstDateString.nullable(),
     mode: z.enum(["auto", "draft"]),
     remindDaysBefore: Remind.nullable(),
+    holdingId: Id.nullable(),
   })
   .partial()
   .strict();

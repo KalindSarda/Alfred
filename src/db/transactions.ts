@@ -20,6 +20,7 @@ export function toDto(row: TransactionRow): TransactionDto {
     categoryId: row.categoryId,
     merchant: row.merchant,
     note: row.note,
+    holdingId: row.holdingId,
     status: row.status,
     source: row.source,
     createdAt: row.createdAt,

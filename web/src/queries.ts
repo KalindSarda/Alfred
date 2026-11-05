@@ -1,5 +1,5 @@
 import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type EntryHints, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type EntryHints, type HoldingsOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -80,6 +80,10 @@ export const useNetWorthTrend = (months = 12) =>
 export const useEntryHints = () =>
   useQuery({ queryKey: ["hints"], queryFn: () => api.get<EntryHints>("/api/entry-hints"), staleTime: 60_000 });
 
+/** Investments: active ones, or every one when asked for. */
+export const useHoldings = (status: "active" | "all" = "active") =>
+  useQuery({ queryKey: ["holdings", status], queryFn: () => api.get<HoldingsOverview>(`/api/holdings?status=${status}`) });
+
 export interface ReviewCounts {
   uncategorizedCount: number;
   draftCount: number;
@@ -129,6 +133,7 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["recurring"] }),
       client.invalidateQueries({ queryKey: ["debts"] }),
       client.invalidateQueries({ queryKey: ["goals"] }),
+      client.invalidateQueries({ queryKey: ["holdings"] }),
       client.invalidateQueries({ queryKey: ["hints"] }),
       client.invalidateQueries({ queryKey: ["networth"] }),
       client.invalidateQueries({ queryKey: ["review"] }),

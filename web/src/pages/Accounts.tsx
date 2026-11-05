@@ -5,6 +5,7 @@ import { AccountForm } from "../components/AccountForm";
 import { BlockedFunds } from "../components/BlockedFunds";
 import { NetWorthTrend } from "../components/NetWorthTrend";
 import { EmiPlans } from "../components/EmiPlans";
+import { Investments } from "../components/Investments";
 import { LentBorrowed } from "../components/LentBorrowed";
 import { Button, Card, Empty, Sheet, Spinner } from "../components/ui";
 import { rupees, shortDate } from "../format";
@@ -54,6 +55,7 @@ function CardRow({ card, onOpen }: { card: CardAccount; onOpen: () => void }) {
 const VIEWS: { value: AccountsView; label: string }[] = [
   { value: "accounts", label: "Accounts" },
   { value: "commitments", label: "Commitments" },
+  { value: "investments", label: "Investments" },
 ];
 
 export function Accounts() {
@@ -73,7 +75,7 @@ export function Accounts() {
         {view === "accounts" && <Button onClick={() => setEditing("new")}>Add</Button>}
       </div>
 
-      <div role="tablist" aria-label="View" className="grid grid-cols-2 gap-1 rounded-xl bg-sunk p-1">
+      <div role="tablist" aria-label="View" className="grid grid-cols-3 gap-1 rounded-xl bg-sunk p-1">
         {VIEWS.map((v) => (
           <button
             key={v.value}
@@ -97,7 +99,9 @@ export function Accounts() {
           Add a bank account or credit card to start, or load demo data from Everything, then Settings.
         </Empty>
       ) : (
-        view === "commitments" ? (
+        view === "investments" ? (
+          <Investments />
+        ) : view === "commitments" ? (
           <>
             {overview.data && (overview.data.blockedPaise > 0 || overview.data.emiToComePaise > 0) && (
               <p className="rounded-2xl border border-line bg-card px-4 py-3 text-sm text-soft">

@@ -3,7 +3,7 @@ import { occurrencesBetween, type RuleShape } from "../../../src/domain/recurrin
 import { type RecurringRule, api, describeError } from "../api";
 import { rupeesToPaise } from "../filters";
 import { paiseToInput, rupees, shortDate, today } from "../format";
-import { useAccounts, useCategories, useRecurring, useRefreshMoney } from "../queries";
+import { useAccounts, useCategories, useHoldings, useRecurring, useRefreshMoney } from "../queries";
 import { useToast } from "./toast";
 import { Button, Card, Empty, ErrorText, Field, Sheet, inputClass } from "./ui";
 
@@ -53,6 +53,8 @@ function RuleSheet({ rule, onClose }: { rule: RecurringRule | null; onClose: () 
   const [startDate, setStartDate] = useState(rule?.startDate ?? today());
   const [endDate, setEndDate] = useState(rule?.endDate ?? "");
   const [mode, setMode] = useState<RecurringRule["mode"]>(rule?.mode ?? "auto");
+  const [holdingId, setHoldingId] = useState(rule?.holdingId ?? "");
+  const holdings = useHoldings("active").data?.holdings ?? [];
   const [remind, setRemind] = useState(rule?.remindDaysBefore ? String(rule.remindDaysBefore) : "");
 
   const usable = (accounts.data ?? []).filter((a) => !a.archived || a.id === rule?.accountId).filter((a) => type !== "investment" || a.kind === "bank");
@@ -81,6 +83,7 @@ function RuleSheet({ rule, onClose }: { rule: RecurringRule | null; onClose: () 
       endDate: endDate || null,
       mode,
       remindDaysBefore: remind ? Number(remind) : null,
+      holdingId: type === "investment" && holdingId ? holdingId : null,
     };
     void run(
       () => (rule ? api.patch(`/api/recurring/${rule.id}`, common) : api.post("/api/recurring", { ...common, type, startDate })),
@@ -132,6 +135,18 @@ function RuleSheet({ rule, onClose }: { rule: RecurringRule | null; onClose: () 
             ))}
           </select>
         </Field>
+        {type === "investment" && holdings.length > 0 && (
+          <Field label="Adds to" hint="Pick the investment this SIP buys, so each instalment counts toward what you have put in.">
+            <select className={inputClass} value={holdingId} onChange={(e) => setHoldingId(e.target.value)}>
+              <option value="">None</option>
+              {holdings.map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         {type !== "investment" && (
           <Field label="Category">
             <select className={inputClass} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>

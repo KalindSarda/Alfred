@@ -13,6 +13,8 @@ import { type IstDate, parseIstDate } from "../domain/dates";
 import { balanceOverview } from "./accounts";
 import { listDebts } from "./debts";
 import { listGoals } from "./goals";
+import { listHoldings } from "./holdings";
+import { STALE_AFTER_DAYS } from "../domain/holdings";
 import { getMe } from "./auth";
 import { daysBetween } from "../alfred/voice";
 import { listBudgets } from "./budgets";
@@ -44,7 +46,7 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
   const base = { greeting: greeting(me.displayName, now), subline: subline(now), source: "template" as const, generatedAt: now.toISOString(), footer: BRIEFING_FOOTER };
   if (!anyAccount) return { ...base, lines: emptyBriefingLines() };
 
-  const [summary, figures, settings, budgetOverview, activeHolds, emiPlans, rules, goalOverview, debtOverview] = await Promise.all([
+  const [summary, figures, settings, budgetOverview, activeHolds, emiPlans, rules, goalOverview, debtOverview, holdingOverview] = await Promise.all([
     getSummary(db, userId, "cycle", today),
     listAccountsWithFigures(db, userId, today),
     getSettings(db, userId),
@@ -54,7 +56,10 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
     listRules(db, userId, today),
     listGoals(db, userId, today, "active"),
     listDebts(db, userId, today, "open"),
+    listHoldings(db, userId, today, "active"),
   ]);
+  const stale = holdingOverview.holdings.filter((h) => h.staleDays === null || h.staleDays > STALE_AFTER_DAYS);
+  const staleAges = stale.map((h) => h.staleDays);
   const overdue = debtOverview.people
     .flatMap((p) => p.debts.filter((d) => d.overdue && d.dueDate).map((d) => ({ name: p.name, direction: d.direction, outstandingPaise: d.outstandingPaise, dueDate: d.dueDate as string })))
     .sort((x, y) => x.dueDate.localeCompare(y.dueDate));
@@ -82,6 +87,7 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
       draftCount: summary.draftCount,
       cards,
       debts: { overdue },
+      holdings: { staleCount: stale.length, oldestDays: staleAges.includes(null) ? null : staleAges.length ? Math.max(...(staleAges as number[])) : null },
       goals: {
         setAsidePaise: goalOverview.setAsidePaise,
         count: goalOverview.goals.length,

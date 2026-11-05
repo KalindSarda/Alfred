@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, emiReply, goalsReply, holdsReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
+import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, emiReply, goalsReply, holdsReply, investReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
 import { AppError, ConflictError, NotFoundError, RateLimitedError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
@@ -14,6 +14,7 @@ import { type IstDate, todayIst } from "../domain/dates";
 import { getMe } from "../services/auth";
 import { getGoalRow, goalsSetAside } from "../db/goals";
 import { setInstalmentAmount } from "../services/emi";
+import { holdingsValue, listHoldings, setValue } from "../services/holdings";
 import { addContribution, listGoals, removeContribution } from "../services/goals";
 import { parseAmountToken } from "./parser";
 import { createEmiFix, takeEmiFix } from "./pending";
@@ -358,6 +359,42 @@ async function fixEmiAmount(deps: BotDeps, who: Actor, txnId: string, paise: num
   }
 }
 
+async function cmdInvest(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
+  const o = await listHoldings(deps.db, who.userId, today, "active");
+  await deps.telegram.sendMessage(who.chatId, investReply(o.holdings));
+}
+
+/** Types what a holding is worth now: "/value tata 15200". Which one is asked about when the words fit none or several. */
+async function cmdValue(deps: BotDeps, who: Actor, arg: string, today: IstDate): Promise<void> {
+  const tokens = arg.trim().split(/\s+/).filter(Boolean);
+  // The amount is the last word that reads as one, or else the first ("/value 15200 tata").
+  const last = tokens.length > 0 ? parseAmountToken(tokens[tokens.length - 1] as string) : null;
+  const first = tokens.length > 1 ? parseAmountToken(tokens[0] as string) : null;
+  const paise = last !== null ? last : first;
+  const words = (last !== null ? tokens.slice(0, -1) : tokens.slice(1)).join(" ").toLowerCase();
+  if (paise === null || tokens.length === 0) return void (await deps.telegram.sendMessage(who.chatId, botVoice.valueNeedsAmount));
+  const { holdings: active } = await listHoldings(deps.db, who.userId, today, "active");
+  if (active.length === 0) return void (await deps.telegram.sendMessage(who.chatId, botVoice.valueNoHoldings));
+  const exact = active.filter((h) => h.name.toLowerCase() === words);
+  const fits = exact.length ? exact : words ? active.filter((h) => h.name.toLowerCase().includes(words)) : active.length === 1 ? active : [];
+  if (words && fits.length === 0) return void (await deps.telegram.sendMessage(who.chatId, botVoice.valueNoMatch));
+  if (fits.length !== 1) {
+    await deps.telegram.sendMessage(who.chatId, botVoice.valueAskWhich(paise), rows((fits.length ? fits : active).slice(0, MAX_OPTIONS).map((h) => ({ text: h.name, data: `i:${h.id}:v:${paise}` }))));
+    return;
+  }
+  await setHoldingValue(deps, who, fits[0]!.id, paise, today, { chatId: who.chatId });
+}
+
+async function setHoldingValue(deps: BotDeps, who: Actor, holdingId: string, paise: number, today: IstDate, to: Reply): Promise<void> {
+  try {
+    const h = await setValue(deps.db, who.userId, holdingId, { valuePaise: paise }, today);
+    await reply(deps, to, botVoice.valueSet(h.name, h.valuePaise, h.gainPaise));
+  } catch (error) {
+    if (error instanceof ConflictError || error instanceof NotFoundError) return await reply(deps, to, botVoice.valueClosed);
+    throw error;
+  }
+}
+
 async function cmdRecurring(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
   const rules = await listRules(deps.db, who.userId, today);
   await deps.telegram.sendMessage(
@@ -437,7 +474,7 @@ async function cmdBalance(deps: BotDeps, who: Actor, today: IstDate): Promise<vo
   const figures = await listAccountsWithFigures(deps.db, who.userId, today);
   if (figures.length === 0) return void (await deps.telegram.sendMessage(who.chatId, botVoice.noAccountsYet));
   const dtos = figures.map((f) => toAccountDto(f));
-  const overview = balanceOverview(figures, undefined, await goalsSetAside(deps.db, who.userId));
+  const overview = balanceOverview(figures, undefined, await goalsSetAside(deps.db, who.userId), await holdingsValue(deps.db, who.userId, today));
 
   const banks = dtos.filter((a) => a.kind === "bank");
   const cards = dtos.filter((a) => a.kind === "card");
@@ -626,7 +663,7 @@ async function cmdUndo(deps: BotDeps, who: Actor, c: BotContext): Promise<void> 
 function summaryOfTxn(t: ReturnType<typeof toDto>, c: BotContext): string {
   return describeEntry({
     // An investment reads like a spend in a short summary: the amount, what it was for, and the account.
-    type: t.type === "investment" || t.type === "debt_out" || t.type === "debt_in" ? "expense" : t.type,
+    type: t.type === "investment" || t.type === "investment_sale" || t.type === "debt_out" || t.type === "debt_in" ? "expense" : t.type,
     amountPaise: t.amountPaise,
     merchant: t.merchant,
     categoryName: t.categoryId ? (c.categoryNames.get(t.categoryId) ?? null) : null,
@@ -725,6 +762,11 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
         return await cmdRecurring(deps, who, today);
       case "goals":
         return await cmdGoals(deps, who, today);
+      case "invest":
+      case "investments":
+        return await cmdInvest(deps, who, today);
+      case "value":
+        return await cmdValue(deps, who, arg, today);
       case "menu":
         return await cmdMenu(deps, who);
       case "save":
@@ -870,6 +912,11 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
         await createEmiFix(deps.db, userId, chatId, id, deps.now());
         await reply(deps, to, botVoice.emiAskAmount(txn.merchant ?? "that plan", txn.emiInstalment));
       }
+    } else if (kind === "i" && id && action === "v") {
+      // An investment chosen from several for "/value".
+      const paise = Number(argument);
+      if (Number.isSafeInteger(paise) && paise >= 0) await setHoldingValue(deps, who, id, paise, todayIst(new Date(deps.now())), to);
+      else await reply(deps, to, botVoice.valueNoMatch);
     } else if (kind === "m" && id && MENU.some((m) => m.id === id)) {
       // A button on /menu: answers as the command would.
       await runMenuItem(deps, who, id, todayIst(new Date(deps.now())));

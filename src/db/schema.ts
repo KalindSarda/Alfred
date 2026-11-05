@@ -73,7 +73,7 @@ export const transactions = sqliteTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull().references(() => users.id),
-    type: text("type", { enum: ["expense", "income", "transfer", "bill_payment", "investment", "debt_out", "debt_in"] }).notNull(),
+    type: text("type", { enum: ["expense", "income", "transfer", "bill_payment", "investment", "investment_sale", "debt_out", "debt_in"] }).notNull(),
     amountPaise: integer("amount_paise").notNull(),
     txnDate: text("txn_date").notNull(),
     accountId: text("account_id").notNull().references(() => accounts.id),
@@ -89,6 +89,8 @@ export const transactions = sqliteTable(
     /** Set on the instalments an EMI plan adds by itself. No foreign key: plans and their entries are removed together in code. */
     emiPlanId: text("emi_plan_id"),
     emiInstalment: integer("emi_instalment"),
+    /** The holding an investment (a purchase) or an investment_sale (proceeds) belongs to. No foreign key: holdings and their entries are handled together in code. */
+    holdingId: text("holding_id"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
     deletedAt: text("deleted_at"),
@@ -98,6 +100,7 @@ export const transactions = sqliteTable(
     index("txn_user_account_date_idx").on(t.userId, t.accountId, t.txnDate),
     index("txn_user_to_account_idx").on(t.userId, t.toAccountId),
     index("txn_user_category_date_idx").on(t.userId, t.categoryId, t.txnDate),
+    index("txn_holding_idx").on(t.holdingId),
     // An instalment can be created only once, and a deleted one is never created again.
     uniqueIndex("txn_emi_instalment_uq").on(t.emiPlanId, t.emiInstalment),
     // An occurrence of a recurring rule is created once, and a deleted one is never created again.
@@ -315,6 +318,8 @@ export const recurringRules = sqliteTable(
     /** Due dates that were skipped on purpose (a skipped one, or the days a pause covered), as a JSON list. */
     skipsJson: text("skips_json"),
     pausedAt: text("paused_at"),
+    /** An investment rule (a SIP) can add to a holding: the entries it makes carry the link. */
+    holdingId: text("holding_id"),
     createdAt: text("created_at").notNull(),
   },
   (t) => [
@@ -454,4 +459,39 @@ export const goalContributions = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (t) => [index("goal_contributions_goal_idx").on(t.goalId), check("goal_contributions_nonzero", sql`${t.amountPaise} <> 0`)],
+);
+
+/**
+ * Something owned that is worth money: shares, an IPO allotment, gold, crypto. Its value is typed by hand
+ * (holding_values); what was put in comes from the investment entries linked to it, plus what was invested
+ * before Alfred tracked it.
+ */
+export const holdings = sqliteTable(
+  "holdings",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    name: text("name").notNull(),
+    kind: text("kind", { enum: ["stock", "gold", "crypto", "other"] }).notNull(),
+    /** Invested before it was tracked here, with no bank entry. */
+    openingInvestedPaise: integer("opening_invested_paise").notNull().default(0),
+    status: text("status", { enum: ["active", "closed"] }).notNull().default("active"),
+    closedAt: text("closed_at"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("holdings_user_status_idx").on(t.userId, t.status), check("holdings_opening_nonnegative", sql`${t.openingInvestedPaise} >= 0`)],
+);
+
+/** What a holding was worth on a day, as typed. One per holding per day: a second value that day replaces the first. */
+export const holdingValues = sqliteTable(
+  "holding_values",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    holdingId: text("holding_id").notNull().references(() => holdings.id),
+    date: text("date").notNull(),
+    valuePaise: integer("value_paise").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("holding_values_day_uq").on(t.holdingId, t.date), check("holding_values_nonnegative", sql`${t.valuePaise} >= 0`)],
 );

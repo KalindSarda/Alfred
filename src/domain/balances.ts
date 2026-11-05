@@ -47,7 +47,7 @@ export function countedTxns(txns: readonly LedgerTxn[], asOf?: IstDate): LedgerT
 function netInflow(accountId: string, txns: readonly LedgerTxn[]): number {
   let total = 0;
   for (const t of txns) {
-    if ((t.type === "income" || t.type === "debt_in") && t.accountId === accountId) total += t.amountPaise;
+    if ((t.type === "income" || t.type === "debt_in" || t.type === "investment_sale") && t.accountId === accountId) total += t.amountPaise;
     else if ((t.type === "expense" || t.type === "investment" || t.type === "debt_out") && t.accountId === accountId) total -= t.amountPaise;
     else if (isMovement(t.type)) {
       if (t.accountId === accountId) total -= t.amountPaise;

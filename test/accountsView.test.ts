@@ -6,6 +6,7 @@ describe("the Accounts page view", () => {
     expect(viewFromSearch("")).toBe("accounts");
     expect(viewFromSearch("?view=commitments")).toBe("commitments");
     expect(viewFromSearch("?x=1&view=commitments")).toBe("commitments");
+    expect(viewFromSearch("?view=investments")).toBe("investments");
   });
 
   it("treats anything else as Accounts", () => {
@@ -21,6 +22,8 @@ describe("the Accounts page view", () => {
     expect(searchForView("commitments")).toBe("?view=commitments");
     expect(accountsPath("accounts")).toBe("/accounts");
     expect(accountsPath("commitments")).toBe("/accounts?view=commitments");
+    expect(searchForView("investments")).toBe("?view=investments");
+    expect(accountsPath("investments")).toBe("/accounts?view=investments");
     expect(viewFromSearch(searchForView("commitments"))).toBe("commitments");
   });
 });
