@@ -1,15 +1,15 @@
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, emiReply, goalsReply, holdsReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
 import { AppError, ConflictError, NotFoundError, RateLimitedError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
 import { getAccount, listAccounts } from "../db/accounts";
+import { loadEntryHints } from "../db/hints";
 import { getHold } from "../db/holds";
 import { listCategories } from "../db/categories";
 import { getTransactionRow, lastTransactionRowBySource, toDto } from "../db/transactions";
-import { telegramUpdates, transactions } from "../db/schema";
+import { telegramUpdates } from "../db/schema";
 import { formatRupees } from "../domain/money";
-import { FLOW_TYPES } from "../domain/txnTypes";
 import { type IstDate, todayIst } from "../domain/dates";
 import { getMe } from "../services/auth";
 import { getGoalRow, goalsSetAside } from "../db/goals";
@@ -74,28 +74,14 @@ interface BotContext {
 }
 
 async function loadContext(db: Db, userId: string, today: IstDate): Promise<BotContext> {
-  const [accountRows, categoryRows, merchantRows, usedRows] = await Promise.all([
+  const [accountRows, categoryRows, hints] = await Promise.all([
     listAccounts(db, userId, { includeArchived: true }),
     listCategories(db, userId),
-    db
-      .select({ merchant: transactions.merchant, categoryId: transactions.categoryId, accountId: transactions.accountId })
-      .from(transactions)
-      .where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt), sql`${transactions.merchant} IS NOT NULL`, inArray(transactions.type, [...FLOW_TYPES])))
-      .orderBy(desc(transactions.createdAt))
-      .limit(300),
-    db
-      .select({ accountId: transactions.accountId, last: sql<string>`MAX(${transactions.createdAt})` })
-      .from(transactions)
-      .where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt)))
-      .groupBy(transactions.accountId)
-      .orderBy(desc(sql`MAX(${transactions.createdAt})`)),
+    loadEntryHints(db, userId, { merchantLimit: 300 }),
   ]);
 
   const merchants = new Map<string, MerchantMemory>();
-  for (const row of merchantRows) {
-    const key = (row.merchant ?? "").trim().toLowerCase();
-    if (key && !merchants.has(key)) merchants.set(key, { categoryId: row.categoryId, accountId: row.accountId });
-  }
+  for (const m of hints.merchants) merchants.set(m.merchant.toLowerCase(), { categoryId: m.categoryId, accountId: m.accountId });
   const active = accountRows.filter((a) => !a.archivedAt);
   const liveCategories = categoryRows.filter((c) => !c.archivedAt);
 
@@ -106,7 +92,7 @@ async function loadContext(db: Db, userId: string, today: IstDate): Promise<BotC
     categories: liveCategories.map((c) => ({ id: c.id, name: c.name, kind: c.kind })),
     categoryNames: new Map(categoryRows.map((c) => [c.id, c.name])),
     merchants,
-    lastUsed: usedRows.map((r) => r.accountId),
+    lastUsed: hints.lastUsedAccountIds,
   };
 }
 

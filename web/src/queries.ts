@@ -1,5 +1,5 @@
 import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type EntryHints, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -76,6 +76,10 @@ export const useGoals = (status: "active" | "all" = "active") =>
 export const useNetWorthTrend = (months = 12) =>
   useQuery({ queryKey: ["networth", months], queryFn: async () => (await api.get<{ points: NetWorthPoint[] }>(`/api/dashboard/networth?months=${months}`)).points });
 
+/** What adding an entry can learn from the past: a merchant's usual category and account, and recently used accounts. */
+export const useEntryHints = () =>
+  useQuery({ queryKey: ["hints"], queryFn: () => api.get<EntryHints>("/api/entry-hints"), staleTime: 60_000 });
+
 export interface ReviewCounts {
   uncategorizedCount: number;
   draftCount: number;
@@ -125,6 +129,7 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["recurring"] }),
       client.invalidateQueries({ queryKey: ["debts"] }),
       client.invalidateQueries({ queryKey: ["goals"] }),
+      client.invalidateQueries({ queryKey: ["hints"] }),
       client.invalidateQueries({ queryKey: ["networth"] }),
       client.invalidateQueries({ queryKey: ["review"] }),
     ]);

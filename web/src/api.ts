@@ -356,3 +356,10 @@ export interface NetWorthPoint {
   owedToYouPaise: number;
   youOwePaise: number;
 }
+
+export interface EntryHints {
+  /** One per merchant, the one used most recently first. */
+  merchants: { merchant: string; categoryId: string | null; accountId: string; count: number }[];
+  /** Accounts, the one used most recently first. */
+  lastUsedAccountIds: string[];
+}

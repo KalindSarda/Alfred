@@ -1,9 +1,10 @@
 import { useMutation } from "@tanstack/react-query";
-import { type FormEvent, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { parsePaise } from "../../../src/domain/money";
 import { type Transaction, type TxnType, api, describeError } from "../api";
 import { newKey, paiseToInput, rupees, today } from "../format";
-import { useAccounts, useCategories, useRefreshMoney } from "../queries";
+import { defaultAccountId, describeQuickLine, memoryFor, parseQuickLine, quickFailure, topMerchants } from "../quickLine";
+import { useAccounts, useCategories, useEntryHints, useRefreshMoney } from "../queries";
 import { Button, ErrorText, Field, inputClass } from "./ui";
 import { useToast } from "./toast";
 
@@ -25,6 +26,9 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
   const refresh = useRefreshMoney();
   const toast = useToast();
   const idempotencyKey = useRef(newKey());
+  const lineRef = useRef<HTMLInputElement>(null);
+  const hintsQuery = useEntryHints();
+  const hints = hintsQuery.data;
 
   const [type, setType] = useState<TxnType>(initial?.type ?? "expense");
   const [amount, setAmount] = useState(initial ? paiseToInput(initial.amountPaise) : "");
@@ -35,6 +39,17 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
   const [merchant, setMerchant] = useState(initial?.merchant ?? "");
   const [note, setNote] = useState(initial?.note ?? "");
   const [localError, setLocalError] = useState("");
+  // The sheet takes focus when it opens; the one-line add gets it straight after, so typing can begin at once.
+  useEffect(() => {
+    if (initial) return;
+    const t = window.setTimeout(() => lineRef.current?.focus(), 0);
+    return () => window.clearTimeout(t);
+  }, [initial]);
+  // The one-line add, and what it understood. Choices made by hand are not overwritten by the merchant's memory.
+  const [line, setLine] = useState("");
+  const [lineNote, setLineNote] = useState<{ text: string; problem: boolean } | null>(null);
+  const [accountTouched, setAccountTouched] = useState(false);
+  const [categoryTouched, setCategoryTouched] = useState(false);
 
   const accounts = useMemo(
     () => (accountsQuery.data ?? []).filter((a) => !a.archived || a.id === initial?.accountId || a.id === initial?.toAccountId),
@@ -50,7 +65,51 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
     () => accounts.filter((a) => (type === "bill_payment" ? a.kind === "card" : a.kind === "bank") && a.id !== accountId),
     [accounts, type, accountId],
   );
-  const effectiveAccount = fromOptions.find((a) => a.id === accountId)?.id ?? fromOptions[0]?.id ?? "";
+  const effectiveAccount = fromOptions.find((a) => a.id === accountId)?.id ?? defaultAccountId(fromOptions, hints?.lastUsedAccountIds ?? []);
+
+  const kindOf = (t: TxnType): "expense" | "income" => (t === "income" ? "income" : "expense");
+  const allowedFrom = (t: TxnType) => accounts.filter((a) => !noCategory(t) || a.kind === "bank");
+
+  /** Reads the sentence and fills the form from it; the fields stay editable and win from then on. */
+  const onLine = (text: string) => {
+    setLine(text);
+    if (!text.trim()) return setLineNote(null);
+    const result = parseQuickLine(
+      text,
+      type,
+      {
+        today: today(),
+        accounts: accounts.filter((a) => !a.archived).map((a) => ({ id: a.id, name: a.name, kind: a.kind })),
+        categories: (categoriesQuery.data ?? []).filter((c) => !c.archived).map((c) => ({ id: c.id, name: c.name, kind: c.kind })),
+        hints,
+      },
+    );
+    if (!result.ok) return setLineNote({ text: quickFailure(result.reason), problem: true });
+    const f = result.fill;
+    setType(f.type);
+    setAmount(paiseToInput(f.amountPaise));
+    setDate(f.txnDate);
+    setToAccountId(f.toAccountId ?? "");
+    setCategoryId(f.categoryId ?? "");
+    setCategoryTouched(false);
+    setMerchant(f.merchant ?? "");
+    const usable = f.accountId && allowedFrom(f.type).some((a) => a.id === f.accountId) ? f.accountId : "";
+    setAccountId(usable);
+    setAccountTouched(Boolean(usable) && f.accountNamed);
+    setLineNote({
+      text: describeQuickLine(f, { accounts: new Map(accounts.map((a) => [a.id, a.name])), categories: new Map((categoriesQuery.data ?? []).map((c) => [c.id, c.name])) }, today()),
+      problem: false,
+    });
+  };
+
+  /** A merchant seen before brings its usual category and account, unless you have already chosen them. */
+  const applyMemory = (name: string, force = false) => {
+    if (initial || noCategory(type)) return;
+    const memory = memoryFor(name, hints, kindOf(type), categoriesQuery.data ?? []);
+    if (!memory) return;
+    if (memory.categoryId && (force || !categoryTouched)) setCategoryId(memory.categoryId);
+    if ((force || !accountTouched) && allowedFrom(type).some((a) => a.id === memory.accountId)) setAccountId(memory.accountId);
+  };
 
   const save = useMutation({
     mutationFn: () => {
@@ -116,6 +175,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
             onClick={() => {
               setType(t.value);
               setCategoryId("");
+              setCategoryTouched(false);
               setToAccountId("");
             }}
             className={`min-h-11 rounded-lg text-xs font-medium ${
@@ -127,20 +187,66 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
         ))}
       </div>
 
+      {!initial && (
+        <div className="space-y-2">
+          <Field label="Type it in one line" hint="For example: 450 swiggy hdfc yesterday. The form below fills in; change anything, then Add.">
+            <input
+              className={inputClass}
+              autoComplete="off"
+              ref={lineRef}
+              enterKeyHint="done"
+              placeholder="450 swiggy hdfc yesterday"
+              aria-label="Describe the entry in one line"
+              value={line}
+              onChange={(e) => onLine(e.target.value)}
+            />
+          </Field>
+          {lineNote && (
+            <p className={`rounded-lg px-3 py-2 text-sm ${lineNote.problem ? "bg-warn-bg text-warn-ink" : "bg-sunk"}`} aria-live="polite">
+              {lineNote.text}
+            </p>
+          )}
+          {!line && !noCategory(type) && (hints?.merchants.length ?? 0) > 0 && (
+            <div className="flex flex-wrap gap-2" aria-label="Frequent merchants">
+              {topMerchants(hints, 6).map((m) => (
+                <button
+                  key={m.merchant}
+                  type="button"
+                  className="min-h-9 rounded-full border border-line bg-card px-3 text-sm hover:bg-hover"
+                  onClick={() => {
+                    setMerchant(m.merchant);
+                    applyMemory(m.merchant, true);
+                  }}
+                >
+                  {m.merchant}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <Field label="Amount (₹)">
         <input
           className={`${inputClass} text-2xl font-semibold`}
           inputMode="decimal"
           placeholder="0"
           required
-          autoFocus={!initial}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
       </Field>
 
       <Field label={isMovement(type) ? "Pay from" : type === "investment" ? "Paid from" : "Account"} {...(type === "investment" ? { hint: "Money put into shares, IPOs or funds. It lowers the balance but is not counted as spending." } : {})}>
-        <select className={inputClass} value={effectiveAccount} onChange={(e) => setAccountId(e.target.value)} required>
+        <select
+          className={inputClass}
+          value={effectiveAccount}
+          onChange={(e) => {
+            setAccountId(e.target.value);
+            setAccountTouched(true);
+          }}
+          required
+        >
           {fromOptions.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
@@ -174,7 +280,14 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
 
       {!noCategory(type) && (
         <Field label="Category">
-          <select className={inputClass} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <select
+            className={inputClass}
+            value={categoryId}
+            onChange={(e) => {
+              setCategoryId(e.target.value);
+              setCategoryTouched(true);
+            }}
+          >
             <option value="">Uncategorized</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
@@ -191,7 +304,24 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
 
       {!isMovement(type) && (
         <Field label={type === "investment" ? "What (for example, the IPO)" : "Merchant"}>
-          <input className={inputClass} maxLength={80} value={merchant} onChange={(e) => setMerchant(e.target.value)} />
+          <input
+            className={inputClass}
+            maxLength={80}
+            autoComplete="off"
+            list={initial ? undefined : "known-merchants"}
+            value={merchant}
+            onChange={(e) => {
+              setMerchant(e.target.value);
+              applyMemory(e.target.value);
+            }}
+          />
+          {!initial && (
+            <datalist id="known-merchants">
+              {(hints?.merchants ?? []).map((m) => (
+                <option key={m.merchant} value={m.merchant} />
+              ))}
+            </datalist>
+          )}
         </Field>
       )}
 
