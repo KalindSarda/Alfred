@@ -297,7 +297,7 @@ export function EmiPlans() {
   };
 
   return (
-    <Card pad="p-0">
+    <Card id="emi" pad="p-0">
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2">
         <h2 className="text-sm font-medium text-soft">
           EMI plans{toCome > 0 && <span className="ml-2 font-semibold text-ink tabular-nums">{rupees(toCome)} to come</span>}

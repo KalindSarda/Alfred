@@ -313,6 +313,48 @@ async function saveToGoal(deps: BotDeps, who: Actor, goalId: string, paise: numb
   await reply(deps, to, botVoice.goalSaved(goal.name, paise, goal.savedPaise, goal.targetPaise), made ? [[{ text: "Undo", data: `g:${goalId}:u:${made.id}` }]] : undefined);
 }
 
+/** What each /menu button runs: the same answers as the commands, so the menu is only a way to find them. */
+const MENU: { id: string; label: string }[] = [
+  { id: "balance", label: "Balance" },
+  { id: "today", label: "Today" },
+  { id: "due", label: "Card dues" },
+  { id: "budget", label: "Budgets" },
+  { id: "owed", label: "Owed" },
+  { id: "goals", label: "Goals" },
+  { id: "emi", label: "EMIs" },
+  { id: "ipo", label: "IPO blocks" },
+  { id: "recurring", label: "Recurring" },
+];
+
+async function cmdMenu(deps: BotDeps, who: Actor): Promise<void> {
+  await deps.telegram.sendMessage(who.chatId, botVoice.menu, rows(MENU.map((m) => ({ text: m.label, data: `m:${m.id}` }))));
+}
+
+async function runMenuItem(deps: BotDeps, who: Actor, id: string, today: IstDate): Promise<void> {
+  switch (id) {
+    case "balance":
+      return await cmdBalance(deps, who, today);
+    case "today":
+      return await cmdToday(deps, who, today);
+    case "due":
+      return await cmdDue(deps, who, today);
+    case "budget":
+      return await cmdBudget(deps, who, today);
+    case "owed":
+      return await cmdOwed(deps, who, today);
+    case "goals":
+      return await cmdGoals(deps, who, today);
+    case "emi":
+      return await cmdEmi(deps, who, today);
+    case "ipo":
+      return await cmdIpo(deps, who, "", today);
+    case "recurring":
+      return await cmdRecurring(deps, who, today);
+    default:
+      return void (await deps.telegram.sendMessage(who.chatId, botVoice.unknownCommand));
+  }
+}
+
 async function cmdRecurring(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
   const rules = await listRules(deps.db, who.userId, today);
   await deps.telegram.sendMessage(
@@ -565,7 +607,7 @@ async function cmdSettings(deps: BotDeps, who: Actor): Promise<void> {
       `I remind you ${settings.nudgeLeadDays} ${settings.nudgeLeadDays === 1 ? "day" : "days"} before a card payment is due.`,
       `Your month starts on day ${settings.periodStartDay}.`,
       "",
-      "These can be changed in the app, under More.",
+      "These can be changed in the app, under Everything, then Settings.",
     ].join("\n"),
   );
 }
@@ -672,6 +714,8 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
         return await cmdRecurring(deps, who, today);
       case "goals":
         return await cmdGoals(deps, who, today);
+      case "menu":
+        return await cmdMenu(deps, who);
       case "save":
         return await cmdSave(deps, who, arg, today);
       case "emi":
@@ -804,6 +848,9 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
         await updateDebt(deps.db, userId, id, { followUpStopped: true }, today);
         await reply(deps, to, botVoice.followUpStopped(person.name));
       }
+    } else if (kind === "m" && id && MENU.some((m) => m.id === id)) {
+      // A button on /menu: answers as the command would.
+      await runMenuItem(deps, who, id, todayIst(new Date(deps.now())));
     } else if (kind === "g" && id && (action === "s" || action === "u")) {
       // Money put toward a goal: chosen from several goals, or just noted and undone.
       const today = todayIst(new Date(deps.now()));

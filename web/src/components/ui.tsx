@@ -53,14 +53,21 @@ export function Card({
   className = "",
   surface = true,
   pad = "p-4",
+  id,
 }: {
   children: ReactNode;
+  /** Lets a link point at this card ("#lent"); the page scrolls to it. */
+  id?: string;
   className?: string;
   surface?: boolean;
   /** Padding utilities. Passed separately because two padding classes on one element conflict by CSS order. */
   pad?: string;
 }) {
-  return <section className={`min-w-0 rounded-2xl ${pad} ${surface ? surfaceClass : ""} ${className}`}>{children}</section>;
+  return (
+    <section id={id} className={`min-w-0 scroll-mt-4 rounded-2xl ${pad} ${surface ? surfaceClass : ""} ${className}`}>
+      {children}
+    </section>
+  );
 }
 
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
@@ -160,6 +167,20 @@ const icons: Record<string, ReactNode> = {
       <circle cx="5" cy="12" r="1" />
       <circle cx="12" cy="12" r="1" />
       <circle cx="19" cy="12" r="1" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <line x1="21" y1="21" x2="16.5" y2="16.5" />
+    </>
+  ),
+  grid: (
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
     </>
   ),
   plus: (

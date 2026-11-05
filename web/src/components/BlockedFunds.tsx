@@ -170,7 +170,7 @@ export function BlockedFunds() {
   };
 
   return (
-    <Card pad="p-0">
+    <Card id="blocked" pad="p-0">
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2">
         <h2 className="text-sm font-medium text-soft">
           Blocked for applications{total > 0 && <span className="ml-2 font-semibold text-ink tabular-nums">{rupees(total)}</span>}

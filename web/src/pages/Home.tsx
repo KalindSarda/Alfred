@@ -8,6 +8,7 @@ import { Card, Empty, Spinner } from "../components/ui";
 import { rupees, shortDate, today } from "../format";
 import { emptyFilters } from "../filters";
 import { NetWorthStrip } from "../components/NetWorth";
+import { Shortcuts } from "../components/Shortcuts";
 import { useAccounts, useBalanceOverview, useBriefing, useCategories, useSummary, useTransactions } from "../queries";
 import { Link } from "../router";
 import { amountSign, amountTone, describeTxn } from "../txn";
@@ -36,7 +37,7 @@ function SectionTitle({ children, to, action }: { children: string; to?: string;
 }
 
 export function Home() {
-  // The user's own month: calendar month by default, or from their payday (set in More).
+  // The user's own month: calendar month by default, or from their payday (set in Settings).
   const period = "cycle";
   const briefing = useBriefing();
   const summary = useSummary(period);
@@ -66,9 +67,11 @@ export function Home() {
 
   return (
     <div className="space-y-6">
-      <h1 className="sr-only">Cash flow</h1>
+      <h1 className="sr-only">Home</h1>
 
       {panel}
+
+      {overview.data && <Shortcuts overview={overview.data} />}
 
       <section aria-label="Cash flow summary" className="space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3">
@@ -76,7 +79,7 @@ export function Home() {
           <span className="text-sm text-soft">
             {shortDate(s.period.from)} – {shortDate(s.period.to)}
             {" · "}
-            <Link to="/more" className="text-brand hover:underline">
+            <Link to="/settings#month" className="text-brand hover:underline">
               change month start
             </Link>
           </span>

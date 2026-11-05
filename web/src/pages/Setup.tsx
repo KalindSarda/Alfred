@@ -204,8 +204,8 @@ export function Setup() {
   return (
     <Shell {...shared} title="All set." lead={
       banks.length + cards.length > 0
-        ? "That is everything I need. Your numbers are ready on the home page. You can change any of this later under More."
-        : "You have no accounts yet, so the home page will be quiet. Add them whenever you like under Accounts and commitments. Setup can be reopened under More."
+        ? "That is everything I need. Your numbers are ready on the home page. You can change any of this later under Everything, then Settings."
+        : "You have no accounts yet, so the home page will be quiet. Add them whenever you like under Accounts and commitments. Setup can be reopened under Everything."
     } footer={
       <Button disabled={finish.isPending} onClick={() => finish.mutate()}>
         Take me to Alfred

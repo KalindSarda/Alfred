@@ -9,7 +9,7 @@ import { endSession, useMe, useRefreshMoney } from "../queries";
 import { useState } from "react";
 import { Link } from "../router";
 
-export function More() {
+export function Settings() {
   const client = useQueryClient();
   const toast = useToast();
   const refresh = useRefreshMoney();
@@ -68,9 +68,9 @@ export function More() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-3xl">More</h1>
+      <h1 className="text-3xl">Settings</h1>
 
-      <Card className="space-y-3">
+      <Card id="profile" className="space-y-3">
         <h2 className="font-medium">Account</h2>
         <p className="text-sm text-soft">{me.data?.email}</p>
         <form
@@ -96,11 +96,17 @@ export function More() {
         </form>
       </Card>
 
-      <TelegramCard />
+      <div id="telegram" className="scroll-mt-4">
+        <TelegramCard />
+      </div>
 
-      {me.data?.isOwner && <PeopleCard />}
+      {me.data?.isOwner && (
+        <div id="people" className="scroll-mt-4">
+          <PeopleCard />
+        </div>
+      )}
 
-      <Card className="space-y-3">
+      <Card id="categories" className="space-y-3">
         <h2 className="font-medium">Categories</h2>
         <p className="text-sm text-soft">Add, rename, merge, archive or delete the categories your entries are filed under.</p>
         <Link
@@ -111,7 +117,7 @@ export function More() {
         </Link>
       </Card>
 
-      <Card className="space-y-3">
+      <Card id="month" className="space-y-3">
         <h2 className="font-medium">Your month</h2>
         {settings.isPending ? (
           <Spinner />
@@ -136,7 +142,7 @@ export function More() {
         <ErrorText>{saveStartDay.isError ? describeError(saveStartDay.error) : ""}</ErrorText>
       </Card>
 
-      <Card className="space-y-3">
+      <Card id="reminders" className="space-y-3">
         <h2 className="font-medium">Card due-date reminders</h2>
         {settings.isPending ? (
           <Spinner />
@@ -158,7 +164,7 @@ export function More() {
         <ErrorText>{saveLead.isError ? describeError(saveLead.error) : ""}</ErrorText>
       </Card>
 
-      <Card className="space-y-3">
+      <Card id="data" className="space-y-3">
         <h2 className="font-medium">Your data</h2>
         <p className="text-sm text-soft">
           Your records are yours. The backup holds everything, including deleted entries; the spreadsheet holds your current transactions.
@@ -180,7 +186,7 @@ export function More() {
         </div>
       </Card>
 
-      <Card className="space-y-3">
+      <Card id="setup" className="space-y-3">
         <h2 className="font-medium">Setup guide</h2>
         <p className="text-sm text-soft">Walk through your name, month start, accounts, cards and Telegram again.</p>
         <Link
@@ -191,7 +197,7 @@ export function More() {
         </Link>
       </Card>
 
-      <Card className="space-y-3">
+      <Card id="demo" className="space-y-3">
         <h2 className="font-medium">Demo data</h2>
         <p className="text-sm text-soft">
           Try the app with sample accounts and transactions. Clearing removes only the demo items, never your own entries.
@@ -213,7 +219,7 @@ export function More() {
         <ErrorText>{loadDemo.isError ? describeError(loadDemo.error) : clearDemo.isError ? describeError(clearDemo.error) : ""}</ErrorText>
       </Card>
 
-      <Card className="space-y-3">
+      <Card id="signout" className="space-y-3">
         <h2 className="font-medium">Sign out</h2>
         <div className="flex flex-wrap gap-3">
           <Button variant="secondary" disabled={signOut.isPending} onClick={() => signOut.mutate(false)}>
@@ -225,7 +231,9 @@ export function More() {
         </div>
       </Card>
 
-      <DeleteAccountCard />
+      <div id="delete" className="scroll-mt-4">
+        <DeleteAccountCard />
+      </div>
     </div>
   );
 }

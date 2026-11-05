@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { InviteSwitch } from "./components/InviteSwitch";
+import { JumpSearch } from "./components/JumpSearch";
 import { QuickAddSheet } from "./components/QuickAddSheet";
 import { Icon, Spinner } from "./components/ui";
 import { Accounts } from "./pages/Accounts";
@@ -7,23 +8,24 @@ import { Categories } from "./pages/Categories";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { Setup } from "./pages/Setup";
-import { More } from "./pages/More";
+import { Everything } from "./pages/Everything";
+import { Settings } from "./pages/Settings";
 import { Plan } from "./pages/Plan";
 import { Transactions } from "./pages/Transactions";
 import { inviteEmailFromHash } from "./invite";
 import { clearInviteHash } from "./inviteUrl";
 import { useMe, useReviewCounts } from "./queries";
-import { Link, replacePath, usePath } from "./router";
+import { Link, replacePath, usePath, useScrollToHash, useSearch } from "./router";
 
 const NAV = [
-  { to: "/", label: "Cash flow", icon: "cashflow" },
+  { to: "/", label: "Home", icon: "cashflow" },
   { to: "/transactions", label: "Transactions", icon: "transactions" },
   { to: "/plan", label: "Plan", icon: "budgets" },
   { to: "/accounts", label: "Accounts and commitments", short: "Accounts", icon: "accounts" },
-  { to: "/more", label: "More", icon: "more" },
+  { to: "/more", label: "Everything", icon: "grid" },
 ] as const;
 
-function Page({ path }: { path: string }) {
+function Page({ path, onSearch }: { path: string; onSearch: () => void }) {
   switch (path) {
     case "/transactions":
       return <Transactions />;
@@ -33,7 +35,9 @@ function Page({ path }: { path: string }) {
     case "/accounts":
       return <Accounts />;
     case "/more":
-      return <More />;
+      return <Everything onSearch={onSearch} />;
+    case "/settings":
+      return <Settings />;
     case "/categories":
       return <Categories />;
     default:
@@ -44,8 +48,24 @@ function Page({ path }: { path: string }) {
 export function App() {
   const me = useMe();
   const path = usePath();
+  const search = useSearch();
+  useScrollToHash(path, search);
   const [adding, setAdding] = useState(false);
-  const isActive = (to: string) => path === to || (to === "/more" && path === "/categories") || (to === "/plan" && path === "/budgets");
+  const [finding, setFinding] = useState(false);
+  // Ctrl or Cmd + K, or a bare "/" outside a text box, opens the search.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing = target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+      if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") || (e.key === "/" && !typing && !e.ctrlKey && !e.metaKey)) {
+        e.preventDefault();
+        setFinding(true);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  const isActive = (to: string) => path === to || (to === "/more" && (path === "/categories" || path === "/settings")) || (to === "/plan" && path === "/budgets");
   // The Budgets tab is now the Plan tab; an old link or bookmark moves over quietly.
   useEffect(() => {
     if (path === "/budgets") replacePath(`/plan${window.location.search}`);
@@ -84,7 +104,7 @@ export function App() {
       />
     );
   }
-  // New people are guided through setup first; "Run setup again" under More opens it on request.
+  // New people are guided through setup first; "Run setup again" under Settings opens it on request.
   if (me.data.needsSetup || path === "/setup") return <Setup />;
 
   return (
@@ -97,6 +117,15 @@ export function App() {
           className="mb-3 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand font-medium text-white hover:bg-brand-strong"
         >
           <Icon name="plus" className="size-5" /> New
+        </button>
+        <button
+          type="button"
+          onClick={() => setFinding(true)}
+          className="mb-1 flex min-h-11 items-center gap-3 rounded-xl border border-line px-3 text-sm text-soft hover:bg-hover"
+        >
+          <Icon name="search" className="size-5" />
+          Find anything
+          <kbd className="ml-auto rounded bg-sunk px-1.5 py-0.5 text-xs">/</kbd>
         </button>
         {NAV.map((item) => (
           <Link
@@ -121,8 +150,14 @@ export function App() {
       </aside>
 
       <main className="mx-auto w-full min-w-0 max-w-5xl flex-1 p-4 pb-28 md:p-8 md:pb-8">
+        <div className="mb-1 flex justify-end md:hidden">
+          <button type="button" onClick={() => setFinding(true)} className="flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm text-soft hover:bg-hover">
+            <Icon name="search" className="size-5" />
+            Find
+          </button>
+        </div>
         <div className={path === "/" ? "" : "max-w-3xl"}>
-          <Page path={path} />
+          <Page path={path} onSearch={() => setFinding(true)} />
         </div>
       </main>
 
@@ -165,6 +200,7 @@ export function App() {
       </nav>
 
       {adding && <QuickAddSheet onClose={() => setAdding(false)} />}
+      {finding && <JumpSearch onClose={() => setFinding(false)} />}
     </div>
   );
 }

@@ -33,7 +33,7 @@ export function NetWorthTrend() {
   const change = last.netWorthPaise - first.netWorthPaise;
 
   return (
-    <Card>
+    <Card id="trend">
       <div className="mb-2 flex items-baseline justify-between gap-3 border-b border-brass/50 pb-2">
         <h2 className="font-display text-lg">Net worth over time</h2>
         <span className="text-sm text-soft">{points.length} months</span>

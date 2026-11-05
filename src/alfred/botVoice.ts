@@ -112,7 +112,7 @@ export function categoriesReply(expense: string[], income: string[]): string {
     `Expense categories: ${expense.length ? expense.join(", ") : "none yet"}.`,
     `Income categories: ${income.length ? income.join(", ") : "none yet"}.`,
     "",
-    "To add one: /category add Pets (for income: /category add income Freelance). Renaming, merging and deleting are in the app, under More.",
+    "To add one: /category add Pets (for income: /category add income Freelance). Renaming, merging and deleting are in the app, under Everything, then Categories.",
   ].join("\n");
 }
 
@@ -229,6 +229,7 @@ export function goalsReply(goals: GoalLine[], setAsidePaise: number): string {
 }
 
 export const botVoice = {
+  menu: "What would you like to see? Or write to me plainly, such as \"450 food swiggy\". /help lists everything.",
   goalNeedsAmount: "How much? For example: /save 5000 laptop.",
   goalNoGoals: "You have no savings goals yet. Add one in the app, under Plan, then Goals.",
   goalNoMatch: "I could not find that goal. /goals lists them.",
@@ -253,7 +254,7 @@ export const botVoice = {
     return `${greeting(name, now)} At your service. /help lists what I can do.`;
   },
 
-  linkFailed: "That code did not work. It may have expired. You can ask for a fresh one in the app, under More.",
+  linkFailed: "That code did not work. It may have expired. You can ask for a fresh one in the app, under Everything, then Settings.",
 
   help: [
     "Here is what I can do.",
@@ -273,6 +274,7 @@ export const botVoice = {
     "/borrowed  note money you borrowed: /borrowed 5000 hdfc asha",
     "/recurring  what repeats: rent, subscriptions, salary",
     "/goals  your savings goals; put money toward one: /save 5000 laptop",
+    "/menu  buttons for the main things I can show you",
     "/emi  your card EMI plans and what is still to be billed",
     "/ipo  money blocked for IPO applications, or: /ipo 15000 hdfc tata tech",
     "/category  list your categories, or add one",

@@ -109,6 +109,11 @@ export interface BriefingGoals {
   attention: { name: string; remainingPaise: number; targetDate: string } | null;
 }
 
+export interface BriefingDebts {
+  /** Loans still open whose due date has passed, oldest first. */
+  overdue: { name: string; direction: "lent" | "borrowed"; outstandingPaise: number; dueDate: string }[];
+}
+
 export interface BriefingEmi {
   /** Instalments not yet billed, across all running plans. */
   toComePaise: number;
@@ -147,6 +152,8 @@ export interface BriefingFacts {
   recurring: BriefingRecurring | null;
   /** Savings goals; leave out when there are none. */
   goals?: BriefingGoals;
+  /** Lent and borrowed money; leave out when there is none. */
+  debts?: BriefingDebts;
 }
 
 export interface BriefingLine {
@@ -211,6 +218,16 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
       text: `${rupees(facts.emi.toComePaise)} of card EMIs is still to be billed${n ? `; the next is ${rupees(n.amountPaise)} for ${n.title} on ${formatDate(n.date)}` : ""}.`,
       to: "/accounts?view=commitments",
     });
+  }
+
+  const late = facts.debts?.overdue ?? [];
+  if (late.length > 0) {
+    const d = late[0]!;
+    const first =
+      d.direction === "lent"
+        ? `${d.name} still owes you ${rupees(d.outstandingPaise)}, which was due ${formatDate(d.dueDate)}.`
+        : `You owe ${d.name} ${rupees(d.outstandingPaise)}, which was due ${formatDate(d.dueDate)}.`;
+    lines.push({ key: "debts", text: late.length > 1 ? `${first} ${late.length - 1} more ${late.length === 2 ? "loan is" : "loans are"} overdue too.` : first, to: "/accounts?view=commitments#lent" });
   }
 
   const goals = facts.goals;
@@ -305,6 +322,6 @@ export const BRIEFING_FOOTER = "Everything here comes from your recorded transac
 export function emptyBriefingLines(): BriefingLine[] {
   return [
     { key: "start", text: "Nothing is recorded yet. Add a bank account or credit card and I will take it from there.", to: "/accounts" },
-    { key: "demo", text: "Or try me with sample data first, from More.", to: "/more" },
+    { key: "demo", text: "Or try me with sample data first, from Settings.", to: "/settings#demo" },
   ];
 }

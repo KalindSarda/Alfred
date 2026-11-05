@@ -11,6 +11,7 @@ import type { Db } from "../db/client";
 import { accounts } from "../db/schema";
 import { type IstDate, parseIstDate } from "../domain/dates";
 import { balanceOverview } from "./accounts";
+import { listDebts } from "./debts";
 import { listGoals } from "./goals";
 import { getMe } from "./auth";
 import { daysBetween } from "../alfred/voice";
@@ -43,7 +44,7 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
   const base = { greeting: greeting(me.displayName, now), subline: subline(now), source: "template" as const, generatedAt: now.toISOString(), footer: BRIEFING_FOOTER };
   if (!anyAccount) return { ...base, lines: emptyBriefingLines() };
 
-  const [summary, figures, settings, budgetOverview, activeHolds, emiPlans, rules, goalOverview] = await Promise.all([
+  const [summary, figures, settings, budgetOverview, activeHolds, emiPlans, rules, goalOverview, debtOverview] = await Promise.all([
     getSummary(db, userId, "cycle", today),
     listAccountsWithFigures(db, userId, today),
     getSettings(db, userId),
@@ -52,7 +53,11 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
     listPlans(db, userId, today),
     listRules(db, userId, today),
     listGoals(db, userId, today, "active"),
+    listDebts(db, userId, today, "open"),
   ]);
+  const overdue = debtOverview.people
+    .flatMap((p) => p.debts.filter((d) => d.overdue && d.dueDate).map((d) => ({ name: p.name, direction: d.direction, outstandingPaise: d.outstandingPaise, dueDate: d.dueDate as string })))
+    .sort((x, y) => x.dueDate.localeCompare(y.dueDate));
   const attention = goalOverview.goals.filter((g) => g.needsAttention && g.targetDate).sort((x, y) => (x.targetDate as string).localeCompare(y.targetDate as string))[0];
   const soon = rules
     .filter((r) => r.status === "active" && r.nextDate !== null && daysBetween(today, r.nextDate) <= 7)
@@ -76,6 +81,7 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
       uncategorizedCount: summary.uncategorizedCount,
       draftCount: summary.draftCount,
       cards,
+      debts: { overdue },
       goals: {
         setAsidePaise: goalOverview.setAsidePaise,
         count: goalOverview.goals.length,

@@ -20,6 +20,7 @@ export interface BotCommand {
 export const BOT_COMMANDS: BotCommand[] = [
   { command: "start", description: "Welcome, and link this chat to the app" },
   { command: "help", description: "What Alfred can do" },
+  { command: "menu", description: "Buttons for everything I can show you" },
   { command: "add", description: "Log an expense, e.g. /add 450 food swiggy" },
   { command: "income", description: "Log income, e.g. /income 90000 salary hdfc" },
   { command: "pay", description: "Pay a card bill, e.g. /pay 4500 millennia from hdfc" },

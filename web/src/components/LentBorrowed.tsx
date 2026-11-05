@@ -366,7 +366,7 @@ export function LentBorrowed() {
   const people = data?.people ?? [];
 
   return (
-    <Card pad="p-0">
+    <Card id="lent" pad="p-0">
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2">
         <h2 className="text-sm font-medium text-soft">Lent and borrowed</h2>
         <Button className="shrink-0" onClick={() => setAdding(true)}>Add</Button>
