@@ -152,3 +152,73 @@ Confirmed by the user on 2026-10-26 and unchanged from `02-feasibility.md`. The 
 
 ## Revision history (addendum)
 - 2026-10-27: added the `bill_payment` type; transfers are bank-to-bank only. Added an Alfred voice module (`src/alfred/voice.ts`) that owns all wording of recorded facts, shared by the web briefing and the future Telegram bot; AI will phrase the same facts later and its numbers will be validated against them. Cash flow (Sankey, Profit and loss, breakdown) and net worth are derived in SQL/domain from confirmed transactions, never stored.
+
+## Addendum: the architecture as built (2026-11-05, slices 1 to 20)
+
+The original design above still holds: one Cloudflare Worker (Hono) serving the API and the built web app, D1 through Drizzle, a Telegram webhook, and one daily cron. This addendum records what grew on top of it and the patterns that keep it consistent, so a change can be made without rereading the code.
+
+### Layers and where things live
+| Layer | Folder | Rule |
+|---|---|---|
+| Routes | `src/routes` | Parse the request with a Zod schema (`src/schemas`), call one service, return JSON. No logic. |
+| Services | `src/services` | All behaviour and cross-record rules (ownership, archived accounts, who may change what). Every function takes `(db, userId, ...)`; nothing is read without the user id. |
+| Database | `src/db` | Drizzle schema, small query helpers, and the shared hints query. Migrations in `drizzle/` (0000 to 0018). |
+| Domain | `src/domain` | Pure money and date rules with no I/O: balances, card cycles, EMI and loan maths, goals, holdings, debts, net worth, recurring dates. Shared by the server and the web, and the most heavily tested layer. |
+| Alfred voice | `src/alfred` | All wording of recorded facts (`voice.ts` for the briefing, `botVoice.ts` for Telegram). A future AI layer phrases these same facts and its numbers are checked against them. |
+| Bot | `src/bot` | Telegram: a parser-first reader (`parser.ts`), command and callback handlers, and short-lived pending state. |
+| Jobs | `src/services/*Job.ts` | The daily work, described below. |
+| Web | `web/src` | React and Vite. Pages are thin; components own their sheets; `queries.ts` holds the data hooks. |
+
+### Data model (28 tables)
+- **People and access:** `users`, `invites`, `sessions`, `login_codes`, `rate_limits`, `app_settings`, `idempotency_keys`, `telegram_links`, `telegram_link_codes`, `telegram_updates`, `bot_pending`.
+- **The ledger:** `accounts` (banks and cards), `categories`, `transactions`, `merchant_aliases`, `budgets`.
+- **Things that repeat or are owed:** `recurring_rules`, `emi_plans`, `loans`, `holds` (blocked IPO money), `contacts`, `debts`, `debt_payments`.
+- **Things owned or set aside:** `holdings`, `holding_values`, `goals`, `goal_contributions`.
+- **Bookkeeping:** `nudge_log` (card due dates announced once).
+
+### Money rules in one place
+- Amounts are whole paise (integers); dates are IST calendar dates ("YYYY-MM-DD"). There is no floating point in stored money; percentages and rates are held as whole numbers (basis points for loans).
+- **Entry types:** `expense`, `income`, `transfer` (bank to bank), `bill_payment` (bank to card), `investment` (bank out, optionally linked to a holding), `investment_sale` (bank in), `loan_payment` (bank out, principal), `debt_out` and `debt_in` (lent and borrowed). Only expense and income appear in cash flow, budgets and the review badge; everything else moves balances without being spending or earning. Sources: `web`, `telegram`, `seed`, `ai`, `emi`, `recurring`, `loan`.
+- **Safe-to-spend** = balances of banks counted toward it - money blocked for IPOs - money set aside for goals - what cards owe. EMIs still to come, lent and borrowed money, investments and loans do not change it.
+- **Net worth** = banks + investments + owed to you - cards owed - EMIs still to be billed - you owe - bank loans. The trend is computed on read from the ledger as of each month end; nothing is stored.
+
+### Patterns that recur
+1. **Materialisation.** EMI instalments, recurring entries and loan instalments are created by a job on their due date, never by the request that defines them. A unique index on (owner, due date or number) plus `onConflictDoNothing` makes it safe to run any number of times; a deleted or removed entry is soft-deleted so it is not recreated; a missed run is caught up in order (capped). Creating a plan or loan also backfills what has already fallen due, and only the job's own additions are asked about.
+2. **Truth from entries, not stored totals.** What is owed on a loan, what is saved toward a goal, and what is invested in a holding are sums over entries, so a correction, prepayment or deletion can never leave a stale total. A holding's value is the latest typed value moved by later buying and selling; the rules live in `domain/holdings.ts`.
+3. **Managed entries.** An entry made by a feature (lent and borrowed, an investment sale, a loan instalment) is refused by the ordinary entry routes (422 on create, 409 on edit or delete) and changed only through its own service, which keeps the two sides together.
+4. **Check-ins.** After a job adds something that should match an outside document (an EMI instalment, a loan instalment), it asks on Telegram: "Does that agree?" with Yes or Different amount. Different amount stores an amount-wait in `bot_pending`; the person's next message is read as the figure, and anything else carries on as a normal entry. Callback data stays under 64 bytes.
+5. **Pending state.** `bot_pending` holds a half-finished entry or an amount-wait for 15 minutes, owned by one person and one chat; a forged or stale callback changes nothing.
+6. **One suggestion source.** `loadEntryHints` (merchant to usual category and account, recently used accounts) feeds both the bot's reader and the web form's one-line add, so both suggest the same things.
+7. **One list of places.** `web/src/features.ts` lists every feature once; the Everything page, the find-anything search and the Home shortcuts all read it. A section on a page is reached with a `#section` in the address.
+8. **Views by address.** Accounts (`accounts`, `commitments`, `investments`) and Plan (`budgets`, `recurring`, `goals`) keep their view in `?view=`, so any link, briefing line or search result can open them.
+
+### The daily job (cron 04:30 UTC, 10:00 IST), in order
+1. EMI check-ins: add due instalments, ask whether they agree.
+2. Loan check-ins: the same for loan instalments (interest expense and principal payment).
+3. Recurring: add due entries (drafts for the person to confirm), send reminders.
+4. Lent and borrowed: follow up on money lent (not to trusted people), remind about money borrowed.
+5. Card due-date nudges (once per due date, recorded in `nudge_log`).
+6. Investment value nudge (the 1st of the month only).
+7. IPO outcome reminders.
+8. Maintenance: purge expired codes, sessions and pending rows.
+Each step is isolated: one failing never stops the rest, and a person who fails never stops the others. Messages are best effort; the work itself (adding entries) is not tied to a message being delivered.
+
+### Telegram surface
+25 commands (listed once in `src/bot/commands.ts`, the single source for the bot's menu and the identity test). Plain sentences are read by the parser first, then confirmed or completed with buttons. Callback families are short single letters: pending entry (`p`), undo (`u`), category (`c`, `k`), archive (`a`), IPO holds (`h`), recurring drafts (`r`), lent and borrowed (`f`), goals (`g`), investment values (`i`), EMI check (`e`), loan check (`l`), menu (`m`).
+
+### Testing and release
+- Vitest in the Workers runtime against a local D1; one database per test file, a fixed test clock (2026-10-27 IST), and a helper that signs in and talks to the app or the webhook. 73 files, about 1,000 tests, run before every release.
+- Release order for a change with a migration: commit and push, export the remote database, apply the migration remotely, deploy, then (when commands changed) register the bot commands.
+
+### Known limits and conscious choices
+- **Values are typed by hand** for investments; there are no live prices. Gold, crypto and stocks are all "worth what you last said".
+- **EMI and loan maths are standard reducing-balance estimates.** A bank's first and last instalments can differ a little; every month can be corrected, and the check-ins catch it.
+- **Opening balances count from the start.** The net worth trend begins at the first recorded entry and treats opening balances, opening loan principal and opening investments as always present.
+- **Instalments added in a run are capped** (36 per loan or rule) so a long-ignored item cannot flood the books.
+- **Safe-to-spend is deliberately simple:** it ignores when salary arrives and when bills are due.
+
+### Where the AI phase attaches
+The voice modules already separate facts from wording, the bot has a parser-first path with a clean place to fall back to a model, entries can carry source `ai` and status `draft` (shown to the person before they count), and the briefing's shape already includes `source: "template" | "ai"`. A model would phrase the same verified facts, answer questions through read-only service functions, and propose drafts, never change anything without a confirmation.
+
+- 2026-11-05: addendum "the architecture as built" added: layers, the 28-table data model, entry types and money rules (safe-to-spend, net worth), the recurring patterns (materialisation, truth from entries, managed entries, check-ins, pending state, shared hints, one feature list, views by address), the daily job order, the Telegram surface, testing and release, known limits, and where the AI phase attaches.
+
