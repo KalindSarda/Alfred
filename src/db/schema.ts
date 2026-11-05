@@ -94,6 +94,8 @@ export const transactions = sqliteTable(
     /** Set on the entries a loan instalment makes (interest and principal), with the due date. Managed under Loans. */
     loanId: text("loan_id"),
     loanOn: text("loan_on"),
+    /** The quantity bought or sold (in 1/10,000 of a unit) on an entry linked to a holding counted by quantity. */
+    unitsE4: integer("units_e4"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
     deletedAt: text("deleted_at"),
@@ -477,14 +479,34 @@ export const holdings = sqliteTable(
     id: text("id").primaryKey(),
     userId: text("user_id").notNull().references(() => users.id),
     name: text("name").notNull(),
-    kind: text("kind", { enum: ["stock", "gold", "crypto", "other"] }).notNull(),
+    kind: text("kind", { enum: ["stock", "fund", "gold", "crypto", "other"] }).notNull(),
     /** Invested before it was tracked here, with no bank entry. */
     openingInvestedPaise: integer("opening_invested_paise").notNull().default(0),
+    /** value: the worth is typed. units: the worth is the quantity held times a typed rate. */
+    tracking: text("tracking", { enum: ["value", "units"] }).notNull().default("value"),
+    /** Held before tracking, in 1/10,000 of a unit (only when tracked by quantity). */
+    openingUnitsE4: integer("opening_units_e4").notNull().default(0),
     status: text("status", { enum: ["active", "closed"] }).notNull().default("active"),
     closedAt: text("closed_at"),
     createdAt: text("created_at").notNull(),
   },
   (t) => [index("holdings_user_status_idx").on(t.userId, t.status), check("holdings_opening_nonnegative", sql`${t.openingInvestedPaise} >= 0`)],
+);
+
+/** A purchase made before tracking, with no bank entry: its quantity, what it cost and the day. Only for holdings counted by quantity. */
+export const holdingLots = sqliteTable(
+  "holding_lots",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    holdingId: text("holding_id").notNull().references(() => holdings.id),
+    date: text("date").notNull(),
+    unitsE4: integer("units_e4").notNull(),
+    costPaise: integer("cost_paise").notNull(),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("holding_lots_holding_idx").on(t.holdingId), check("holding_lots_positive", sql`${t.unitsE4} > 0 AND ${t.costPaise} >= 0`)],
 );
 
 /** What a holding was worth on a day, as typed. One per holding per day: a second value that day replaces the first. */
@@ -496,6 +518,8 @@ export const holdingValues = sqliteTable(
     holdingId: text("holding_id").notNull().references(() => holdings.id),
     date: text("date").notNull(),
     valuePaise: integer("value_paise").notNull(),
+    /** The rate typed (for the holding's rate quantity), when it is counted by quantity. */
+    ratePaise: integer("rate_paise"),
     createdAt: text("created_at").notNull(),
   },
   (t) => [uniqueIndex("holding_values_day_uq").on(t.holdingId, t.date), check("holding_values_nonnegative", sql`${t.valuePaise} >= 0`)],

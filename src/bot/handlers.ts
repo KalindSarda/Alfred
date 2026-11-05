@@ -14,7 +14,8 @@ import { type IstDate, todayIst } from "../domain/dates";
 import { getMe } from "../services/auth";
 import { getGoalRow, goalsSetAside } from "../db/goals";
 import { setInstalmentAmount } from "../services/emi";
-import { holdingsValue, listHoldings, setValue } from "../services/holdings";
+import { getHoldingRow } from "../db/holdings";
+import { holdingsValue, listHoldings, setRate, setValue } from "../services/holdings";
 import { getLoan, listLoans, loansOutstanding, setInstalmentTotal } from "../services/loans";
 import { addContribution, listGoals, removeContribution } from "../services/goals";
 import { parseAmountToken } from "./parser";
@@ -407,7 +408,9 @@ async function cmdValue(deps: BotDeps, who: Actor, arg: string, today: IstDate):
 
 async function setHoldingValue(deps: BotDeps, who: Actor, holdingId: string, paise: number, today: IstDate, to: Reply): Promise<void> {
   try {
-    const h = await setValue(deps.db, who.userId, holdingId, { valuePaise: paise }, today);
+    // Counted by quantity, the number typed is the rate (gold: for 10 g); otherwise it is what the whole holding is worth.
+    const row = await getHoldingRow(deps.db, who.userId, holdingId);
+    const h = row?.tracking === "units" ? await setRate(deps.db, who.userId, holdingId, { ratePaise: paise }, today) : await setValue(deps.db, who.userId, holdingId, { valuePaise: paise }, today);
     await reply(deps, to, botVoice.valueSet(h.name, h.valuePaise, h.gainPaise));
   } catch (error) {
     if (error instanceof ConflictError || error instanceof NotFoundError) return await reply(deps, to, botVoice.valueClosed);

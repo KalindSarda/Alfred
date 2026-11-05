@@ -377,12 +377,22 @@ export interface HoldingEntry {
   date: string;
   accountName: string | null;
   note: string | null;
+  /** The quantity (1/10,000 units) when counted by quantity; null when missing, 0 when part of the quantity at the switch. */
+  unitsE4: number | null;
+}
+
+export interface HoldingLot {
+  id: string;
+  date: string;
+  unitsE4: number;
+  costPaise: number;
+  note: string | null;
 }
 
 export interface Holding {
   id: string;
   name: string;
-  kind: "stock" | "gold" | "crypto" | "other";
+  kind: "stock" | "fund" | "gold" | "crypto" | "other";
   status: "active" | "closed";
   openingInvestedPaise: number;
   investedPaise: number;
@@ -393,7 +403,15 @@ export interface Holding {
   gainPaise: number;
   gainPct: number | null;
   entries: HoldingEntry[];
-  values: { date: string; valuePaise: number }[];
+  values: { date: string; valuePaise: number; ratePaise: number | null }[];
+  tracking: "value" | "units";
+  unitLabel: string | null;
+  ratePer: number;
+  unitsHeldE4: number;
+  ratePaise: number | null;
+  avgCostPaise: number | null;
+  lots: HoldingLot[];
+  missingUnits: number;
 }
 
 export interface HoldingsOverview {

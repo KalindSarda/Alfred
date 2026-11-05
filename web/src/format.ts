@@ -30,6 +30,16 @@ export function parseSignedPaise(input: string): number | null {
 export const paiseToInput = (paise: number): string =>
   paise % 100 === 0 ? String(paise / 100) : (paise / 100).toFixed(2);
 
+/** A quantity typed as "15.2" (up to four decimals) in whole 1/10,000 units; null when it is not a positive number. */
+export function qtyToE4(text: string): number | null {
+  const t = text.trim();
+  if (!/^\d+(\.\d{1,4})?$/.test(t)) return null;
+  const n = Math.round(Number.parseFloat(t) * 10_000);
+  return n > 0 ? n : null;
+}
+
+export const e4ToQty = (e4: number): string => String(Math.round(e4) / 10_000);
+
 export const today = (): string => todayIst();
 
 export const newKey = (): string => crypto.randomUUID();

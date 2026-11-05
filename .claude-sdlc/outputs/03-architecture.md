@@ -211,7 +211,7 @@ Each step is isolated: one failing never stops the rest, and a person who fails 
 - Release order for a change with a migration: commit and push, export the remote database, apply the migration remotely, deploy, then (when commands changed) register the bot commands.
 
 ### Known limits and conscious choices
-- **Values are typed by hand** for investments; there are no live prices. Gold, crypto and stocks are all "worth what you last said".
+- **Rates are typed by hand**; there are no live prices. Gold, funds and shares are quantity x the last rate typed (slice 21); crypto and Other are "worth what you last said".
 - **EMI and loan maths are standard reducing-balance estimates.** A bank's first and last instalments can differ a little; every month can be corrected, and the check-ins catch it.
 - **Opening balances count from the start.** The net worth trend begins at the first recorded entry and treats opening balances, opening loan principal and opening investments as always present.
 - **Instalments added in a run are capped** (36 per loan or rule) so a long-ignored item cannot flood the books.
@@ -221,4 +221,4 @@ Each step is isolated: one failing never stops the rest, and a person who fails 
 The voice modules already separate facts from wording, the bot has a parser-first path with a clean place to fall back to a model, entries can carry source `ai` and status `draft` (shown to the person before they count), and the briefing's shape already includes `source: "template" | "ai"`. A model would phrase the same verified facts, answer questions through read-only service functions, and propose drafts, never change anything without a confirmation.
 
 - 2026-11-05: addendum "the architecture as built" added: layers, the 28-table data model, entry types and money rules (safe-to-spend, net worth), the recurring patterns (materialisation, truth from entries, managed entries, check-ins, pending state, shared hints, one feature list, views by address), the daily job order, the Telegram surface, testing and release, known limits, and where the AI phase attaches.
-
+- 2026-11-06: slice 21 noted: holdings counted by quantity (migration 0019, `holding_lots`, rate snapshots).

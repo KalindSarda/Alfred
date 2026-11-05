@@ -235,9 +235,21 @@ export interface HoldingLine {
   gainPaise: number;
   gainPct: number | null;
   staleDays: number | null;
+  /** Counted by quantity: what is held and the rate typed (quoted for `ratePer` units). */
+  tracking?: "value" | "units";
+  unitLabel?: string | null;
+  unitsHeldE4?: number;
+  ratePaise?: number | null;
+  ratePer?: number;
 }
 
 const upDown = (paise: number) => (paise === 0 ? "no change" : `${paise > 0 ? "up" : "down"} ${rupees(Math.abs(paise))}`);
+const qty = (e4: number) => String(Math.round(e4) / 10_000);
+/** "15.2 g at ₹13,100 per 10 g" for a holding counted by quantity; empty otherwise. */
+const heldAt = (h: HoldingLine) =>
+  h.tracking === "units" && h.unitLabel
+    ? `${qty(h.unitsHeldE4 ?? 0)} ${h.unitLabel}${h.ratePaise ? ` at ${rupees(h.ratePaise)} per ${h.ratePer && h.ratePer > 1 ? `${h.ratePer} ` : ""}${h.unitLabel === "g" ? "g" : h.unitLabel === "shares" ? "share" : "unit"}` : ""}, `
+    : "";
 const age = (days: number | null) => (days === null ? "no value typed yet" : days === 0 ? "valued today" : `valued ${days} ${days === 1 ? "day" : "days"} ago`);
 
 /** The holdings, what they are worth and how they have done. */
@@ -246,14 +258,14 @@ export function investReply(items: HoldingLine[]): string {
   const value = items.reduce((s, h) => s + h.valuePaise, 0);
   const put = items.reduce((s, h) => s + h.investedPaise, 0);
   const gain = items.reduce((s, h) => s + h.gainPaise, 0);
-  const lines = items.map((h) => `${h.name}: ${rupees(h.valuePaise)}, ${upDown(h.gainPaise)}${h.gainPct === null ? "" : ` (${h.gainPct}%)`}, ${age(h.staleDays)}`);
-  return [`Your investments are worth ${rupees(value)}: ${rupees(put)} put in, ${upDown(gain)}.`, "", ...lines, "", "To update one: /value tata 15200."].join("\n");
+  const lines = items.map((h) => `${h.name}: ${heldAt(h)}${rupees(h.valuePaise)}, ${upDown(h.gainPaise)}${h.gainPct === null ? "" : ` (${h.gainPct}%)`}, ${age(h.staleDays)}`);
+  return [`Your investments are worth ${rupees(value)}: ${rupees(put)} put in, ${upDown(gain)}.`, "", ...lines, "", "To update one: /value tata 15200. For gold, funds and shares counted by quantity, send the rate (gold: for 10 g), for example /value gold 13200."].join("\n");
 }
 
 /** The first-of-the-month nudge. */
 export function valueNudge(items: HoldingLine[]): string {
-  const lines = items.map((h) => `${h.name}: ${rupees(h.valuePaise)}, ${age(h.staleDays)}`);
-  return ["A new month. Would you care to refresh what your investments are worth?", "", ...lines, "", "Send /value with the name and amount, for example /value tata 15200."].join("\n");
+  const lines = items.map((h) => `${h.name}: ${heldAt(h)}${rupees(h.valuePaise)}, ${age(h.staleDays)}`);
+  return ["A new month. Would you care to refresh what your investments are worth?", "", ...lines, "", "Send /value with the name and amount, for example /value tata 15200. For gold or a fund, send today's rate instead, for example /value gold 13200 (gold: for 10 g)."].join("\n");
 }
 
 export interface LoanLine {

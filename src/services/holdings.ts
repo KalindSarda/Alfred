@@ -3,10 +3,10 @@ import { ConflictError, NotFoundError, ValidationError } from "../config/errors"
 import type { Db } from "../db/client";
 import { getAccount } from "../db/accounts";
 import { getHoldingRow, type HoldingRow } from "../db/holdings";
-import { accounts, holdings, holdingValues, transactions } from "../db/schema";
+import { accounts, holdingLots, holdings, holdingValues, transactions } from "../db/schema";
 import { type IstDate, isValidIstDate } from "../domain/dates";
-import { gainPaise, gainPct, type HoldingFacts, investedPaise, latestValue, soldPaise, staleDays, valuePaise } from "../domain/holdings";
-import type { BuyHoldingData, CreateHoldingData, SellHoldingData, SetHoldingValueData, UpdateHoldingData } from "../schemas/holding";
+import { avgCostPaise, gainPaise, gainPct, type HoldingFacts, investedPaise, latestRate, latestValue, soldPaise, staleDays, unitInfo, unitsHeldE4, valueAtRate, valuePaise } from "../domain/holdings";
+import type { AddLotData, BuyHoldingData, ConvertHoldingData, CreateHoldingData, SellHoldingData, SetHoldingRateData, SetHoldingValueData, UpdateHoldingData } from "../schemas/holding";
 import { newId, nowIso } from "../utils/id";
 
 export interface HoldingEntryDto {
@@ -15,6 +15,16 @@ export interface HoldingEntryDto {
   amountPaise: number;
   date: IstDate;
   accountName: string | null;
+  note: string | null;
+  /** The quantity, when counted by quantity: null when it was not given, 0 when it was part of what was held at the switch. */
+  unitsE4: number | null;
+}
+
+export interface HoldingLotDto {
+  id: string;
+  date: IstDate;
+  unitsE4: number;
+  costPaise: number;
   note: string | null;
 }
 
@@ -36,7 +46,18 @@ export interface HoldingDto {
   gainPct: number | null;
   entries: HoldingEntryDto[];
   /** The values typed, newest first (up to 12). */
-  values: { date: IstDate; valuePaise: number }[];
+  values: { date: IstDate; valuePaise: number; ratePaise: number | null }[];
+  tracking: "value" | "units";
+  /** Counted by quantity: the unit ("g", "units", "shares"), the quantity a rate is quoted for, and the quantity held. */
+  unitLabel: string | null;
+  ratePer: number;
+  unitsHeldE4: number;
+  /** The latest rate typed, and the average price paid quoted the same way. */
+  ratePaise: number | null;
+  avgCostPaise: number | null;
+  lots: HoldingLotDto[];
+  /** Buys or sells with no quantity, which the held quantity cannot count. */
+  missingUnits: number;
 }
 
 export interface HoldingsOverview {
@@ -59,38 +80,70 @@ export interface LoadedHoldings {
   rows: HoldingRow[];
   facts: Map<string, HoldingFacts>;
   entries: Map<string, HoldingEntryDto[]>;
+  lots: Map<string, HoldingLotDto[]>;
 }
 
 /** Everything about a person's holdings in three queries: the holdings, their typed values, and their linked entries. */
 export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldings> {
-  const [rows, values, txns, accountRows] = await Promise.all([
+  const [rows, values, txns, accountRows, lotRows] = await Promise.all([
     db.select().from(holdings).where(eq(holdings.userId, userId)),
     db.select().from(holdingValues).where(eq(holdingValues.userId, userId)),
     db
-      .select({ id: transactions.id, type: transactions.type, amountPaise: transactions.amountPaise, date: transactions.txnDate, holdingId: transactions.holdingId, accountId: transactions.accountId, note: transactions.note })
+      .select({ id: transactions.id, type: transactions.type, amountPaise: transactions.amountPaise, date: transactions.txnDate, holdingId: transactions.holdingId, accountId: transactions.accountId, note: transactions.note, unitsE4: transactions.unitsE4 })
       .from(transactions)
       .where(and(eq(transactions.userId, userId), isNotNull(transactions.holdingId), isNull(transactions.deletedAt), eq(transactions.status, "confirmed"), inArray(transactions.type, ["investment", "investment_sale"]))),
     db.select({ id: accounts.id, name: accounts.name }).from(accounts).where(eq(accounts.userId, userId)),
+    db.select().from(holdingLots).where(eq(holdingLots.userId, userId)),
   ]);
   const accountName = new Map(accountRows.map((a) => [a.id, a.name]));
-  const facts = new Map<string, HoldingFacts>(rows.map((r) => [r.id, { openingInvestedPaise: r.openingInvestedPaise, purchases: [], sales: [], values: [] }]));
+  type Mutable = {
+    openingInvestedPaise: number;
+    purchases: { date: IstDate; amountPaise: number }[];
+    sales: { date: IstDate; amountPaise: number }[];
+    values: { date: IstDate; valuePaise: number }[];
+    units?: { ratePer: number; openingUnitsE4: number; lots: { date: IstDate; unitsE4: number }[]; buys: { date: IstDate; unitsE4: number }[]; sells: { date: IstDate; unitsE4: number }[]; rates: { date: IstDate; ratePaise: number }[] };
+  };
+  const facts = new Map<string, Mutable>(
+    rows.map((r) => {
+      const f: Mutable = { openingInvestedPaise: r.openingInvestedPaise, purchases: [], sales: [], values: [] };
+      if (r.tracking === "units") f.units = { ratePer: unitInfo(r.kind)?.ratePer ?? 1, openingUnitsE4: r.openingUnitsE4, lots: [], buys: [], sells: [], rates: [] };
+      return [r.id, f];
+    }),
+  );
+  for (const v of values) {
+    const f = facts.get(v.holdingId);
+    if (!f) continue;
+    f.values.push({ date: v.date, valuePaise: v.valuePaise });
+    if (f.units && v.ratePaise !== null) f.units.rates.push({ date: v.date, ratePaise: v.ratePaise });
+  }
   const entries = new Map<string, HoldingEntryDto[]>();
-  const mutable = facts as Map<string, { openingInvestedPaise: number; purchases: { date: IstDate; amountPaise: number }[]; sales: { date: IstDate; amountPaise: number }[]; values: { date: IstDate; valuePaise: number }[] }>;
-  for (const v of values) mutable.get(v.holdingId)?.values.push({ date: v.date, valuePaise: v.valuePaise });
   for (const t of txns) {
-    const f = mutable.get(t.holdingId as string);
+    const f = facts.get(t.holdingId as string);
     if (!f) continue;
     const buy = t.type === "investment";
     (buy ? f.purchases : f.sales).push({ date: t.date, amountPaise: t.amountPaise });
+    if (f.units) (buy ? f.units.buys : f.units.sells).push({ date: t.date, unitsE4: t.unitsE4 ?? 0 });
     const list = entries.get(t.holdingId as string) ?? [];
-    list.push({ id: t.id, kind: buy ? "buy" : "sell", amountPaise: t.amountPaise, date: t.date, accountName: accountName.get(t.accountId) ?? null, note: t.note });
+    list.push({ id: t.id, kind: buy ? "buy" : "sell", amountPaise: t.amountPaise, date: t.date, accountName: accountName.get(t.accountId) ?? null, note: t.note, unitsE4: t.unitsE4 });
     entries.set(t.holdingId as string, list);
   }
-  return { rows, facts, entries };
+  const lots = new Map<string, HoldingLotDto[]>();
+  for (const l of lotRows) {
+    const f = facts.get(l.holdingId);
+    if (!f?.units) continue;
+    f.units.lots.push({ date: l.date, unitsE4: l.unitsE4 });
+    f.purchases.push({ date: l.date, amountPaise: l.costPaise });
+    const list = lots.get(l.holdingId) ?? [];
+    list.push({ id: l.id, date: l.date, unitsE4: l.unitsE4, costPaise: l.costPaise, note: l.note });
+    lots.set(l.holdingId, list);
+  }
+  return { rows, facts: facts as Map<string, HoldingFacts>, entries, lots };
 }
 
-function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], today: IstDate): HoldingDto {
-  const latest = latestValue(f, today);
+function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lots: HoldingLotDto[], today: IstDate): HoldingDto {
+  const rate = f.units ? latestRate(f.units, today) : null;
+  const latest = f.units ? rate : latestValue(f, today);
+  const info = f.units ? unitInfo(row.kind) : null;
   return {
     id: row.id,
     name: row.name,
@@ -105,16 +158,27 @@ function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], tod
     gainPaise: gainPaise(f, today),
     gainPct: gainPct(f, today),
     entries: [...entries].sort((a, b) => b.date.localeCompare(a.date)),
-    values: [...f.values].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12),
+    values: [...f.values]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 12)
+      .map((v) => ({ ...v, ratePaise: f.units?.rates.find((r) => r.date === v.date)?.ratePaise ?? null })),
+    tracking: row.tracking,
+    unitLabel: info?.label ?? null,
+    ratePer: f.units?.ratePer ?? 1,
+    unitsHeldE4: f.units ? unitsHeldE4(f.units, today) : 0,
+    ratePaise: rate?.ratePaise ?? null,
+    avgCostPaise: avgCostPaise(f, today),
+    lots: [...lots].sort((a, b) => b.date.localeCompare(a.date)),
+    missingUnits: f.units ? entries.filter((e) => e.unitsE4 === null).length : 0,
   };
 }
 
 /** Active holdings first, the most valuable first; closed ones after when asked for. */
 export async function listHoldings(db: Db, userId: string, today: IstDate, status: "active" | "all"): Promise<HoldingsOverview> {
-  const { rows, facts, entries } = await loadHoldings(db, userId);
+  const { rows, facts, entries, lots } = await loadHoldings(db, userId);
   const dtos = rows
     .filter((r) => status === "all" || r.status === "active")
-    .map((r) => toDto(r, facts.get(r.id) as HoldingFacts, entries.get(r.id) ?? [], today))
+    .map((r) => toDto(r, facts.get(r.id) as HoldingFacts, entries.get(r.id) ?? [], lots.get(r.id) ?? [], today))
     .sort((a, b) => (a.status === b.status ? 0 : a.status === "active" ? -1 : 1) || b.valuePaise - a.valuePaise || a.name.localeCompare(b.name));
   const live = dtos.filter((h) => h.status === "active");
   return {
@@ -167,11 +231,18 @@ function putValue(db: Db, userId: string, holdingId: string, date: IstDate, valu
 
 export async function createHolding(db: Db, userId: string, input: CreateHoldingData, today: IstDate): Promise<HoldingDto> {
   const valueDate = input.valueDate ?? today;
-  if (input.valuePaise !== undefined) checkDate("valueDate", valueDate, today);
+  const counted = input.tracking === "units";
+  if (input.valuePaise !== undefined || input.ratePaise !== undefined) checkDate("valueDate", valueDate, today);
+  const info = unitInfo(input.kind);
+  if (counted && !info) throw invalid("kind", "Only gold, funds and stocks can be counted by quantity");
+  if (!counted && (input.unitsE4 !== undefined || input.ratePaise !== undefined)) throw invalid("tracking", "A quantity and a rate need tracking by quantity");
+  if (counted && input.valuePaise !== undefined) throw invalid("valuePaise", "Counted by quantity, the worth comes from the rate");
   await requireFreeName(db, userId, input.name);
   const id = newId();
-  await db.insert(holdings).values({ id, userId, name: tidy(input.name), kind: input.kind, openingInvestedPaise: input.investedPaise ?? 0, createdAt: nowIso() });
+  const held = counted ? (input.unitsE4 ?? 0) : 0;
+  await db.insert(holdings).values({ id, userId, name: tidy(input.name), kind: input.kind, openingInvestedPaise: input.investedPaise ?? 0, tracking: counted ? "units" : "value", openingUnitsE4: held, createdAt: nowIso() });
   if (input.valuePaise !== undefined) await putValue(db, userId, id, valueDate, input.valuePaise);
+  if (counted && input.ratePaise !== undefined && info) await putRate(db, userId, id, valueDate, input.ratePaise, held, info.ratePer);
   return getHolding(db, userId, id, today);
 }
 
@@ -195,7 +266,82 @@ export async function setValue(db: Db, userId: string, id: string, input: SetHol
   return getHolding(db, userId, id, today);
 }
 
-function entryRow(userId: string, holdingId: string, type: "investment" | "investment_sale", input: { amountPaise: number; accountId: string; date: IstDate; note: string | null }, name: string) {
+/** A rate typed for a day; the total it makes (at the quantity held then) is kept beside it so every reader of values keeps working. */
+function putRate(db: Db, userId: string, holdingId: string, date: IstDate, ratePaise: number, unitsE4: number, ratePer: number) {
+  const value = valueAtRate(unitsE4, ratePaise, ratePer);
+  return db
+    .insert(holdingValues)
+    .values({ id: newId(), userId, holdingId, date, valuePaise: value, ratePaise, createdAt: nowIso() })
+    .onConflictDoUpdate({ target: [holdingValues.holdingId, holdingValues.date], set: { valuePaise: value, ratePaise, createdAt: nowIso() } });
+}
+
+async function requireCounted(db: Db, userId: string, id: string): Promise<HoldingRow> {
+  const row = await requireActive(db, userId, id);
+  if (row.tracking !== "units") throw invalid("tracking", "This investment is valued by typing what it is worth. Switch it to quantity first.");
+  return row;
+}
+
+/** Types today's rate (or an earlier day's). The worth follows from the quantity held. */
+export async function setRate(db: Db, userId: string, id: string, input: SetHoldingRateData, today: IstDate): Promise<HoldingDto> {
+  const row = await requireCounted(db, userId, id);
+  const date = input.date ?? today;
+  checkDate("date", date, today);
+  const { facts } = await loadHoldings(db, userId);
+  const f = facts.get(id) as HoldingFacts;
+  await putRate(db, userId, id, date, input.ratePaise, f.units ? unitsHeldE4(f.units, date) : 0, unitInfo(row.kind)?.ratePer ?? 1);
+  return getHolding(db, userId, id, today);
+}
+
+/** A purchase from before tracking, with no bank entry: its quantity, cost and day. */
+export async function addLot(db: Db, userId: string, id: string, input: AddLotData, today: IstDate): Promise<HoldingDto> {
+  await requireCounted(db, userId, id);
+  checkDate("date", input.date, today);
+  await db.insert(holdingLots).values({ id: newId(), userId, holdingId: id, date: input.date, unitsE4: input.unitsE4, costPaise: input.costPaise, note: input.note ?? null, createdAt: nowIso() });
+  return getHolding(db, userId, id, today);
+}
+
+export async function removeLot(db: Db, userId: string, id: string, lotId: string, today: IstDate): Promise<HoldingDto> {
+  await requireCounted(db, userId, id);
+  const [lot] = await db.select({ id: holdingLots.id }).from(holdingLots).where(and(eq(holdingLots.id, lotId), eq(holdingLots.holdingId, id), eq(holdingLots.userId, userId))).limit(1);
+  if (!lot) throw new NotFoundError("Purchase not found");
+  await db.delete(holdingLots).where(and(eq(holdingLots.id, lotId), eq(holdingLots.userId, userId)));
+  return getHolding(db, userId, id, today);
+}
+
+/**
+ * Switches a holding valued by hand to quantity times rate. The quantity entered is what is held now; what was put in
+ * stays as it is. Entries already linked count as part of that quantity (marked 0), and the first rate is typed now.
+ */
+export async function convertToUnits(db: Db, userId: string, id: string, input: ConvertHoldingData, today: IstDate): Promise<HoldingDto> {
+  const row = await requireActive(db, userId, id);
+  const info = unitInfo(row.kind);
+  if (!info) throw invalid("kind", "Only gold, funds and stocks can be counted by quantity. Change its kind first.");
+  if (row.tracking === "units") throw new ConflictError("That investment is already counted by quantity");
+  const date = input.date ?? today;
+  checkDate("date", date, today);
+  await db.batch([
+    db.update(holdings).set({ tracking: "units", openingUnitsE4: input.unitsE4 }).where(and(eq(holdings.id, id), eq(holdings.userId, userId))),
+    db.update(transactions).set({ unitsE4: 0 }).where(and(eq(transactions.userId, userId), eq(transactions.holdingId, id), isNull(transactions.unitsE4))),
+  ] as unknown as Parameters<Db["batch"]>[0]);
+  await putRate(db, userId, id, date, input.ratePaise, input.unitsE4, info.ratePer);
+  return getHolding(db, userId, id, today);
+}
+
+/** Gives the quantity to an entry linked to a holding counted by quantity (a SIP, an allotment, or a purchase that was typed without one). */
+export async function setEntryUnits(db: Db, userId: string, id: string, txnId: string, unitsE4: number, today: IstDate): Promise<HoldingDto> {
+  await requireCounted(db, userId, id);
+  if (!Number.isInteger(unitsE4) || unitsE4 <= 0) throw invalid("unitsE4", "Enter a quantity above zero");
+  const [row] = await db
+    .select({ id: transactions.id })
+    .from(transactions)
+    .where(and(eq(transactions.id, txnId), eq(transactions.userId, userId), eq(transactions.holdingId, id), isNull(transactions.deletedAt), inArray(transactions.type, ["investment", "investment_sale"])))
+    .limit(1);
+  if (!row) throw new NotFoundError("Entry not found");
+  await db.update(transactions).set({ unitsE4 }).where(and(eq(transactions.id, txnId), eq(transactions.userId, userId)));
+  return getHolding(db, userId, id, today);
+}
+
+function entryRow(userId: string, holdingId: string, type: "investment" | "investment_sale", input: { amountPaise: number; accountId: string; date: IstDate; note: string | null; unitsE4?: number | null }, name: string) {
   const now = nowIso();
   return {
     id: newId(),
@@ -209,6 +355,7 @@ function entryRow(userId: string, holdingId: string, type: "investment" | "inves
     merchant: name,
     note: input.note,
     holdingId,
+    unitsE4: input.unitsE4 ?? null,
     status: "confirmed" as const,
     source: "web" as const,
     createdAt: now,
@@ -222,10 +369,13 @@ export async function buy(db: Db, userId: string, id: string, input: BuyHoldingD
   const date = input.date ?? today;
   checkDate("date", date, today);
   await requireBank(db, userId, input.accountId);
+  const counted = row.tracking === "units";
+  if (counted && !input.unitsE4) throw invalid("unitsE4", "Enter how much you bought");
+  if (!counted && input.unitsE4 !== undefined) throw invalid("unitsE4", "This investment is valued by typing what it is worth");
   const before = await getHolding(db, userId, id, today);
-  await db.insert(transactions).values(entryRow(userId, id, "investment", { amountPaise: input.amountPaise, accountId: input.accountId, date, note: input.note ?? null }, row.name));
-  // A value typed on the same day cannot tell which came first, so the purchase moves it.
-  if (before.valueDate === date) await putValue(db, userId, id, date, before.valuePaise + input.amountPaise);
+  await db.insert(transactions).values(entryRow(userId, id, "investment", { amountPaise: input.amountPaise, accountId: input.accountId, date, note: input.note ?? null, unitsE4: input.unitsE4 }, row.name));
+  // A value typed on the same day cannot tell which came first, so the purchase moves it. Counted by quantity, the rate decides.
+  if (!counted && before.valueDate === date) await putValue(db, userId, id, date, before.valuePaise + input.amountPaise);
   return getHolding(db, userId, id, today);
 }
 
@@ -236,10 +386,17 @@ export async function sell(db: Db, userId: string, id: string, input: SellHoldin
   checkDate("date", date, today);
   await requireBank(db, userId, input.accountId);
   const before = await getHolding(db, userId, id, today);
-  if (before.valuePaise <= 0) throw invalid("amountPaise", "There is nothing left in this holding to sell");
-  await db.insert(transactions).values(entryRow(userId, id, "investment_sale", { amountPaise: input.amountPaise, accountId: input.accountId, date, note: input.note ?? null }, row.name));
+  const counted = row.tracking === "units";
+  if (counted) {
+    if (!input.unitsE4) throw invalid("unitsE4", "Enter how much you sold");
+    if (input.unitsE4 > before.unitsHeldE4) throw invalid("unitsE4", "That is more than you hold");
+  } else {
+    if (input.unitsE4 !== undefined) throw invalid("unitsE4", "This investment is valued by typing what it is worth");
+    if (before.valuePaise <= 0) throw invalid("amountPaise", "There is nothing left in this holding to sell");
+  }
+  await db.insert(transactions).values(entryRow(userId, id, "investment_sale", { amountPaise: input.amountPaise, accountId: input.accountId, date, note: input.note ?? null, unitsE4: input.unitsE4 }, row.name));
   // As with buying, a value typed on the same day is moved by the sale.
-  if (before.valueDate === date) await putValue(db, userId, id, date, Math.max(0, before.valuePaise - input.amountPaise));
+  if (!counted && before.valueDate === date) await putValue(db, userId, id, date, Math.max(0, before.valuePaise - input.amountPaise));
   if (input.closeOut) await closeRow(db, userId, row, date);
   return getHolding(db, userId, id, today);
 }
@@ -271,7 +428,7 @@ export async function deleteHolding(db: Db, userId: string, id: string): Promise
   if (!row) throw new NotFoundError("Holding not found");
   const linked = await db.select({ id: transactions.id }).from(transactions).where(and(eq(transactions.userId, userId), eq(transactions.holdingId, id), isNull(transactions.deletedAt))).limit(1);
   if (linked.length > 0) throw new ConflictError("Entries are linked to this holding. Close it instead.");
-  await db.batch([db.delete(holdingValues).where(and(eq(holdingValues.holdingId, id), eq(holdingValues.userId, userId))), db.delete(holdings).where(and(eq(holdings.id, id), eq(holdings.userId, userId)))]);
+  await db.batch([db.delete(holdingLots).where(and(eq(holdingLots.holdingId, id), eq(holdingLots.userId, userId))), db.delete(holdingValues).where(and(eq(holdingValues.holdingId, id), eq(holdingValues.userId, userId))), db.delete(holdings).where(and(eq(holdings.id, id), eq(holdings.userId, userId)))]);
 }
 
 /**
