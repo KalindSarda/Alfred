@@ -3,6 +3,7 @@ import { ConflictError, NotFoundError, ValidationError } from "../config/errors"
 import type { Db } from "../db/client";
 import { getAccount, insertAccount } from "../db/accounts";
 import { debtTotals, type DebtTotals } from "../db/debts";
+import { goalsSetAside } from "../db/goals";
 import { activeHoldTotals } from "../db/holds";
 import { accounts, debtPayments, debts, emiPlans, holds, nudgeLog, recurringRules, transactions } from "../db/schema";
 import type { IstDate } from "../domain/dates";
@@ -110,13 +111,15 @@ export interface BalanceOverview {
   owedToYouPaise: number;
   /** Still owed by you to people you borrowed from: a liability in net worth. */
   youOwePaise: number;
+  /** Put toward active savings goals: still in the bank, but taken off safe-to-spend. */
+  goalsSetAsidePaise: number;
   /** Banks minus cards. Investments and loans will join this once they are tracked. */
   netWorthPaise: number;
   safeToSpendPaise: number;
 }
 
 /** Totals across active accounts, computed from figures already loaded (no extra query). */
-export function balanceOverview(figures: readonly AccountWithFigures[], debts: DebtTotals = { owedToYouPaise: 0, youOwePaise: 0 }): BalanceOverview {
+export function balanceOverview(figures: readonly AccountWithFigures[], debts: DebtTotals = { owedToYouPaise: 0, youOwePaise: 0 }, goalsSetAsidePaise = 0): BalanceOverview {
   let totalInBanksPaise = 0;
   let countedPaise = 0;
   let blockedPaise = 0;
@@ -144,8 +147,9 @@ export function balanceOverview(figures: readonly AccountWithFigures[], debts: D
     emiToComePaise,
     owedToYouPaise: debts.owedToYouPaise,
     youOwePaise: debts.youOwePaise,
+    goalsSetAsidePaise,
     netWorthPaise: totalInBanksPaise - cardsOwedPaise - emiToComePaise + debts.owedToYouPaise - debts.youOwePaise,
-    safeToSpendPaise: countedPaise - blockedPaise - cardsOwedPaise,
+    safeToSpendPaise: countedPaise - blockedPaise - goalsSetAsidePaise - cardsOwedPaise,
   };
 }
 
@@ -167,8 +171,8 @@ export async function listAccountDtos(
   today: IstDate,
   options: { includeArchived?: boolean } = {},
 ): Promise<{ items: AccountDto[]; overview: BalanceOverview }> {
-  const [figures, counts, debts] = await Promise.all([listAccountsWithFigures(db, userId, today, options), entryCounts(db, userId), debtTotals(db, userId)]);
-  return { items: figures.map((a) => toAccountDto(a, counts.get(a.id) ?? 0)), overview: balanceOverview(figures, debts) };
+  const [figures, counts, debts, setAside] = await Promise.all([listAccountsWithFigures(db, userId, today, options), entryCounts(db, userId), debtTotals(db, userId), goalsSetAside(db, userId)]);
+  return { items: figures.map((a) => toAccountDto(a, counts.get(a.id) ?? 0)), overview: balanceOverview(figures, debts, setAside) };
 }
 
 async function accountDto(db: Db, userId: string, id: string, today: IstDate): Promise<AccountDto> {

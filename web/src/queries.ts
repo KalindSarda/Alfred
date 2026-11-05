@@ -1,5 +1,5 @@
 import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type DebtsOverview, type EmiPlan, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -68,6 +68,14 @@ export const useHolds = () =>
 export const useDebts = (status: "open" | "all" = "open") =>
   useQuery({ queryKey: ["debts", status], queryFn: () => api.get<DebtsOverview>(`/api/debts?status=${status}`) });
 
+/** Savings goals; the active ones, or every one when asked. */
+export const useGoals = (status: "active" | "all" = "active") =>
+  useQuery({ queryKey: ["goals", status], queryFn: () => api.get<GoalsOverview>(`/api/goals?status=${status}`) });
+
+/** Net worth at each month end, oldest first. */
+export const useNetWorthTrend = (months = 12) =>
+  useQuery({ queryKey: ["networth", months], queryFn: async () => (await api.get<{ points: NetWorthPoint[] }>(`/api/dashboard/networth?months=${months}`)).points });
+
 export interface ReviewCounts {
   uncategorizedCount: number;
   draftCount: number;
@@ -116,6 +124,8 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["emi"] }),
       client.invalidateQueries({ queryKey: ["recurring"] }),
       client.invalidateQueries({ queryKey: ["debts"] }),
+      client.invalidateQueries({ queryKey: ["goals"] }),
+      client.invalidateQueries({ queryKey: ["networth"] }),
       client.invalidateQueries({ queryKey: ["review"] }),
     ]);
 }

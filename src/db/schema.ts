@@ -421,3 +421,37 @@ export const appSettings = sqliteTable("app_settings", {
   /** When the first-run setup guide was finished or skipped; null means it should still be offered. */
   onboardedAt: text("onboarded_at"),
 });
+
+/**
+ * A savings goal. Money put toward it is only set aside: it stays in the bank, but is taken off safe-to-spend
+ * while the goal is active. What has been saved is the sum of its contributions.
+ */
+export const goals = sqliteTable(
+  "goals",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    name: text("name").notNull(),
+    targetPaise: integer("target_paise").notNull(),
+    targetDate: text("target_date"),
+    status: text("status", { enum: ["active", "achieved", "archived"] }).notNull().default("active"),
+    achievedAt: text("achieved_at"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("goals_user_status_idx").on(t.userId, t.status), check("goals_target_positive", sql`${t.targetPaise} > 0`)],
+);
+
+/** Money put toward a goal (positive) or taken back out of it (negative). */
+export const goalContributions = sqliteTable(
+  "goal_contributions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    goalId: text("goal_id").notNull().references(() => goals.id),
+    amountPaise: integer("amount_paise").notNull(),
+    date: text("date").notNull(),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("goal_contributions_goal_idx").on(t.goalId), check("goal_contributions_nonzero", sql`${t.amountPaise} <> 0`)],
+);

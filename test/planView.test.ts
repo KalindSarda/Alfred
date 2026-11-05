@@ -6,10 +6,11 @@ describe("the Plan page view", () => {
     expect(viewFromSearch("")).toBe("budgets");
     expect(viewFromSearch("?view=recurring")).toBe("recurring");
     expect(viewFromSearch("?x=1&view=recurring")).toBe("recurring");
+    expect(viewFromSearch("?view=goals")).toBe("goals");
   });
 
   it("treats anything else as Budgets", () => {
-    for (const search of ["?view=", "?view=other", "?view=Recurring", "?views=recurring", "?view=budgets", "?view=goals"]) {
+    for (const search of ["?view=", "?view=other", "?view=Recurring", "?views=recurring", "?view=budgets", "?view=Goals"]) {
       expect(viewFromSearch(search), search).toBe("budgets");
     }
   });
@@ -17,6 +18,8 @@ describe("the Plan page view", () => {
   it("writes the address back, leaving the default view clean", () => {
     expect(searchForView("budgets")).toBe("");
     expect(searchForView("recurring")).toBe("?view=recurring");
+    expect(searchForView("goals")).toBe("?view=goals");
+    expect(planPath("goals")).toBe("/plan?view=goals");
     expect(planPath("budgets")).toBe("/plan");
     expect(planPath("recurring")).toBe("/plan?view=recurring");
     expect(viewFromSearch(searchForView("recurring"))).toBe("recurring");

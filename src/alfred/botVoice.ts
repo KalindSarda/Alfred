@@ -209,7 +209,34 @@ export function owedReply(people: OwedPerson[], owedToYouPaise: number, youOwePa
   return lines.join("\n");
 }
 
+export interface GoalLine {
+  name: string;
+  savedPaise: number;
+  targetPaise: number;
+  progressPct: number;
+  monthlyNeededPaise: number | null;
+  targetDate: string | null;
+}
+
+/** The active goals, how far along each is, and what they hold back from safe-to-spend. */
+export function goalsReply(goals: GoalLine[], setAsidePaise: number): string {
+  if (goals.length === 0) return "You have no savings goals yet. Add one in the app, under Plan, then Goals. Then /save 5000 laptop puts money toward it.";
+  const lines = goals.map((g) => {
+    const pace = g.monthlyNeededPaise !== null && g.targetDate ? `, ${rupees(g.monthlyNeededPaise)} a month to reach it by ${shortDate(g.targetDate)}` : g.targetDate ? `, by ${shortDate(g.targetDate)}` : "";
+    return `${g.name}: ${rupees(g.savedPaise)} of ${rupees(g.targetPaise)} (${g.progressPct}%)${pace}`;
+  });
+  return [...lines, "", `Put toward goals: ${rupees(setAsidePaise)}. It stays in your bank, but is not counted as spendable.`].join("\n");
+}
+
 export const botVoice = {
+  goalNeedsAmount: "How much? For example: /save 5000 laptop.",
+  goalNoGoals: "You have no savings goals yet. Add one in the app, under Plan, then Goals.",
+  goalNoMatch: "I could not find that goal. /goals lists them.",
+  goalAskWhich: (paise: number) => `Which goal is the ${rupees(paise)} for?`,
+  goalSaved: (name: string, amountPaise: number, savedPaise: number, targetPaise: number) =>
+    `Noted. ${rupees(amountPaise)} put toward ${name}: ${rupees(savedPaise)} of ${rupees(targetPaise)}. It stays in your bank, but I take it off what you can spend.${savedPaise >= targetPaise ? " That reaches the goal. Mark it achieved in the app once you have spent it." : ""}`,
+  goalUndone: "Removed. That money is no longer put toward the goal.",
+  goalClosed: "That goal is already closed.",
   welcome(name: string, now: Date): string {
     return [
       `${greeting(name, now)} Alfred here.`,
@@ -245,6 +272,7 @@ export const botVoice = {
     "/lent  note money you lent: /lent 5000 hdfc rahul (or: cash)",
     "/borrowed  note money you borrowed: /borrowed 5000 hdfc asha",
     "/recurring  what repeats: rent, subscriptions, salary",
+    "/goals  your savings goals; put money toward one: /save 5000 laptop",
     "/emi  your card EMI plans and what is still to be billed",
     "/ipo  money blocked for IPO applications, or: /ipo 15000 hdfc tata tech",
     "/category  list your categories, or add one",

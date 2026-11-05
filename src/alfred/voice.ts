@@ -101,6 +101,14 @@ export interface BriefingRecurring {
   date: string;
 }
 
+export interface BriefingGoals {
+  /** Put toward active goals: still in the bank, but not spendable. */
+  setAsidePaise: number;
+  count: number;
+  /** The goal whose date is closest and not yet reached (within 30 days or passed), if any. */
+  attention: { name: string; remainingPaise: number; targetDate: string } | null;
+}
+
 export interface BriefingEmi {
   /** Instalments not yet billed, across all running plans. */
   toComePaise: number;
@@ -137,6 +145,8 @@ export interface BriefingFacts {
   emi: BriefingEmi;
   /** The soonest recurring entry due within a week, if any. */
   recurring: BriefingRecurring | null;
+  /** Savings goals; leave out when there are none. */
+  goals?: BriefingGoals;
 }
 
 export interface BriefingLine {
@@ -200,6 +210,17 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
       key: "emi",
       text: `${rupees(facts.emi.toComePaise)} of card EMIs is still to be billed${n ? `; the next is ${rupees(n.amountPaise)} for ${n.title} on ${formatDate(n.date)}` : ""}.`,
       to: "/accounts?view=commitments",
+    });
+  }
+
+  const goals = facts.goals;
+  if (goals && goals.count > 0 && goals.setAsidePaise > 0) {
+    const covered = facts.safeToSpendPaise >= 0 ? "" : " Your balances no longer cover all of it.";
+    const near = goals.attention ? ` ${goals.attention.name} still needs ${rupees(goals.attention.remainingPaise)} by ${formatDate(goals.attention.targetDate)}.` : "";
+    lines.push({
+      key: "goals",
+      text: `${rupees(goals.setAsidePaise)} is put toward ${goals.count === 1 ? "a savings goal" : `${goals.count} savings goals`}, so it is not counted as spendable.${near}${covered}`,
+      to: "/plan?view=goals",
     });
   }
 

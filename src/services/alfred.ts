@@ -11,6 +11,7 @@ import type { Db } from "../db/client";
 import { accounts } from "../db/schema";
 import { type IstDate, parseIstDate } from "../domain/dates";
 import { balanceOverview } from "./accounts";
+import { listGoals } from "./goals";
 import { getMe } from "./auth";
 import { daysBetween } from "../alfred/voice";
 import { listBudgets } from "./budgets";
@@ -42,7 +43,7 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
   const base = { greeting: greeting(me.displayName, now), subline: subline(now), source: "template" as const, generatedAt: now.toISOString(), footer: BRIEFING_FOOTER };
   if (!anyAccount) return { ...base, lines: emptyBriefingLines() };
 
-  const [summary, figures, settings, budgetOverview, activeHolds, emiPlans, rules] = await Promise.all([
+  const [summary, figures, settings, budgetOverview, activeHolds, emiPlans, rules, goalOverview] = await Promise.all([
     getSummary(db, userId, "cycle", today),
     listAccountsWithFigures(db, userId, today),
     getSettings(db, userId),
@@ -50,7 +51,9 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
     listHolds(db, userId, today, "active"),
     listPlans(db, userId, today),
     listRules(db, userId, today),
+    listGoals(db, userId, today, "active"),
   ]);
+  const attention = goalOverview.goals.filter((g) => g.needsAttention && g.targetDate).sort((x, y) => (x.targetDate as string).localeCompare(y.targetDate as string))[0];
   const soon = rules
     .filter((r) => r.status === "active" && r.nextDate !== null && daysBetween(today, r.nextDate) <= 7)
     .sort((a, b) => (a.nextDate as string).localeCompare(b.nextDate as string))[0];
@@ -73,6 +76,11 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
       uncategorizedCount: summary.uncategorizedCount,
       draftCount: summary.draftCount,
       cards,
+      goals: {
+        setAsidePaise: goalOverview.setAsidePaise,
+        count: goalOverview.goals.length,
+        attention: attention ? { name: attention.name, remainingPaise: attention.remainingPaise, targetDate: attention.targetDate as string } : null,
+      },
       recurring: soon ? { title: soon.title, type: soon.type, amountPaise: soon.amountPaise, date: soon.nextDate as string } : null,
       emi: {
         toComePaise: balanceOverview(figures).emiToComePaise,

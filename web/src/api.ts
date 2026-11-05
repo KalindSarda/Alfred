@@ -120,6 +120,7 @@ export interface BalanceOverview {
   emiToComePaise: number;
   owedToYouPaise: number;
   youOwePaise: number;
+  goalsSetAsidePaise: number;
   netWorthPaise: number;
   safeToSpendPaise: number;
 }
@@ -316,4 +317,42 @@ export interface Settings {
   sessionDays: number;
   displayName: string | null;
   periodStartDay: number;
+}
+
+export interface GoalContribution {
+  id: string;
+  amountPaise: number;
+  date: string;
+  note: string | null;
+}
+
+export interface Goal {
+  id: string;
+  name: string;
+  targetPaise: number;
+  targetDate: string | null;
+  status: "active" | "achieved" | "archived";
+  savedPaise: number;
+  remainingPaise: number;
+  progressPct: number;
+  monthlyNeededPaise: number | null;
+  needsAttention: boolean;
+  achievedAt: string | null;
+  contributions: GoalContribution[];
+}
+
+export interface GoalsOverview {
+  setAsidePaise: number;
+  goals: Goal[];
+}
+
+export interface NetWorthPoint {
+  month: string;
+  asOf: string;
+  netWorthPaise: number;
+  banksPaise: number;
+  cardsOwedPaise: number;
+  emiToComePaise: number;
+  owedToYouPaise: number;
+  youOwePaise: number;
 }

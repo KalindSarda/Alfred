@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, emiReply, holdsReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
+import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, emiReply, goalsReply, holdsReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
 import { AppError, ConflictError, NotFoundError, RateLimitedError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
@@ -12,6 +12,9 @@ import { formatRupees } from "../domain/money";
 import { FLOW_TYPES } from "../domain/txnTypes";
 import { type IstDate, todayIst } from "../domain/dates";
 import { getMe } from "../services/auth";
+import { getGoalRow, goalsSetAside } from "../db/goals";
+import { addContribution, listGoals, removeContribution } from "../services/goals";
+import { parseAmountToken } from "./parser";
 import { balanceOverview, setArchived, toAccountDto } from "../services/accounts";
 import { getCashflow } from "../services/cashflow";
 import { createCategory } from "../services/categories";
@@ -233,7 +236,7 @@ async function recordHold(deps: BotDeps, who: Actor, entry: ParsedEntry, c: BotC
       { accountId: from, title: (entry.merchant ?? "").trim().slice(0, 80) || "IPO application", amountPaise: entry.amountPaise, appliedDate: entry.txnDate },
       c.today,
     );
-    const overview = balanceOverview(await listAccountsWithFigures(deps.db, who.userId, c.today));
+    const overview = balanceOverview(await listAccountsWithFigures(deps.db, who.userId, c.today), undefined, await goalsSetAside(deps.db, who.userId));
     await reply(deps, to, botVoice.holdRecorded(hold.title, hold.amountPaise, hold.accountName, overview.safeToSpendPaise), [[{ text: "Undo", data: `h:${hold.id}:u` }]]);
   } catch (error) {
     if (error instanceof ValidationError) return void (await reply(deps, to, botVoice.holdNeedsBank));
@@ -275,6 +278,39 @@ async function recordDebt(deps: BotDeps, who: Actor, entry: ParsedEntry, c: BotC
 async function cmdOwed(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
   const o = await listDebts(deps.db, who.userId, today, "open");
   await deps.telegram.sendMessage(who.chatId, owedReply(o.people, o.owedToYouPaise, o.youOwePaise));
+}
+
+async function cmdGoals(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
+  const o = await listGoals(deps.db, who.userId, today, "active");
+  await deps.telegram.sendMessage(who.chatId, goalsReply(o.goals, o.setAsidePaise));
+}
+
+/** Puts money toward a goal: "/save 5000 laptop". Which goal is asked about when the words fit none or several. */
+async function cmdSave(deps: BotDeps, who: Actor, arg: string, today: IstDate): Promise<void> {
+  const [first, ...rest] = arg.trim().split(/\s+/);
+  const paise = first ? parseAmountToken(first) : null;
+  if (!paise) return void (await deps.telegram.sendMessage(who.chatId, botVoice.goalNeedsAmount));
+  const { goals: active } = await listGoals(deps.db, who.userId, today, "active");
+  if (active.length === 0) return void (await deps.telegram.sendMessage(who.chatId, botVoice.goalNoGoals));
+  const words = rest.join(" ").toLowerCase();
+  const exact = active.filter((g) => g.name.toLowerCase() === words);
+  const fits = exact.length ? exact : words ? active.filter((g) => g.name.toLowerCase().includes(words)) : active.length === 1 ? active : [];
+  if (words && fits.length === 0) return void (await deps.telegram.sendMessage(who.chatId, botVoice.goalNoMatch));
+  if (fits.length !== 1) {
+    await deps.telegram.sendMessage(who.chatId, botVoice.goalAskWhich(paise), rows((fits.length ? fits : active).slice(0, MAX_OPTIONS).map((g) => ({ text: g.name, data: `g:${g.id}:s:${paise}` }))));
+    return;
+  }
+  await saveToGoal(deps, who, fits[0]!.id, paise, today, { chatId: who.chatId });
+}
+
+async function saveToGoal(deps: BotDeps, who: Actor, goalId: string, paise: number, today: IstDate, to: Reply): Promise<void> {
+  const row = await getGoalRow(deps.db, who.userId, goalId);
+  if (!row || row.status !== "active") return void (await reply(deps, to, botVoice.goalClosed));
+  const before = await listGoals(deps.db, who.userId, today, "active");
+  const known = new Set((before.goals.find((g) => g.id === goalId)?.contributions ?? []).map((x) => x.id));
+  const goal = await addContribution(deps.db, who.userId, goalId, { amountPaise: paise }, today);
+  const made = goal.contributions.find((x) => !known.has(x.id));
+  await reply(deps, to, botVoice.goalSaved(goal.name, paise, goal.savedPaise, goal.targetPaise), made ? [[{ text: "Undo", data: `g:${goalId}:u:${made.id}` }]] : undefined);
 }
 
 async function cmdRecurring(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
@@ -356,7 +392,7 @@ async function cmdBalance(deps: BotDeps, who: Actor, today: IstDate): Promise<vo
   const figures = await listAccountsWithFigures(deps.db, who.userId, today);
   if (figures.length === 0) return void (await deps.telegram.sendMessage(who.chatId, botVoice.noAccountsYet));
   const dtos = figures.map((f) => toAccountDto(f));
-  const overview = balanceOverview(figures);
+  const overview = balanceOverview(figures, undefined, await goalsSetAside(deps.db, who.userId));
 
   const banks = dtos.filter((a) => a.kind === "bank");
   const cards = dtos.filter((a) => a.kind === "card");
@@ -379,6 +415,7 @@ async function cmdBalance(deps: BotDeps, who: Actor, today: IstDate): Promise<vo
   }
   lines.push("", `Safe to spend: ${rupees(overview.safeToSpendPaise)}, as recorded.`);
   if (overview.blockedPaise > 0) lines.push(`Blocked for applications, not spendable: ${rupees(overview.blockedPaise)}.`);
+  if (overview.goalsSetAsidePaise > 0) lines.push(`Put toward goals, not spendable: ${rupees(overview.goalsSetAsidePaise)}.`);
   if (overview.setAsidePaise > 0) lines.push(`Set aside, not counted: ${rupees(overview.setAsidePaise)}.`);
   if (overview.emiToComePaise > 0) lines.push(`EMIs still to be billed: ${rupees(overview.emiToComePaise)}. Net worth counts them; safe to spend does not, until they are billed.`);
   lines.push(`Net worth: ${rupees(overview.netWorthPaise)} (banks minus cards).`);
@@ -633,6 +670,10 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
         return await startEntry(deps, who, arg, "expense", "command", "borrowed");
       case "recurring":
         return await cmdRecurring(deps, who, today);
+      case "goals":
+        return await cmdGoals(deps, who, today);
+      case "save":
+        return await cmdSave(deps, who, arg, today);
       case "emi":
         return await cmdEmi(deps, who, today);
       case "ipo":
@@ -762,6 +803,22 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
       } else {
         await updateDebt(deps.db, userId, id, { followUpStopped: true }, today);
         await reply(deps, to, botVoice.followUpStopped(person.name));
+      }
+    } else if (kind === "g" && id && (action === "s" || action === "u")) {
+      // Money put toward a goal: chosen from several goals, or just noted and undone.
+      const today = todayIst(new Date(deps.now()));
+      if (action === "s") {
+        const paise = Number(argument);
+        if (Number.isSafeInteger(paise) && paise > 0) await saveToGoal(deps, who, id, paise, today, to);
+        else await reply(deps, to, botVoice.goalNoMatch);
+      } else {
+        try {
+          await removeContribution(deps.db, userId, id, argument ?? "", today);
+          await reply(deps, to, botVoice.goalUndone);
+        } catch (error) {
+          if (error instanceof NotFoundError || error instanceof ConflictError) await reply(deps, to, botVoice.goalClosed);
+          else throw error;
+        }
       }
     } else if (kind === "r" && id && (action === "ok" || action === "no")) {
       // A draft that a recurring rule added, being confirmed or discarded.

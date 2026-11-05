@@ -23,6 +23,7 @@ import {
 } from "../domain/balances";
 import { type IstDate, isValidIstDate } from "../domain/dates";
 import { emiToComeByCard } from "../db/emi";
+import { goalsSetAside } from "../db/goals";
 import { activeHoldTotals } from "../db/holds";
 import { hasNoCategory, isDebtType, isMovement } from "../domain/txnTypes";
 import {
@@ -246,7 +247,7 @@ export type AccountWithFigures =
   | (AccountRow & { kind: "bank"; balancePaise: number; blockedPaise: number })
   | (AccountRow & { kind: "card"; summary: CardSummary; emiToComePaise: number });
 
-function toLedgerAccount(row: AccountRow): LedgerAccount {
+export function toLedgerAccount(row: AccountRow): LedgerAccount {
   if (row.kind === "bank") {
     return {
       id: row.id,
@@ -291,6 +292,6 @@ export async function listAccountsWithFigures(
 }
 
 export async function getSafeToSpend(db: Db, userId: string, today: IstDate): Promise<number> {
-  const [rows, txns, blocked] = await Promise.all([listAccounts(db, userId), loadLedgerTxns(db, userId), activeHoldTotals(db, userId)]);
-  return safeToSpend(rows.map(toLedgerAccount), txns, today, blocked);
+  const [rows, txns, blocked, setAside] = await Promise.all([listAccounts(db, userId), loadLedgerTxns(db, userId), activeHoldTotals(db, userId), goalsSetAside(db, userId)]);
+  return safeToSpend(rows.map(toLedgerAccount), txns, today, blocked) - setAside;
 }

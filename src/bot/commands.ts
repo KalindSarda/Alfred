@@ -34,6 +34,7 @@ export const BOT_COMMANDS: BotCommand[] = [
   { command: "owed", description: "Who owes you and whom you owe" },
   { command: "lent", description: "Note money you lent: /lent 5000 hdfc rahul" },
   { command: "borrowed", description: "Note money you borrowed: /borrowed 5000 hdfc asha" },
+  { command: "goals", description: "Your savings goals, or /save 5000 laptop to put money toward one" },
   { command: "accounts", description: "Your accounts and cards; archive or restore one" },
   { command: "category", description: "List categories, or add one: /category add Pets" },
   { command: "due", description: "Card payments coming up" },

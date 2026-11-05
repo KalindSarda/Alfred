@@ -37,6 +37,9 @@ export function NetWorthCard({ overview }: { overview: BalanceOverview }) {
         )}
         {overview.owedToYouPaise > 0 && <Row label="Owed to you" value={rupees(overview.owedToYouPaise)} hint="Money you have lent; not counted toward safe-to-spend" />}
         {overview.youOwePaise > 0 && <Row label="You owe people" value={rupees(overview.youOwePaise)} hint="Money you have borrowed" />}
+        {overview.goalsSetAsidePaise > 0 && (
+          <Row label="Put toward goals" value={rupees(overview.goalsSetAsidePaise)} hint="Still yours, but not counted as spendable" />
+        )}
         {overview.blockedPaise > 0 && (
           <Row label="Blocked for applications" value={rupees(overview.blockedPaise)} hint="Still yours, but not available to spend until the result" />
         )}
@@ -58,6 +61,7 @@ export function NetWorthStrip({ overview }: { overview: BalanceOverview }) {
           {rupees(overview.cardsOwedPaise)}
           {overview.emiToComePaise > 0 && <> · {rupees(overview.emiToComePaise)} of EMIs to come</>}
           {overview.blockedPaise > 0 && <> · {rupees(overview.blockedPaise)} blocked for applications</>}
+          {overview.goalsSetAsidePaise > 0 && <> · {rupees(overview.goalsSetAsidePaise)} put toward goals</>}
         </span>
       </span>
       <span className="font-display text-2xl tabular-nums">{rupees(overview.netWorthPaise)}</span>

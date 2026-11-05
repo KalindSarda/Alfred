@@ -13,6 +13,7 @@ import { budgetRoutes } from "./routes/budgets";
 import { authPublic, authSession } from "./routes/auth";
 import { categoryRoutes } from "./routes/categories";
 import { contactRoutes, debtRoutes } from "./routes/debts";
+import { goalRoutes } from "./routes/goals";
 import { dashboardRoutes } from "./routes/dashboard";
 import { demoRoutes } from "./routes/demo";
 import { health } from "./routes/health";
@@ -91,6 +92,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/recurring", recurringRoutes);
   app.route("/api/debts", debtRoutes);
   app.route("/api/contacts", contactRoutes);
+  app.route("/api/goals", goalRoutes);
   app.route("/api/telegram", telegramLinkRoutes);
 
   app.notFound((c) => c.json({ error: { code: "not_found", message: "Not found" } }, 404));
