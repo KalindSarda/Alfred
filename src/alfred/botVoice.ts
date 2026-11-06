@@ -290,6 +290,10 @@ export const botVoice = {
   loanCheck: (name: string, totalPaise: number, interestPaise: number, principalPaise: number, accountName: string) =>
     `${name}: ${rupees(totalPaise)} was taken from ${accountName} (interest ${rupees(interestPaise)}, principal ${rupees(principalPaise)}). Does that agree with your bank?`,
   loanAgrees: "Splendid. That matches your bank.",
+  unitsAsk: (holding: string, amountPaise: number, word: string) => `${rupees(amountPaise)} went into ${holding}. How many ${word} did that buy?`,
+  unitsAskNumber: (word: string) => `Send how many ${word}, such as ${word === "grams" ? "0.5" : "10"}.`,
+  unitsSet: (holding: string, quantity: string, heldText: string) => `Noted: ${quantity} added to ${holding}. You now hold ${heldText}.`,
+  unitsGone: "I cannot find that entry any more, so there is nothing to add the quantity to.",
   loanAskAmount: (name: string, on: string) => `What did the bank take for ${name} on ${shortDate(on)}? Send the full amount, such as 32500.`,
   loanFixed: (name: string, totalPaise: number, owedPaise: number) => `Corrected. ${name} took ${rupees(totalPaise)} that month, and ${rupees(owedPaise)} is still owed.`,
   loanGone: "I cannot find that instalment any more, so there is nothing to correct.",

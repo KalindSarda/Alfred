@@ -127,3 +127,11 @@ export function unitInfo(kind: string): { label: string; ratePer: number } | nul
   if (kind === "stock") return { label: "shares", ratePer: 1 };
   return null;
 }
+
+/** A quantity typed in chat ("0.5", "2.5 g", "120 units") in 1/10,000 units; null when it is not a positive number with up to four decimals. */
+export function parseQuantityE4(text: string): number | null {
+  const t = text.trim().toLowerCase().replace(/\s*(grams?|gms?|g|units?|shares?)$/, "");
+  if (!/^\d+(\.\d{1,4})?$/.test(t)) return null;
+  const n = Math.round(Number.parseFloat(t) * UNIT_SCALE);
+  return n > 0 ? n : null;
+}

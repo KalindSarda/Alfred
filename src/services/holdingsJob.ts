@@ -1,10 +1,12 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { valueNudge } from "../alfred/botVoice";
 import type { TelegramApi } from "../bot/telegramApi";
 import type { Db } from "../db/client";
-import { holdings } from "../db/schema";
+import { holdings, transactions } from "../db/schema";
 import { todayIst } from "../domain/dates";
 import { logger } from "../utils/logger";
+import { unitInfo } from "../domain/holdings";
+import { botVoice } from "../alfred/botVoice";
 import { listHoldings } from "./holdings";
 import { chatsFor } from "./recurringJob";
 
@@ -40,4 +42,65 @@ export async function runHoldingNudges(deps: HoldingsJobDeps): Promise<{ sent: n
     }
   }
   return { sent };
+}
+
+/** What a unit is called when asking about a quantity. */
+export const unitWord = (kind: string): string => {
+  const label = unitInfo(kind)?.label;
+  return label === "g" ? "grams" : (label ?? "units");
+};
+
+/**
+ * The question to ask about a confirmed purchase into a holding counted by quantity that has no quantity yet, with the
+ * entry it is about; null when there is nothing to ask (another kind of holding, a quantity already given, a draft).
+ */
+export async function unitsQuestionFor(db: Db, userId: string, txnId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ amountPaise: transactions.amountPaise, name: holdings.name, kind: holdings.kind })
+    .from(transactions)
+    .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
+    .where(
+      and(
+        eq(transactions.id, txnId),
+        eq(transactions.userId, userId),
+        eq(transactions.type, "investment"),
+        eq(transactions.status, "confirmed"),
+        isNull(transactions.deletedAt),
+        isNull(transactions.unitsE4),
+        eq(holdings.tracking, "units"),
+        eq(holdings.status, "active"),
+      ),
+    )
+    .limit(1);
+  return row ? botVoice.unitsAsk(row.name, row.amountPaise, unitWord(row.kind)) : null;
+}
+
+/**
+ * A SIP or other recurring purchase that went into a holding counted by quantity on its own, today, has no quantity.
+ * Asks once, on the day, with a button; the person's next message is then read as the quantity. A draft is asked about
+ * when it is confirmed instead.
+ */
+export async function runUnitsCheckIns(deps: HoldingsJobDeps): Promise<{ asked: number }> {
+  const { db, telegram } = deps;
+  const today = todayIst(new Date(deps.now()));
+  const due = await db
+    .select({ id: transactions.id, userId: transactions.userId })
+    .from(transactions)
+    .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
+    .where(and(eq(transactions.source, "recurring"), eq(transactions.txnDate, today), eq(holdings.tracking, "units")));
+  const chats = await chatsFor(db);
+  let asked = 0;
+  for (const t of due) {
+    const chat = chats.get(t.userId);
+    if (!chat) continue;
+    try {
+      const text = await unitsQuestionFor(db, t.userId, t.id);
+      if (!text) continue;
+      await telegram.sendMessage(chat, text, [[{ text: "Tell me", data: `q:${t.id}` }]]);
+      asked += 1;
+    } catch (error) {
+      logger.error("units_check_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+  }
+  return { asked };
 }

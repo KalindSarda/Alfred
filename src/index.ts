@@ -5,7 +5,7 @@ import { getDb } from "./db/client";
 import { runMaintenance } from "./services/maintenance";
 import { runEmiCheckIns } from "./services/emiJob";
 import { runLoanCheckIns } from "./services/loanJob";
-import { runHoldingNudges } from "./services/holdingsJob";
+import { runHoldingNudges, runUnitsCheckIns } from "./services/holdingsJob";
 import { runDebtReminders } from "./services/debtJob";
 import { runRecurring } from "./services/recurringJob";
 import { runHoldReminders, runNudges } from "./services/nudges";
@@ -56,6 +56,12 @@ export default {
       logger.info("nudges_done", { ...result });
     } catch (error) {
       logger.error("nudges_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+    try {
+      const unitsResult = await runUnitsCheckIns({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });
+      logger.info("units_check_ins_done", { ...unitsResult });
+    } catch (error) {
+      logger.error("units_check_ins_failed", { error: error instanceof Error ? error.message : "unknown" });
     }
     try {
       const valueResult = await runHoldingNudges({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });

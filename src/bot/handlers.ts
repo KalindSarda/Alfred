@@ -15,11 +15,13 @@ import { getMe } from "../services/auth";
 import { getGoalRow, goalsSetAside } from "../db/goals";
 import { setInstalmentAmount } from "../services/emi";
 import { getHoldingRow } from "../db/holdings";
-import { holdingsValue, listHoldings, setRate, setValue } from "../services/holdings";
+import { holdingsValue, listHoldings, setEntryUnits, setRate, setValue } from "../services/holdings";
+import { unitWord, unitsQuestionFor } from "../services/holdingsJob";
+import { parseQuantityE4 } from "../domain/holdings";
 import { getLoan, listLoans, loansOutstanding, setInstalmentTotal } from "../services/loans";
 import { addContribution, listGoals, removeContribution } from "../services/goals";
 import { parseAmountToken } from "./parser";
-import { createEmiFix, createLoanFix, takeAmountFix } from "./pending";
+import { createEmiFix, createLoanFix, createUnitsFix, takeAmountFix } from "./pending";
 import { balanceOverview, setArchived, toAccountDto } from "../services/accounts";
 import { getCashflow } from "../services/cashflow";
 import { createCategory } from "../services/categories";
@@ -352,6 +354,20 @@ async function runMenuItem(deps: BotDeps, who: Actor, id: string, today: IstDate
 async function cmdLoans(deps: BotDeps, who: Actor): Promise<void> {
   const o = await listLoans(deps.db, who.userId, "active");
   await deps.telegram.sendMessage(who.chatId, loansReply(o.loans));
+}
+
+/** Gives the quantity a purchase into a holding bought, then says what is held now. */
+async function fixUnits(deps: BotDeps, who: Actor, txnId: string, unitsE4: number, today: IstDate): Promise<void> {
+  try {
+    const txn = await getTransactionRow(deps.db, who.userId, txnId);
+    if (!txn?.holdingId) return void (await deps.telegram.sendMessage(who.chatId, botVoice.unitsGone));
+    const h = await setEntryUnits(deps.db, who.userId, txn.holdingId, txnId, unitsE4, today);
+    const word = unitWord(h.kind);
+    await deps.telegram.sendMessage(who.chatId, botVoice.unitsSet(h.name, `${unitsE4 / 10_000} ${word}`, `${h.unitsHeldE4 / 10_000} ${word}`));
+  } catch (error) {
+    if (error instanceof NotFoundError || error instanceof ConflictError) return void (await deps.telegram.sendMessage(who.chatId, botVoice.unitsGone));
+    throw error;
+  }
 }
 
 /** Sets what the bank took for one loan instalment, then says what is still owed. */
@@ -740,8 +756,13 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
       // After "Different amount", the next message is the figure from the statement.
       const waiting = await takeAmountFix(deps.db, userId, chatId, deps.now());
       if (waiting) {
-        const paise = parseAmountToken(text);
-        if (paise !== null) return waiting.kind === "emi" ? await fixEmiAmount(deps, who, waiting.txnId, paise, today) : await fixLoanAmount(deps, who, waiting.loanId, waiting.on, paise);
+        if (waiting.kind === "units") {
+          const units = parseQuantityE4(text);
+          if (units !== null) return await fixUnits(deps, who, waiting.txnId, units, today);
+        } else {
+          const paise = parseAmountToken(text);
+          if (paise !== null) return waiting.kind === "emi" ? await fixEmiAmount(deps, who, waiting.txnId, paise, today) : await fixLoanAmount(deps, who, waiting.loanId, waiting.on, paise);
+        }
       }
       return await startEntry(deps, who, text, inferType(text), "text");
     }
@@ -949,6 +970,17 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
         await createLoanFix(deps.db, userId, chatId, id, argument, deps.now());
         await reply(deps, to, botVoice.loanAskAmount(loan.name, argument));
       }
+    } else if (kind === "q" && id) {
+      // "Tell me": the next message is how much a purchase into a holding bought.
+      const question = await unitsQuestionFor(deps.db, userId, id);
+      const txn = question ? await getTransactionRow(deps.db, userId, id) : null;
+      const kindOf = txn?.holdingId ? (await getHoldingRow(deps.db, userId, txn.holdingId))?.kind : undefined;
+      if (!question || !kindOf) {
+        await reply(deps, to, botVoice.unitsGone);
+      } else {
+        await createUnitsFix(deps.db, userId, chatId, id, deps.now());
+        await reply(deps, to, botVoice.unitsAskNumber(unitWord(kindOf)));
+      }
     } else if (kind === "i" && id && action === "v") {
       // An investment chosen from several for "/value".
       const paise = Number(argument);
@@ -981,6 +1013,9 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
       } else if (action === "ok") {
         await updateTransaction(deps.db, userId, id, { status: "confirmed" });
         await reply(deps, to, botVoice.recurringConfirmed(t.merchant ?? "That entry"));
+        // A SIP into gold, a fund or shares counted by quantity: ask how much it bought.
+        const question = await unitsQuestionFor(deps.db, userId, id);
+        if (question) await deps.telegram.sendMessage(chatId, question, [[{ text: "Tell me", data: `q:${id}` }]]);
       } else {
         await softDeleteTransaction(deps.db, userId, id);
         await reply(deps, to, botVoice.recurringDiscarded(t.merchant ?? "That entry"));
