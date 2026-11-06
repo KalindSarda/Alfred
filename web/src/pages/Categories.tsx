@@ -1,12 +1,14 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { type Category, api, describeError } from "../api";
+import { InvestmentKinds } from "../components/InvestmentKinds";
 import { Button, Card, Empty, ErrorText, Field, Sheet, Spinner, inputClass } from "../components/ui";
 import { useToast } from "../components/toast";
 import { useCategories, useRefreshMoney } from "../queries";
-import { Link } from "../router";
+import { Link, useSearch } from "../router";
 
 type Kind = "expense" | "income";
+type Tab = Kind | "kinds";
 
 const entriesText = (n: number) => `${n} ${n === 1 ? "entry" : "entries"}`;
 
@@ -162,7 +164,9 @@ function EditSheet({ category, others, onClose }: { category: Category; others: 
 
 export function Categories() {
   const categories = useCategories();
-  const [kind, setKind] = useState<Kind>("expense");
+  const search = useSearch();
+  const [tab, setTab] = useState<Tab>(new URLSearchParams(search).get("view") === "kinds" ? "kinds" : "expense");
+  const kind: Kind = tab === "income" ? "income" : "expense";
   const [showArchived, setShowArchived] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -181,51 +185,57 @@ export function Categories() {
           ← Everything
         </Link>
         <div className="flex items-end justify-between gap-3">
-          <h1 className="text-3xl">Categories</h1>
-          <Button onClick={() => setAdding(true)}>Add</Button>
+          <h1 className="text-3xl">Categories and kinds</h1>
+          {tab !== "kinds" && <Button onClick={() => setAdding(true)}>Add</Button>}
         </div>
       </div>
 
-      <div role="tablist" aria-label="Kind" className="grid grid-cols-2 gap-1 rounded-xl bg-sunk p-1">
-        {(["expense", "income"] as const).map((k) => (
+      <div role="tablist" aria-label="Kind" className="grid grid-cols-3 gap-1 rounded-xl bg-sunk p-1">
+        {(["expense", "income", "kinds"] as const).map((k) => (
           <button
             key={k}
             type="button"
             role="tab"
-            aria-selected={kind === k}
-            onClick={() => setKind(k)}
-            className={`min-h-11 rounded-lg text-sm font-medium ${kind === k ? "bg-card shadow-sm" : "text-soft"}`}
+            aria-selected={tab === k}
+            onClick={() => setTab(k)}
+            className={`min-h-11 rounded-lg text-sm font-medium ${tab === k ? "bg-card shadow-sm" : "text-soft"}`}
           >
-            {k === "expense" ? "Expense" : "Income"}
+            {k === "expense" ? "Expense" : k === "income" ? "Income" : "Investments"}
           </button>
         ))}
       </div>
 
-      {shown.length === 0 ? (
-        <Empty title="Nothing here yet">Add a category to start filing entries under it.</Empty>
+      {tab === "kinds" ? (
+        <InvestmentKinds />
       ) : (
-        <Card pad="p-0">
-          <ul className="divide-y divide-line">
-            {shown.map((c) => (
-              <li key={c.id}>
-                <button type="button" onClick={() => setEditing(c.id)} className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-hover">
-                  <span className="min-w-0 truncate">
-                    {c.name}
-                    {c.isSystem && <span className="ml-2 text-xs text-faint">built in</span>}
-                    {c.archived && <span className="ml-2 text-xs text-faint">archived</span>}
-                  </span>
-                  <span className="shrink-0 text-sm text-soft">{entriesText(c.entryCount)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
+        <>
+        {shown.length === 0 ? (
+          <Empty title="Nothing here yet">Add a category to start filing entries under it.</Empty>
+        ) : (
+          <Card pad="p-0">
+            <ul className="divide-y divide-line">
+              {shown.map((c) => (
+                <li key={c.id}>
+                  <button type="button" onClick={() => setEditing(c.id)} className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-hover">
+                    <span className="min-w-0 truncate">
+                      {c.name}
+                      {c.isSystem && <span className="ml-2 text-xs text-faint">built in</span>}
+                      {c.archived && <span className="ml-2 text-xs text-faint">archived</span>}
+                    </span>
+                    <span className="shrink-0 text-sm text-soft">{entriesText(c.entryCount)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
 
-      <label className="flex min-h-11 items-center gap-3 text-sm text-soft">
-        <input type="checkbox" className="size-5 accent-brand" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
-        Show archived categories
-      </label>
+        <label className="flex min-h-11 items-center gap-3 text-sm text-soft">
+          <input type="checkbox" className="size-5 accent-brand" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+          Show archived categories
+        </label>
+        </>
+      )}
 
       {adding && <AddSheet kind={kind} onClose={() => setAdding(false)} />}
       {current && (

@@ -362,7 +362,7 @@ async function fixUnits(deps: BotDeps, who: Actor, txnId: string, unitsE4: numbe
     const txn = await getTransactionRow(deps.db, who.userId, txnId);
     if (!txn?.holdingId) return void (await deps.telegram.sendMessage(who.chatId, botVoice.unitsGone));
     const h = await setEntryUnits(deps.db, who.userId, txn.holdingId, txnId, unitsE4, today);
-    const word = unitWord(h.kind);
+    const word = unitWord(h.unitLabel);
     await deps.telegram.sendMessage(who.chatId, botVoice.unitsSet(h.name, `${unitsE4 / 10_000} ${word}`, `${h.unitsHeldE4 / 10_000} ${word}`));
   } catch (error) {
     if (error instanceof NotFoundError || error instanceof ConflictError) return void (await deps.telegram.sendMessage(who.chatId, botVoice.unitsGone));
@@ -973,13 +973,11 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
     } else if (kind === "q" && id) {
       // "Tell me": the next message is how much a purchase into a holding bought.
       const question = await unitsQuestionFor(deps.db, userId, id);
-      const txn = question ? await getTransactionRow(deps.db, userId, id) : null;
-      const kindOf = txn?.holdingId ? (await getHoldingRow(deps.db, userId, txn.holdingId))?.kind : undefined;
-      if (!question || !kindOf) {
+      if (!question) {
         await reply(deps, to, botVoice.unitsGone);
       } else {
         await createUnitsFix(deps.db, userId, chatId, id, deps.now());
-        await reply(deps, to, botVoice.unitsAskNumber(unitWord(kindOf)));
+        await reply(deps, to, botVoice.unitsAskNumber(question.word));
       }
     } else if (kind === "i" && id && action === "v") {
       // An investment chosen from several for "/value".
@@ -1015,7 +1013,7 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
         await reply(deps, to, botVoice.recurringConfirmed(t.merchant ?? "That entry"));
         // A SIP into gold, a fund or shares counted by quantity: ask how much it bought.
         const question = await unitsQuestionFor(deps.db, userId, id);
-        if (question) await deps.telegram.sendMessage(chatId, question, [[{ text: "Tell me", data: `q:${id}` }]]);
+        if (question) await deps.telegram.sendMessage(chatId, question.text, [[{ text: "Tell me", data: `q:${id}` }]]);
       } else {
         await softDeleteTransaction(deps.db, userId, id);
         await reply(deps, to, botVoice.recurringDiscarded(t.merchant ?? "That entry"));

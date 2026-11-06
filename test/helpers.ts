@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { getDb } from "../src/db/client";
 import { insertAccount, type AccountRow } from "../src/db/accounts";
 import { listCategories } from "../src/db/categories";
-import { seedDefaultCategories } from "../src/db/seed";
+import { seedDefaultCategories, seedDefaultHoldingKinds } from "../src/db/seed";
 import { users } from "../src/db/schema";
 import { newId, nowIso } from "../src/utils/id";
 
@@ -12,6 +12,7 @@ export async function createUser(email = `${newId().toLowerCase()}@example.com`)
   const id = newId();
   await db.insert(users).values({ id, email, createdAt: nowIso() });
   await seedDefaultCategories(db, id);
+  await seedDefaultHoldingKinds(db, id);
   return id;
 }
 

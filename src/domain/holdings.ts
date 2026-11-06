@@ -119,14 +119,8 @@ export function staleDays(f: HoldingFacts, today: IstDate): number | null {
 /** A value is worth asking about again after this many days. */
 export const STALE_AFTER_DAYS = 35;
 
-/** Kinds that can be counted by quantity, with the unit they are held in and the quantity a rate is quoted for. */
-export const UNIT_KINDS = ["gold", "fund", "stock"] as const;
-export function unitInfo(kind: string): { label: string; ratePer: number } | null {
-  if (kind === "gold") return { label: "g", ratePer: 10 };
-  if (kind === "fund") return { label: "units", ratePer: 1 };
-  if (kind === "stock") return { label: "shares", ratePer: 1 };
-  return null;
-}
+/** The unit for one of them: "shares" is "share", "coins" is "coin", "g" stays "g". */
+export const unitOne = (unit: string): string => (unit.length > 2 && /s$/i.test(unit) ? unit.slice(0, -1) : unit);
 
 /** A quantity typed in chat ("0.5", "2.5 g", "120 units") in 1/10,000 units; null when it is not a positive number with up to four decimals. */
 export function parseQuantityE4(text: string): number | null {

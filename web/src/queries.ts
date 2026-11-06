@@ -1,5 +1,5 @@
 import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type EntryHints, type HoldingsOverview, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type EntryHints, type HoldingKind, type HoldingsOverview, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -32,6 +32,14 @@ export const useCategories = () =>
   useQuery({
     queryKey: ["categories"],
     queryFn: async () => (await api.get<{ items: Category[] }>("/api/categories")).items,
+    staleTime: 5 * 60_000,
+  });
+
+/** The person's kinds of investment, built-in and their own. */
+export const useHoldingKinds = () =>
+  useQuery({
+    queryKey: ["holding-kinds"],
+    queryFn: async () => (await api.get<{ items: HoldingKind[] }>("/api/holding-kinds")).items,
     staleTime: 5 * 60_000,
   });
 
@@ -138,6 +146,7 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["debts"] }),
       client.invalidateQueries({ queryKey: ["goals"] }),
       client.invalidateQueries({ queryKey: ["holdings"] }),
+      client.invalidateQueries({ queryKey: ["holding-kinds"] }),
       client.invalidateQueries({ queryKey: ["loans"] }),
       client.invalidateQueries({ queryKey: ["hints"] }),
       client.invalidateQueries({ queryKey: ["networth"] }),

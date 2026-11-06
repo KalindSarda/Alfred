@@ -5,7 +5,8 @@ import {
   DEFAULT_EXPENSE_CATEGORIES,
   DEFAULT_INCOME_CATEGORIES,
 } from "./defaultCategories";
-import { categories } from "./schema";
+import { DEFAULT_HOLDING_KINDS } from "./defaultKinds";
+import { categories, holdingKinds } from "./schema";
 
 export { CASHBACK_CATEGORY, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES };
 
@@ -29,3 +30,13 @@ export async function seedDefaultCategories(db: Db, userId: string): Promise<voi
   const [first, ...rest] = statements;
   if (first) await db.batch([first, ...rest]);
 }
+
+/** The built-in investment kinds. Safe to repeat. */
+export async function seedDefaultHoldingKinds(db: Db, userId: string): Promise<void> {
+  const createdAt = nowIso();
+  await db
+    .insert(holdingKinds)
+    .values(DEFAULT_HOLDING_KINDS.map((k) => ({ id: newId(), userId, key: k.key, name: k.name, unit: k.unit, ratePer: k.ratePer, isSystem: k.isSystem, createdAt })))
+    .onConflictDoNothing();
+}
+

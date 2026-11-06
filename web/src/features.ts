@@ -38,6 +38,7 @@ export const FEATURES: Feature[] = [
   { id: "recurring", title: "Recurring entries", blurb: "Rent, subscriptions, salary and SIPs added on their day", group: "Plan", to: "/plan?view=recurring", keywords: ["repeat", "subscription", "rent", "salary", "sip", "monthly", "bills", "autopay"] },
   { id: "goals", title: "Savings goals", blurb: "Money set aside for something you are saving for", group: "Plan", to: "/plan?view=goals", keywords: ["goal", "saving", "savings", "target", "save", "set aside", "laptop", "trip"] },
 
+  { id: "kinds", title: "Investment kinds", blurb: "Add Silver, or rename and merge the kinds of investment", group: "Tidy up", to: "/categories?view=kinds", keywords: ["silver", "gold", "kind", "kinds", "unit", "gram", "investment type", "platinum", "coin"] },
   { id: "categories", title: "Categories", blurb: "Add, rename, merge or archive categories", group: "Tidy up", to: "/categories", keywords: ["category", "rename", "merge", "label", "tags"] },
   { id: "export", title: "Download your data", blurb: "Backup (JSON) and spreadsheet (CSV)", group: "Tidy up", to: "/settings#data", keywords: ["export", "backup", "csv", "json", "download", "spreadsheet", "excel"] },
   { id: "demo", title: "Demo data", blurb: "Try Alfred with sample accounts and entries", group: "Tidy up", to: "/settings#demo", keywords: ["sample", "test", "clear demo", "try"] },

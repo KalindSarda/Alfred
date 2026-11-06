@@ -479,7 +479,8 @@ export const holdings = sqliteTable(
     id: text("id").primaryKey(),
     userId: text("user_id").notNull().references(() => users.id),
     name: text("name").notNull(),
-    kind: text("kind", { enum: ["stock", "fund", "gold", "crypto", "other"] }).notNull(),
+    /** The `key` of one of the person's holding_kinds (the built-in ones keep the keys stock, fund, gold, crypto, other). */
+    kind: text("kind").notNull(),
     /** Invested before it was tracked here, with no bank entry. */
     openingInvestedPaise: integer("opening_invested_paise").notNull().default(0),
     /** value: the worth is typed. units: the worth is the quantity held times a typed rate. */
@@ -491,6 +492,28 @@ export const holdings = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (t) => [index("holdings_user_status_idx").on(t.userId, t.status), check("holdings_opening_nonnegative", sql`${t.openingInvestedPaise} >= 0`)],
+);
+
+/**
+ * A kind of investment the person can choose: Gold, Silver, Mutual fund. A kind with a unit (g, units, shares, coins) lets a
+ * holding be counted by quantity times a rate quoted for `ratePer` units; a kind without one is valued by typing.
+ * `holdings.kind` stores the `key`: the built-in kinds keep their old names, custom kinds get a generated id.
+ */
+export const holdingKinds = sqliteTable(
+  "holding_kinds",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    unit: text("unit"),
+    ratePer: integer("rate_per").notNull().default(1),
+    /** Stock (what an IPO allotment creates) and Other (the fallback) cannot be deleted, merged away or archived. */
+    isSystem: integer("is_system", { mode: "boolean" }).notNull().default(false),
+    archivedAt: text("archived_at"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("holding_kinds_user_key_uq").on(t.userId, t.key), check("holding_kinds_rate_per", sql`${t.ratePer} IN (1, 10, 100, 1000)`)],
 );
 
 /** A purchase made before tracking, with no bank entry: its quantity, what it cost and the day. Only for holdings counted by quantity. */

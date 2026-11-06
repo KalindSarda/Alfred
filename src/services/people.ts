@@ -1,7 +1,7 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
-import { seedDefaultCategories } from "../db/seed";
+import { seedDefaultCategories, seedDefaultHoldingKinds } from "../db/seed";
 import {
   accounts,
   appSettings,
@@ -14,6 +14,7 @@ import {
   goalContributions,
   goals,
   holdings,
+  holdingKinds,
   holdingLots,
   holdingValues,
   loans,
@@ -68,6 +69,7 @@ export async function acceptInvite(db: Db, invite: InviteRow, nowIso: string): P
   if (!user) throw new Error("User insert returned no row");
   await db.insert(appSettings).values({ userId: user.id, displayName: invite.name }).onConflictDoNothing();
   await seedDefaultCategories(db, user.id);
+  await seedDefaultHoldingKinds(db, user.id);
   await db.update(invites).set({ acceptedAt: nowIso }).where(eq(invites.id, invite.id));
   return user;
 }
@@ -185,6 +187,7 @@ async function eraseUser(db: Db, targetId: string): Promise<void> {
     db.delete(goalContributions).where(eq(goalContributions.userId, targetId)),
     db.delete(goals).where(eq(goals.userId, targetId)),
     db.delete(holdingLots).where(eq(holdingLots.userId, targetId)),
+    db.delete(holdingKinds).where(eq(holdingKinds.userId, targetId)),
     db.delete(holdingValues).where(eq(holdingValues.userId, targetId)),
     db.delete(holdings).where(eq(holdings.userId, targetId)),
     db.delete(loans).where(eq(loans.userId, targetId)),

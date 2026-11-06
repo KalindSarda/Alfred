@@ -169,11 +169,11 @@ The original design above still holds: one Cloudflare Worker (Hono) serving the 
 | Jobs | `src/services/*Job.ts` | The daily work, described below. |
 | Web | `web/src` | React and Vite. Pages are thin; components own their sheets; `queries.ts` holds the data hooks. |
 
-### Data model (28 tables)
+### Data model (29 tables)
 - **People and access:** `users`, `invites`, `sessions`, `login_codes`, `rate_limits`, `app_settings`, `idempotency_keys`, `telegram_links`, `telegram_link_codes`, `telegram_updates`, `bot_pending`.
 - **The ledger:** `accounts` (banks and cards), `categories`, `transactions`, `merchant_aliases`, `budgets`.
 - **Things that repeat or are owed:** `recurring_rules`, `emi_plans`, `loans`, `holds` (blocked IPO money), `contacts`, `debts`, `debt_payments`.
-- **Things owned or set aside:** `holdings`, `holding_values`, `goals`, `goal_contributions`.
+- **Things owned or set aside:** `holdings`, `holding_values`, `holding_lots`, `holding_kinds`, `goals`, `goal_contributions`.
 - **Bookkeeping:** `nudge_log` (card due dates announced once).
 
 ### Money rules in one place
@@ -222,3 +222,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 
 - 2026-11-05: addendum "the architecture as built" added: layers, the 28-table data model, entry types and money rules (safe-to-spend, net worth), the recurring patterns (materialisation, truth from entries, managed entries, check-ins, pending state, shared hints, one feature list, views by address), the daily job order, the Telegram surface, testing and release, known limits, and where the AI phase attaches.
 - 2026-11-06: slice 21 noted: holdings counted by quantity (migration 0019, `holding_lots`, rate snapshots).
+- 2026-11-06: slice 22 noted: investment kinds are per-person rows (`holding_kinds`) that carry unit and rate quantity; `holdings.kind` stores the kind key.

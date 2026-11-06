@@ -1,26 +1,21 @@
 import { useState } from "react";
-import { type Holding, api, describeError } from "../api";
+import { type Holding, type HoldingKind, api, describeError } from "../api";
 import { rupeesToPaise } from "../filters";
 import { e4ToQty, paiseToInput, qtyToE4, rupees, shortDate, today } from "../format";
-import { useAccounts, useHoldings, useRefreshMoney } from "../queries";
+import { useAccounts, useHoldingKinds, useHoldings, useRefreshMoney } from "../queries";
+import { NewKindSheet } from "./InvestmentKinds";
 import { useToast } from "./toast";
 import { Button, Card, Empty, ErrorText, Field, Sheet, inputClass } from "./ui";
 
-const KINDS: { value: Holding["kind"]; label: string }[] = [
-  { value: "stock", label: "Stock or IPO" },
-  { value: "fund", label: "Mutual fund" },
-  { value: "gold", label: "Gold" },
-  { value: "crypto", label: "Crypto" },
-  { value: "other", label: "Other" },
-];
-const kindLabel = (k: Holding["kind"]) => KINDS.find((x) => x.value === k)?.label ?? "Other";
-
-/** What each kind is held in, and the quantity its rate is quoted for (gold is quoted for 10 g). */
-const UNITS: Partial<Record<Holding["kind"], { label: string; one: string; per: number }>> = {
-  gold: { label: "grams", one: "g", per: 10 },
-  fund: { label: "units", one: "unit", per: 1 },
-  stock: { label: "shares", one: "share", per: 1 },
-};
+/** What a kind is held in, and the quantity its rate is quoted for (gold for 10 g, silver for 1,000 g). */
+interface UnitInfo {
+  label: string;
+  one: string;
+  per: number;
+}
+const unitOfKind = (k: HoldingKind | undefined): UnitInfo | undefined => (k?.unit ? { label: k.unit, one: k.unitOne ?? k.unit, per: k.ratePer } : undefined);
+const unitOfHolding = (h: Holding): UnitInfo | undefined => (h.unitLabel ? { label: h.unitLabel, one: h.unitOne ?? h.unitLabel, per: h.ratePer } : undefined);
+const spoken = (unit: string) => (unit === "g" ? "grams" : unit === "kg" ? "kilograms" : unit);
 const rateWord = (u: { one: string; per: number }) => `per ${u.per > 1 ? `${u.per} ` : ""}${u.one}`;
 const heldText = (h: Holding) => `${e4ToQty(h.unitsHeldE4)} ${h.unitLabel ?? ""}`.trim();
 
@@ -65,16 +60,21 @@ function BankPick({ value, onChange, label }: { value: string; onChange: (id: st
   );
 }
 
+const NEW_KIND = "__new";
+
 function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holding | null; all: Holding[]; onBuyInstead: (h: Holding) => void; onClose: () => void }) {
   const { run, error, setError, busy } = useAction(onClose);
   const [name, setName] = useState(holding?.name ?? "");
-  const [kind, setKind] = useState<Holding["kind"]>(holding?.kind ?? "gold");
+  const kinds = useHoldingKinds().data ?? [];
+  const options = kinds.filter((k) => !k.archived || k.key === holding?.kind);
+  const [kind, setKind] = useState<string>(holding?.kind ?? "gold");
+  const [addingKind, setAddingKind] = useState(false);
   const [invested, setInvested] = useState("");
   const [value, setValue] = useState("");
   const [qty, setQty] = useState("");
   const [rate, setRate] = useState("");
   const [typed, setTyped] = useState(false);
-  const unit = UNITS[kind];
+  const unit = unitOfKind(kinds.find((k) => k.key === kind));
   const counted = !holding && !!unit && !typed;
   const key = name.trim().replace(/\s+/g, " ").toLowerCase();
   const dupe = !holding && key ? all.find((h) => h.status === "active" && h.name.trim().replace(/\s+/g, " ").toLowerCase() === key) : undefined;
@@ -87,7 +87,7 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
     if (invested.trim() && put === null) return setError("What you paid looks wrong. Leave it empty if nothing yet.");
     if (counted && unit) {
       const held = qty.trim() ? qtyToE4(qty) : 0;
-      if (qty.trim() && held === null) return setError(`How many ${unit.label} you hold looks wrong. Use a number such as 15.2.`);
+      if (qty.trim() && held === null) return setError(`How many ${spoken(unit.label)} you hold looks wrong. Use a number such as 15.2.`);
       const price = rate.trim() ? rupeesToPaise(rate) : null;
       if (rate.trim() && !price) return setError(`The rate looks wrong. Type it ${rateWord(unit)}, such as 130000.`);
       return void run(
@@ -101,6 +101,7 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
   };
 
   return (
+    <>
     <Sheet title={holding ? "Edit investment" : "Add an investment"} onClose={onClose}>
       <form
         className="space-y-4"
@@ -113,12 +114,20 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
           <input className={inputClass} maxLength={40} autoComplete="off" placeholder="Gold coins" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field label="Kind">
-          <select className={inputClass} value={kind} onChange={(e) => setKind(e.target.value as Holding["kind"])}>
-            {KINDS.map((k) => (
-              <option key={k.value} value={k.value}>
-                {k.label}
+          <select
+            className={inputClass}
+            value={kind}
+            onChange={(e) => {
+              if (e.target.value === NEW_KIND) setAddingKind(true);
+              else setKind(e.target.value);
+            }}
+          >
+            {options.map((k) => (
+              <option key={k.key} value={k.key}>
+                {k.name}
               </option>
             ))}
+            <option value={NEW_KIND}>+ New kind…</option>
           </select>
         </Field>
         {dupe && (
@@ -131,7 +140,7 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
         )}
         {!holding && counted && unit && (
           <>
-            <Field label={`How many ${unit.label} do you hold now?`} hint={kind === "gold" ? "All of it together. Leave empty to start with nothing and add purchases one by one." : "Leave empty to start with nothing and add purchases one by one."}>
+            <Field label={`How many ${spoken(unit.label)} do you hold now?`} hint={kind === "gold" ? "All of it together. Leave empty to start with nothing and add purchases one by one." : "Leave empty to start with nothing and add purchases one by one."}>
               <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder={kind === "gold" ? "15.2" : "120.5"} value={qty} onChange={(e) => setQty(e.target.value)} />
             </Field>
             <Field label="Total paid for it (₹)" hint="Everything you paid, including making charges and GST, so the gain shown is the real one.">
@@ -180,13 +189,15 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
         </div>
       </form>
     </Sheet>
+    {addingKind && <NewKindSheet onCreated={(k) => setKind(k.key)} onClose={() => setAddingKind(false)} />}
+    </>
   );
 }
 
 /** Types today's rate for gold, a fund or shares; the worth follows from the quantity held. */
 function RateSheet({ holding, onClose }: { holding: Holding; onClose: () => void }) {
   const { run, error, setError, busy } = useAction(onClose);
-  const unit = UNITS[holding.kind] ?? { label: "units", one: "unit", per: 1 };
+  const unit = unitOfHolding(holding) ?? { label: "units", one: "unit", per: 1 };
   const [amount, setAmount] = useState(holding.ratePaise ? paiseToInput(holding.ratePaise) : "");
   const [date, setDate] = useState(today());
   const paise = rupeesToPaise(amount);
@@ -234,14 +245,14 @@ function RateSheet({ holding, onClose }: { holding: Holding; onClose: () => void
 /** Switches an investment valued by typing to quantity times rate. */
 function ConvertSheet({ holding, onClose }: { holding: Holding; onClose: () => void }) {
   const { run, error, setError, busy } = useAction(onClose);
-  const unit = UNITS[holding.kind] as { label: string; one: string; per: number };
+  const unit = unitOfKind((useHoldingKinds().data ?? []).find((k) => k.key === holding.kind)) ?? { label: "units", one: "unit", per: 1 };
   const [qty, setQty] = useState("");
   const [rate, setRate] = useState("");
 
   const save = () => {
     const held = qtyToE4(qty);
     const price = rupeesToPaise(rate);
-    if (!held) return setError(`Enter how many ${unit.label} you hold, such as 15.2.`);
+    if (!held) return setError(`Enter how many ${spoken(unit.label)} you hold, such as 15.2.`);
     if (!price) return setError(`Enter today's rate ${rateWord(unit)}.`);
     void run(() => api.post(`/api/holdings/${holding.id}/convert`, { unitsE4: held, ratePaise: price }), `${holding.name} is now counted by quantity.`);
   };
@@ -258,7 +269,7 @@ function ConvertSheet({ holding, onClose }: { holding: Holding; onClose: () => v
         <p className="text-sm text-soft">
           What you put in ({rupees(holding.investedPaise)}) stays as it is. Tell Alfred how much you hold in total and today's rate; the worth then follows the rate. Later purchases are added with their quantity.
         </p>
-        <Field label={`${unit.label[0]?.toUpperCase()}${unit.label.slice(1)} held in total`}>
+        <Field label={`${spoken(unit.label)[0]?.toUpperCase()}${spoken(unit.label).slice(1)} held in total`}>
           <input className={inputClass} inputMode="decimal" autoComplete="off" autoFocus placeholder={holding.kind === "gold" ? "15.2" : "120.5"} value={qty} onChange={(e) => setQty(e.target.value)} />
         </Field>
         <Field label={`Rate today (₹ ${rateWord(unit)})`}>
@@ -323,7 +334,7 @@ function TradeSheet({ holding, selling, onClose }: { holding: Holding; selling: 
   const [closeOut, setCloseOut] = useState(false);
   const banks = (useAccounts().data ?? []).filter((a) => a.kind === "bank");
   const counted = holding.tracking === "units";
-  const unit = UNITS[holding.kind] ?? { label: "units", one: "unit", per: 1 };
+  const unit = unitOfHolding(holding) ?? { label: "units", one: "unit", per: 1 };
   const account = accountId || banks[0]?.id || "";
   const earlier = !selling && counted && account === NO_BANK;
 
@@ -331,7 +342,7 @@ function TradeSheet({ holding, selling, onClose }: { holding: Holding; selling: 
     const paise = rupeesToPaise(amount);
     if (!paise && !(earlier && paise === 0)) return setError(selling ? "Enter what you received, such as 4000." : "Enter what you paid, such as 5000.");
     const units = counted ? qtyToE4(qty) : undefined;
-    if (counted && !units) return setError(`Enter how many ${unit.label} you ${selling ? "sold" : "bought"}, such as 2.5.`);
+    if (counted && !units) return setError(`Enter how many ${spoken(unit.label)} you ${selling ? "sold" : "bought"}, such as 2.5.`);
     if (selling && counted && units && units > holding.unitsHeldE4) return setError(`You hold ${heldText(holding)}.`);
     if (earlier) {
       return void run(() => api.post(`/api/holdings/${holding.id}/lots`, { unitsE4: units, costPaise: paise ?? 0, date, note: note.trim() || null }), "Purchase added. No bank was touched.");
@@ -361,7 +372,7 @@ function TradeSheet({ holding, selling, onClose }: { holding: Holding; selling: 
               : "The money goes out of the bank you choose as an Investment entry. It is not spending."}
         </p>
         {counted && (
-          <Field label={`${selling ? "Sold" : "Bought"} (${unit.label})`}>
+          <Field label={`${selling ? "Sold" : "Bought"} (${spoken(unit.label)})`}>
             <input className={inputClass} inputMode="decimal" autoComplete="off" autoFocus placeholder={holding.kind === "gold" ? "2.5" : "10"} value={qty} onChange={(e) => setQty(e.target.value)} />
           </Field>
         )}
@@ -417,7 +428,8 @@ function Row({ h, onAct }: { h: Holding; onAct: (what: Act) => void }) {
   const active = h.status === "active";
   const stale = active && (h.staleDays === null || h.staleDays > 35);
   const counted = h.tracking === "units";
-  const unit = UNITS[h.kind];
+  const unit = unitOfHolding(h);
+  const kindUnit = unitOfKind((useHoldingKinds().data ?? []).find((k) => k.key === h.kind));
 
   const act = async (work: () => Promise<unknown>, done: string) => {
     setError("");
@@ -435,7 +447,7 @@ function Row({ h, onAct }: { h: Holding; onAct: (what: Act) => void }) {
       <div className="flex items-baseline justify-between gap-3">
         <span className="min-w-0 truncate font-medium">
           {h.name}
-          <span className="ml-2 text-xs font-normal text-faint">{kindLabel(h.kind)}{!active && " · closed"}</span>
+          <span className="ml-2 text-xs font-normal text-faint">{h.kindName}{!active && " · closed"}</span>
         </span>
         <span className="shrink-0 font-semibold tabular-nums">{rupees(h.valuePaise)}</span>
       </div>
@@ -471,7 +483,7 @@ function Row({ h, onAct }: { h: Holding; onAct: (what: Act) => void }) {
                 Sell
               </Button>
             )}
-            {!counted && unit && (
+            {!counted && kindUnit && (
               <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("convert")}>
                 Count by quantity
               </Button>

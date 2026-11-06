@@ -2,10 +2,9 @@ import { and, eq, isNull } from "drizzle-orm";
 import { valueNudge } from "../alfred/botVoice";
 import type { TelegramApi } from "../bot/telegramApi";
 import type { Db } from "../db/client";
-import { holdings, transactions } from "../db/schema";
+import { holdingKinds, holdings, transactions } from "../db/schema";
 import { todayIst } from "../domain/dates";
 import { logger } from "../utils/logger";
-import { unitInfo } from "../domain/holdings";
 import { botVoice } from "../alfred/botVoice";
 import { listHoldings } from "./holdings";
 import { chatsFor } from "./recurringJob";
@@ -44,21 +43,19 @@ export async function runHoldingNudges(deps: HoldingsJobDeps): Promise<{ sent: n
   return { sent };
 }
 
-/** What a unit is called when asking about a quantity. */
-export const unitWord = (kind: string): string => {
-  const label = unitInfo(kind)?.label;
-  return label === "g" ? "grams" : (label ?? "units");
-};
+/** What a unit is called when asking about a quantity: "g" is spoken as grams. */
+export const unitWord = (unit: string | null): string => (unit === "g" ? "grams" : unit === "kg" ? "kilograms" : (unit ?? "units"));
 
 /**
  * The question to ask about a confirmed purchase into a holding counted by quantity that has no quantity yet, with the
- * entry it is about; null when there is nothing to ask (another kind of holding, a quantity already given, a draft).
+ * word for its unit; null when there is nothing to ask (another kind of holding, a quantity already given, a draft).
  */
-export async function unitsQuestionFor(db: Db, userId: string, txnId: string): Promise<string | null> {
+export async function unitsQuestionFor(db: Db, userId: string, txnId: string): Promise<{ text: string; word: string } | null> {
   const [row] = await db
-    .select({ amountPaise: transactions.amountPaise, name: holdings.name, kind: holdings.kind })
+    .select({ amountPaise: transactions.amountPaise, name: holdings.name, unit: holdingKinds.unit })
     .from(transactions)
     .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
+    .leftJoin(holdingKinds, and(eq(holdingKinds.userId, holdings.userId), eq(holdingKinds.key, holdings.kind)))
     .where(
       and(
         eq(transactions.id, txnId),
@@ -72,7 +69,9 @@ export async function unitsQuestionFor(db: Db, userId: string, txnId: string): P
       ),
     )
     .limit(1);
-  return row ? botVoice.unitsAsk(row.name, row.amountPaise, unitWord(row.kind)) : null;
+  if (!row) return null;
+  const word = unitWord(row.unit);
+  return { text: botVoice.unitsAsk(row.name, row.amountPaise, word), word };
 }
 
 /**
@@ -94,9 +93,9 @@ export async function runUnitsCheckIns(deps: HoldingsJobDeps): Promise<{ asked: 
     const chat = chats.get(t.userId);
     if (!chat) continue;
     try {
-      const text = await unitsQuestionFor(db, t.userId, t.id);
-      if (!text) continue;
-      await telegram.sendMessage(chat, text, [[{ text: "Tell me", data: `q:${t.id}` }]]);
+      const question = await unitsQuestionFor(db, t.userId, t.id);
+      if (!question) continue;
+      await telegram.sendMessage(chat, question.text, [[{ text: "Tell me", data: `q:${t.id}` }]]);
       asked += 1;
     } catch (error) {
       logger.error("units_check_failed", { error: error instanceof Error ? error.message : "unknown" });

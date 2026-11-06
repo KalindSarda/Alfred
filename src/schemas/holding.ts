@@ -6,8 +6,8 @@ const Note = z.string().trim().max(200);
 const Positive = z.number().int().positive().max(100_000_000_000_00);
 const Money = z.number().int().min(0).max(100_000_000_000_00);
 
-export const HOLDING_KINDS = ["stock", "fund", "gold", "crypto", "other"] as const;
-export const HoldingKind = z.enum(HOLDING_KINDS);
+/** The key of one of the person's investment kinds (see /api/holding-kinds). */
+export const HoldingKind = z.string().trim().min(1).max(40);
 
 /** A quantity in 1/10,000 of a unit (15.2 g is 152000). */
 const UnitsE4 = z.number().int().positive().max(1_000_000_000_000);

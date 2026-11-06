@@ -392,7 +392,9 @@ export interface HoldingLot {
 export interface Holding {
   id: string;
   name: string;
-  kind: "stock" | "fund" | "gold" | "crypto" | "other";
+  /** The key of its investment kind, and the kind's name. */
+  kind: string;
+  kindName: string;
   status: "active" | "closed";
   openingInvestedPaise: number;
   investedPaise: number;
@@ -406,12 +408,27 @@ export interface Holding {
   values: { date: string; valuePaise: number; ratePaise: number | null }[];
   tracking: "value" | "units";
   unitLabel: string | null;
+  unitOne: string | null;
   ratePer: number;
   unitsHeldE4: number;
   ratePaise: number | null;
   avgCostPaise: number | null;
   lots: HoldingLot[];
   missingUnits: number;
+}
+
+/** A kind of investment (Gold, Silver, Mutual fund). A kind with a unit can be counted by quantity times a rate quoted for `ratePer` units. */
+export interface HoldingKind {
+  id: string;
+  key: string;
+  name: string;
+  unit: string | null;
+  unitOne: string | null;
+  ratePer: 1 | 10 | 100 | 1000;
+  archived: boolean;
+  isSystem: boolean;
+  holdingCount: number;
+  locked: boolean;
 }
 
 export interface HoldingsOverview {

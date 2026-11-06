@@ -141,6 +141,13 @@
       "when": 1793893083097,
       "tag": "0019_holding_units",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1793962916057,
+      "tag": "0020_holding_kinds",
+      "breakpoints": true
     }
   ]
 }

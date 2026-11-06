@@ -27,6 +27,18 @@ describe("holdings counted by quantity in the bot", () => {
   });
 });
 
+describe("a custom kind in the bot", () => {
+  it("/value and /invest work by name, with the rate quoted for 1,000 g", async () => {
+    const w = await world();
+    const silver = (await w.api("POST", "/api/holding-kinds", { name: "Silver", unit: "g", ratePer: 1000 })).json;
+    await w.api("POST", "/api/holdings", { name: "Silver bars", kind: silver.key, tracking: "units", unitsE4: 10 * 10_000, investedPaise: 1_000_00, ratePaise: 1_00_000_00 });
+    await w.say("/value silver 110000");
+    expect(w.tg.last.text).toBe("Noted. Silver bars is worth ₹1,100, up ₹100 on what you put in.");
+    await w.say("/invest");
+    expect(w.tg.last.text).toContain("Silver bars: 10 g at ₹1,10,000 per 1000 g, ₹1,100");
+  });
+});
+
 describe("asking how much a SIP bought", () => {
   const at = (iso: string) => ({ db, now: () => Date.parse(`${iso}T05:00:00Z`) });
   const mine = (w: W) => w.tg.messages.filter((m) => m.chatId === String(w.chat));

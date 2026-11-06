@@ -238,6 +238,7 @@ export interface HoldingLine {
   /** Counted by quantity: what is held and the rate typed (quoted for `ratePer` units). */
   tracking?: "value" | "units";
   unitLabel?: string | null;
+  unitOne?: string | null;
   unitsHeldE4?: number;
   ratePaise?: number | null;
   ratePer?: number;
@@ -248,7 +249,7 @@ const qty = (e4: number) => String(Math.round(e4) / 10_000);
 /** "15.2 g at ₹13,100 per 10 g" for a holding counted by quantity; empty otherwise. */
 const heldAt = (h: HoldingLine) =>
   h.tracking === "units" && h.unitLabel
-    ? `${qty(h.unitsHeldE4 ?? 0)} ${h.unitLabel}${h.ratePaise ? ` at ${rupees(h.ratePaise)} per ${h.ratePer && h.ratePer > 1 ? `${h.ratePer} ` : ""}${h.unitLabel === "g" ? "g" : h.unitLabel === "shares" ? "share" : "unit"}` : ""}, `
+    ? `${qty(h.unitsHeldE4 ?? 0)} ${h.unitLabel}${h.ratePaise ? ` at ${rupees(h.ratePaise)} per ${h.ratePer && h.ratePer > 1 ? `${h.ratePer} ` : ""}${h.unitOne ?? h.unitLabel}` : ""}, `
     : "";
 const age = (days: number | null) => (days === null ? "no value typed yet" : days === 0 ? "valued today" : `valued ${days} ${days === 1 ? "day" : "days"} ago`);
 
