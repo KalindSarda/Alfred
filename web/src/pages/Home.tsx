@@ -4,6 +4,7 @@ import type { CardAccount } from "../api";
 import { AlfredPanel } from "../components/Alfred";
 import { Breakdown } from "../components/Breakdown";
 import { CashflowCard } from "../components/CashflowCard";
+import { CommitmentsCard } from "../components/Commitments";
 import { Card, Empty, Spinner } from "../components/ui";
 import { rupees, shortDate, today } from "../format";
 import { emptyFilters } from "../filters";
@@ -70,6 +71,8 @@ export function Home() {
       <h1 className="sr-only">Home</h1>
 
       {panel}
+
+      <CommitmentsCard />
 
       {overview.data && <Shortcuts overview={overview.data} />}
 

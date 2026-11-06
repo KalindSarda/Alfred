@@ -409,6 +409,20 @@ export const nudgeLog = sqliteTable(
   (t) => [uniqueIndex("nudge_log_card_due_uq").on(t.userId, t.cardAccountId, t.dueDate)],
 );
 
+/** A warning that a bank cannot cover a debit, sent once per thing due and date. */
+export const mandateAlerts = sqliteTable(
+  "mandate_alerts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    /** What was due: "recurring:<id>", "loan:<id>". */
+    key: text("key").notNull(),
+    dueDate: text("due_date").notNull(),
+    sentAt: text("sent_at").notNull(),
+  },
+  (t) => [uniqueIndex("mandate_alerts_uq").on(t.userId, t.key, t.dueDate)],
+);
+
 /** Lets a retried POST /api/transactions (flaky mobile network) return the original instead of duplicating. */
 export const idempotencyKeys = sqliteTable(
   "idempotency_keys",

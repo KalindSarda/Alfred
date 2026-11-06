@@ -148,6 +148,13 @@
       "when": 1793962916057,
       "tag": "0020_holding_kinds",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1793970700507,
+      "tag": "0021_mandate_alerts",
+      "breakpoints": true
     }
   ]
 }

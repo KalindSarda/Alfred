@@ -417,6 +417,32 @@ export interface Holding {
   missingUnits: number;
 }
 
+/** Something dated that is going to leave before the next salary. */
+export interface Commitment {
+  key: string;
+  date: string;
+  title: string;
+  amountPaise: number;
+  source: "card" | "emi" | "loan" | "recurring" | "debt";
+  accountId: string | null;
+  accountName: string | null;
+  accountKind: "bank" | "card" | null;
+  /** Already held back by safe-to-spend (a card bill), so not taken off again. */
+  counted: boolean;
+}
+
+export interface CommitmentsView {
+  from: string;
+  /** The window ends just before this day. */
+  until: string;
+  basis: "salary" | "month";
+  safeToSpendPaise: number;
+  freeToSpendPaise: number;
+  commitmentsPaise: number;
+  items: Commitment[];
+  shortfalls: { commitment: Commitment; balancePaise: number; shortByPaise: number }[];
+}
+
 /** A kind of investment (Gold, Silver, Mutual fund). A kind with a unit can be counted by quantity times a rate quoted for `ratePer` units. */
 export interface HoldingKind {
   id: string;

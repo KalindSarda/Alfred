@@ -287,7 +287,26 @@ export function loansReply(items: LoanLine[]): string {
   return [`You owe ${rupees(total)} on bank loans, with ${rupees(emi)} going out each month.`, "", ...lines].join("\n");
 }
 
+/** What is still to leave before the next salary, and what that leaves free to spend. */
+export interface CommitmentsText {
+  until: string;
+  basis: "salary" | "month";
+  items: { date: string; title: string; amountPaise: number; accountName: string | null }[];
+  safeToSpendPaise: number;
+  freeToSpendPaise: number;
+  commitmentsPaise: number;
+}
+
+export function commitmentsLines(c: CommitmentsText): string[] {
+  const lines = [`Still to leave before ${shortDate(c.until)}${c.basis === "salary" ? " (your next salary)" : ""}:`];
+  for (const i of c.items) lines.push(`${shortDate(i.date)}: ${i.title} ${rupees(i.amountPaise)}${i.accountName ? ` (${i.accountName})` : ""}`);
+  lines.push("", `Free to spend until then: ${rupees(c.freeToSpendPaise)}, which is ${rupees(c.safeToSpendPaise)} safe to spend less ${rupees(c.commitmentsPaise)} of what is coming.`);
+  return lines;
+}
+
 export const botVoice = {
+  mandateShort: (title: string, amountPaise: number, accountName: string, whenText: string, balancePaise: number, shortByPaise: number) =>
+    `${title}: ${rupees(amountPaise)} is due to leave ${accountName} ${whenText}, and it holds ${rupees(Math.max(0, balancePaise))}. It is ${rupees(shortByPaise)} short. A transfer in beforehand would spare you a failed debit.`,
   loanCheck: (name: string, totalPaise: number, interestPaise: number, principalPaise: number, accountName: string) =>
     `${name}: ${rupees(totalPaise)} was taken from ${accountName} (interest ${rupees(interestPaise)}, principal ${rupees(principalPaise)}). Does that agree with your bank?`,
   loanAgrees: "Splendid. That matches your bank.",

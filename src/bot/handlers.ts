@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, describeEntry, emiReply, goalsReply, holdsReply, investReply, loansReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
+import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, commitmentsLines, describeEntry, emiReply, goalsReply, holdsReply, investReply, loansReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
 import { AppError, ConflictError, NotFoundError, RateLimitedError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
@@ -18,6 +18,7 @@ import { getHoldingRow } from "../db/holdings";
 import { holdingsValue, listHoldings, setEntryUnits, setRate, setValue } from "../services/holdings";
 import { unitWord, unitsQuestionFor } from "../services/holdingsJob";
 import { parseQuantityE4 } from "../domain/holdings";
+import { getCommitments } from "../services/commitments";
 import { getLoan, listLoans, loansOutstanding, setInstalmentTotal } from "../services/loans";
 import { addContribution, listGoals, removeContribution } from "../services/goals";
 import { parseAmountToken } from "./parser";
@@ -584,12 +585,21 @@ async function cmdDue(deps: BotDeps, who: Actor, today: IstDate): Promise<void> 
   const cards = figures
     .flatMap((a) => (a.kind === "card" ? [a] : []))
     .sort((a, b) => a.summary.nextDueDate.localeCompare(b.summary.nextDueDate));
-  if (cards.length === 0) return void (await deps.telegram.sendMessage(who.chatId, "You have no credit cards on record."));
+  const view = await getCommitments(deps.db, who.userId, today);
+  const coming = view.items.filter((i) => !i.counted);
+  if (cards.length === 0 && coming.length === 0) return void (await deps.telegram.sendMessage(who.chatId, "You have no credit cards on record."));
   const pending = cards.filter((c) => c.summary.statementOutstandingPaise > 0);
-  if (pending.length === 0) return void (await deps.telegram.sendMessage(who.chatId, "No card payments are pending."));
-  const lines = ["Card payments coming up:"];
-  for (const c of pending) {
-    lines.push(`${c.name}: ${rupees(c.summary.statementOutstandingPaise)} due ${shortDate(c.summary.nextDueDate)} (${inDays(daysBetween(today, c.summary.nextDueDate))})`);
+  if (pending.length === 0 && coming.length === 0) return void (await deps.telegram.sendMessage(who.chatId, "No card payments are pending."));
+  const lines: string[] = [];
+  if (pending.length > 0) {
+    lines.push("Card payments coming up:");
+    for (const c of pending) {
+      lines.push(`${c.name}: ${rupees(c.summary.statementOutstandingPaise)} due ${shortDate(c.summary.nextDueDate)} (${inDays(daysBetween(today, c.summary.nextDueDate))})`);
+    }
+  }
+  if (coming.length > 0) {
+    if (lines.length > 0) lines.push("");
+    lines.push(...commitmentsLines({ until: view.until, basis: view.basis, items: coming, safeToSpendPaise: view.safeToSpendPaise, freeToSpendPaise: view.freeToSpendPaise, commitmentsPaise: view.commitmentsPaise }));
   }
   await deps.telegram.sendMessage(who.chatId, lines.join("\n"));
 }

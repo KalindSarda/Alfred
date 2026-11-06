@@ -13,6 +13,7 @@ import { type IstDate, parseIstDate } from "../domain/dates";
 import { balanceOverview } from "./accounts";
 import { listDebts } from "./debts";
 import { listGoals } from "./goals";
+import { getCommitments } from "./commitments";
 import { listHoldings } from "./holdings";
 import { listLoans } from "./loans";
 import { STALE_AFTER_DAYS } from "../domain/holdings";
@@ -47,7 +48,7 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
   const base = { greeting: greeting(me.displayName, now), subline: subline(now), source: "template" as const, generatedAt: now.toISOString(), footer: BRIEFING_FOOTER };
   if (!anyAccount) return { ...base, lines: emptyBriefingLines() };
 
-  const [summary, figures, settings, budgetOverview, activeHolds, emiPlans, rules, goalOverview, debtOverview, holdingOverview, loanOverview] = await Promise.all([
+  const [summary, figures, settings, budgetOverview, activeHolds, emiPlans, rules, goalOverview, debtOverview, holdingOverview, loanOverview, commitmentView] = await Promise.all([
     getSummary(db, userId, "cycle", today),
     listAccountsWithFigures(db, userId, today),
     getSettings(db, userId),
@@ -59,6 +60,7 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
     listDebts(db, userId, today, "open"),
     listHoldings(db, userId, today, "active"),
     listLoans(db, userId, "active"),
+    getCommitments(db, userId, today),
   ]);
   const soonest = loanOverview.loans
     .filter((l) => l.nextDueDate !== null && l.nextInstalment !== null && daysBetween(today, l.nextDueDate) <= 7)
@@ -92,6 +94,7 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
       draftCount: summary.draftCount,
       cards,
       debts: { overdue },
+      commitments: { count: commitmentView.items.filter((i) => !i.counted).length, untilDate: commitmentView.until, freeToSpendPaise: commitmentView.freeToSpendPaise },
       loans: { next: soonest && soonest.nextInstalment ? { name: soonest.name, totalPaise: soonest.nextInstalment.totalPaise, date: soonest.nextDueDate as string, accountName: soonest.accountName } : null },
       holdings: { staleCount: stale.length, oldestDays: staleAges.includes(null) ? null : staleAges.length ? Math.max(...(staleAges as number[])) : null },
       goals: {

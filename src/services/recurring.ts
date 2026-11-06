@@ -67,6 +67,39 @@ function upcomingFor(row: RuleRow, made: Set<string>, today: IstDate, count: num
   return out;
 }
 
+/**
+ * Every due date from `from` up to, not including, `to` that has no entry yet, for each running rule that spends or invests.
+ * Skipped dates and paused rules are left out. Income rules are not commitments.
+ */
+export async function outflowOccurrences(
+  db: Db,
+  userId: string,
+  from: IstDate,
+  to: IstDate,
+): Promise<{ id: string; title: string; amountPaise: number; accountId: string; accountName: string; dates: IstDate[] }[]> {
+  const [rows, made] = await Promise.all([
+    db
+      .select({ rule: recurringRules, accountName: accounts.name })
+      .from(recurringRules)
+      .innerJoin(accounts, eq(accounts.id, recurringRules.accountId))
+      .where(and(eq(recurringRules.userId, userId), isNull(recurringRules.pausedAt))),
+    db
+      .select({ ruleId: transactions.recurringRuleId, on: transactions.recurringOn })
+      .from(transactions)
+      .where(and(eq(transactions.userId, userId), eq(transactions.source, "recurring"))),
+  ]);
+  const byRule = new Map<string, Set<string>>();
+  for (const m of made) if (m.ruleId && m.on) (byRule.get(m.ruleId) ?? byRule.set(m.ruleId, new Set()).get(m.ruleId)!).add(m.on);
+  return rows
+    .filter((r) => r.rule.type !== "income")
+    .map((r) => {
+      const done = byRule.get(r.rule.id) ?? new Set<string>();
+      const dates = occurrencesBetween(toRuleShape(r.rule), from, addDays(to, -1)).filter((d) => !done.has(d));
+      return { id: r.rule.id, title: r.rule.title, amountPaise: r.rule.amountPaise, accountId: r.rule.accountId, accountName: r.accountName, dates };
+    })
+    .filter((r) => r.dates.length > 0);
+}
+
 /** The next due date that has no entry yet, or null. */
 export async function nextDue(db: Db, row: RuleRow, today: IstDate): Promise<IstDate | null> {
   return upcomingFor(row, await madeDates(db, row.userId, row.id), today, 1)[0] ?? null;

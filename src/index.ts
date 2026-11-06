@@ -5,6 +5,7 @@ import { getDb } from "./db/client";
 import { runMaintenance } from "./services/maintenance";
 import { runEmiCheckIns } from "./services/emiJob";
 import { runLoanCheckIns } from "./services/loanJob";
+import { runMandateChecks } from "./services/mandateJob";
 import { runHoldingNudges, runUnitsCheckIns } from "./services/holdingsJob";
 import { runDebtReminders } from "./services/debtJob";
 import { runRecurring } from "./services/recurringJob";
@@ -44,6 +45,12 @@ export default {
       logger.info("recurring_done", { ...recurring });
     } catch (error) {
       logger.error("recurring_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+    try {
+      const mandate = await runMandateChecks({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });
+      logger.info("mandate_checks_done", { ...mandate });
+    } catch (error) {
+      logger.error("mandate_checks_failed", { error: error instanceof Error ? error.message : "unknown" });
     }
     try {
       const debtsResult = await runDebtReminders({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });

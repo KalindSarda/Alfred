@@ -170,6 +170,8 @@ export interface BriefingFacts {
   holdings?: BriefingHoldings;
   /** Bank loans; leave out when there are none. */
   loans?: BriefingLoans;
+  /** What is still to leave before the next salary; leave out when nothing is coming. */
+  commitments?: { count: number; untilDate: string; freeToSpendPaise: number };
 }
 
 export interface BriefingLine {
@@ -193,6 +195,19 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
         : `Your recorded balances are ${rupees(-facts.safeToSpendPaise)} short of what your cards currently owe.${setAside}`,
     to: "/accounts",
   });
+
+  if (facts.commitments && facts.commitments.count > 0) {
+    const c = facts.commitments;
+    const things = `${c.count} ${c.count === 1 ? "payment" : "payments"}`;
+    lines.push({
+      key: "free",
+      text:
+        c.freeToSpendPaise >= 0
+          ? `After ${things} still to leave before ${formatDate(c.untilDate)}, ${rupees(c.freeToSpendPaise)} is free to spend.`
+          : `${things} still to leave before ${formatDate(c.untilDate)} come to ${rupees(-c.freeToSpendPaise)} more than is free to spend.`,
+      to: "/",
+    });
+  }
 
   // Blocked money explains why the figure above is lower than the balances.
   if (facts.holds.length > 0) {
