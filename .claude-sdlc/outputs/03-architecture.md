@@ -222,6 +222,7 @@ Each step is isolated: one failing never stops the rest, and a person who fails 
 - **EMI and loan maths are standard reducing-balance estimates.** A bank's first and last instalments can differ a little; every month can be corrected, and the check-ins catch it.
 - **Opening balances count from the start.** The net worth trend begins at the first recorded entry and treats opening balances, opening loan principal and opening investments as always present.
 - **Instalments added in a run are capped** (36 per loan or rule) so a long-ignored item cannot flood the books.
+- **Runway is an estimate from recent history:** it needs two weeks of entries, treats the categories you mark essential plus card and loan instalments as what must be spent, and is flagged as early until 60 days of entries.
 - **Safe-to-spend is deliberately simple:** it ignores when salary arrives and when bills are due.
 
 ### Where the AI phase attaches
@@ -234,3 +235,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-11-11: slice 24 noted: the logging habit (last-logged in the briefing, the evening cron, usual spends, the weekly balance check booking gaps as source `check`).
 - 2026-11-12: slice 25 noted: card float ranking (`domain/cardFloat.ts`) and statement checks (`domain/statementGap.ts`, `services/cardTools.ts`, `statementJob.ts`).
 - 2026-11-13: slice 26 noted: the salary day plan (`services/salary.ts`, `planJob.ts`) built on the commitments view, and the opt-in morning briefing.
+- 2026-11-14: slice 27 noted: runway (`domain/runway.ts`, `services/runway.ts`, the essential flag on categories) and the part-payment what-if (`simulatePrepayment` in `domain/loans.ts`).

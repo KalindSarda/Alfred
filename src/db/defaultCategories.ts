@@ -24,4 +24,7 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
   "Other",
 ] as const;
 
+/** The spending that cannot stop, which the runway is measured against. Editable per person. */
+export const DEFAULT_ESSENTIAL_CATEGORIES: readonly string[] = ["Groceries", "Transport", "Fuel", "Bills & Utilities", "Rent", "Health", "Insurance", "Education"];
+
 export const DEFAULT_INCOME_CATEGORIES = ["Salary", CASHBACK_CATEGORY, "Interest", "Refunds", "Other income"] as const;

@@ -12,6 +12,7 @@ const toDto = (row: CategoryRow, entryCount = 0): CategoryDto => ({
   kind: row.kind,
   archived: row.archivedAt !== null,
   isSystem: row.isSystem,
+  essential: row.isEssential,
   entryCount,
 });
 
@@ -118,7 +119,7 @@ export async function updateCategory(
   db: Db,
   userId: string,
   id: string,
-  patch: { name?: string | undefined; archived?: boolean | undefined },
+  patch: { name?: string | undefined; archived?: boolean | undefined; essential?: boolean | undefined },
 ): Promise<CategoryDto> {
   const existing = await getCategory(db, userId, id);
   if (!existing) throw new NotFoundError("Category not found");
@@ -131,6 +132,7 @@ export async function updateCategory(
     }
     set.name = patch.name;
   }
+  if (patch.essential !== undefined) set.isEssential = existing.kind === "expense" ? patch.essential : false;
   if (patch.archived !== undefined) set.archivedAt = patch.archived ? (existing.archivedAt ?? nowIso()) : null;
 
   if (Object.keys(set).length === 0) return toDto(existing, await countEntries(db, userId, id));

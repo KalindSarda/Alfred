@@ -94,6 +94,22 @@ function EditSheet({ category, others, onClose }: { category: Category; others: 
           )}
         </form>
 
+        {category.kind === "expense" && (
+          <label className="flex min-h-11 items-start gap-3 border-t border-line pt-4 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1 size-5 accent-brand"
+              checked={category.essential}
+              disabled={busy}
+              onChange={(e) => void run(() => api.patch(url, { essential: e.target.checked }), "Saved.")}
+            />
+            <span>
+              Counts as essential spending
+              <span className="block text-xs text-soft">Rent, bills and groceries: what your runway is measured against.</span>
+            </span>
+          </label>
+        )}
+
         {!category.isSystem && !category.archived && others.length > 0 && (
           <div className="space-y-3 border-t border-line pt-4">
             <h3 className="font-medium">Merge into another category</h3>

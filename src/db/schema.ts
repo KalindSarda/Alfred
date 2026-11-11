@@ -62,6 +62,8 @@ export const categories = sqliteTable(
     name: text("name").notNull(),
     kind: text("kind", { enum: ["expense", "income"] }).notNull(),
     isSystem: integer("is_system", { mode: "boolean" }).notNull().default(false),
+    /** Spending that cannot stop (rent, bills, groceries): what the runway is measured against. Expense categories only. */
+    isEssential: integer("is_essential", { mode: "boolean" }).notNull().default(false),
     archivedAt: text("archived_at"),
     createdAt: text("created_at").notNull(),
   },

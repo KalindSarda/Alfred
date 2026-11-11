@@ -176,6 +176,13 @@
       "when": 1794400598642,
       "tag": "0024_salary_plan",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1794401530355,
+      "tag": "0025_essential_spending",
+      "breakpoints": true
     }
   ]
 }

@@ -193,6 +193,8 @@ export interface Category {
   kind: "expense" | "income";
   archived: boolean;
   isSystem: boolean;
+  /** Spending that cannot stop, which the runway is measured against. */
+  essential: boolean;
   entryCount: number;
 }
 
@@ -521,6 +523,37 @@ export interface HoldingsOverview {
   totalInvestedPaise: number;
   gainPaise: number;
   holdings: Holding[];
+}
+
+/** How many months the bank money would last at what must be spent. */
+export interface Runway {
+  liquidPaise: number;
+  burnPaise: number | null;
+  months: number | null;
+  basedOnDays: number;
+  /** False when it rests on fewer than 60 days: an early estimate. */
+  solid: boolean;
+  windowFrom: string;
+  essentialPaise: number;
+}
+
+export interface PrepayOutlook {
+  months: number;
+  interestPaise: number;
+  emiPaise: number;
+  lastDate: string | null;
+}
+
+/** What a part-payment would do to a loan, without recording it. */
+export interface PrepaySim {
+  loanName: string;
+  amountPaise: number;
+  effect: "shorten" | "lower";
+  before: PrepayOutlook;
+  after: PrepayOutlook;
+  monthsSaved: number;
+  interestSavedPaise: number;
+  invest: { returnPct: number; months: number; gainPaise: number } | null;
 }
 
 export interface LoanInstalment {

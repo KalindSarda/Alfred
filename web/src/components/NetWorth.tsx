@@ -1,5 +1,6 @@
 import type { BalanceOverview } from "../api";
 import { rupees } from "../format";
+import { useRunway } from "../queries";
 import { Link } from "../router";
 import { Card } from "./ui";
 
@@ -19,6 +20,7 @@ function Row({ label, value, hint }: { label: string; value: string; hint?: stri
 
 /** The full breakdown, shown at the top of Accounts and cards. */
 export function NetWorthCard({ overview }: { overview: BalanceOverview }) {
+  const runway = useRunway().data;
   return (
     <Card>
       <p className="text-xs tracking-wide text-soft uppercase">{LABEL}</p>
@@ -46,6 +48,19 @@ export function NetWorthCard({ overview }: { overview: BalanceOverview }) {
           <Row label="Blocked for applications" value={rupees(overview.blockedPaise)} hint="Still yours, but not available to spend until the result" />
         )}
       </div>
+      {runway && overview.totalInBanksPaise > 0 && (
+        <div className="mt-3 border-t border-brass/50 pt-2">
+          {runway.months !== null && runway.burnPaise !== null ? (
+            <Row
+              label="Runway"
+              value={`${runway.months} months`}
+              hint={`Your bank money at ${rupees(runway.burnPaise)} a month of rent, bills and instalments${runway.solid ? "" : `. An early estimate, from ${runway.basedOnDays} days of entries`}`}
+            />
+          ) : (
+            <Row label="Runway" value="Not yet" hint="Needs about two weeks of entries, with some rent, bills or groceries among them" />
+          )}
+        </div>
+      )}
       <p className="mt-3 text-xs text-faint">Everything you own and owe is counted here.</p>
     </Card>
   );

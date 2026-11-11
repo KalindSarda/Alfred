@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, commitmentsLines, swipeReply, usualLabel, describeEntry, emiReply, goalsReply, holdsReply, investReply, loansReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
+import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, commitmentsLines, runwayLine, swipeReply, whatIfLines, usualLabel, describeEntry, emiReply, goalsReply, holdsReply, investReply, loansReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
 import { AppError, ConflictError, NotFoundError, RateLimitedError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
@@ -20,13 +20,14 @@ import { unitWord, unitsQuestionFor } from "../services/holdingsJob";
 import { parseQuantityE4 } from "../domain/holdings";
 import { getCommitments } from "../services/commitments";
 import { buildSalaryPlan, latestSalary } from "../services/salary";
+import { getRunway } from "../services/runway";
 import { previewBalance, settleBalance } from "../services/balanceCheck";
 import { analyseStatement, recordCheck, rankCardsForToday, settleStatement, statementFacts } from "../services/cardTools";
 import { checkinLog } from "../db/schema";
 import { updateSettings } from "../services/settings";
 import { addDays } from "../domain/dates";
 import { newId, nowIso } from "../utils/id";
-import { getLoan, listLoans, loansOutstanding, setInstalmentTotal } from "../services/loans";
+import { getLoan, listLoans, loansOutstanding, setInstalmentTotal, simulatePrepay } from "../services/loans";
 import { addContribution, listGoals, removeContribution } from "../services/goals";
 import { parseAmountToken } from "./parser";
 import { createBalanceFix, createBalanceProposal, createEmiFix, createLoanFix, createStatementFix, createStatementProposal, createUnitsFix, deletePending as removePending, getBalanceProposal, getStatementProposal, takeAmountFix } from "./pending";
@@ -359,6 +360,44 @@ async function runMenuItem(deps: BotDeps, who: Actor, id: string, today: IstDate
   }
 }
 
+/** What part-paying a loan would do: "/whatif 25000 home" (add "12%" to compare the same money invested). */
+async function cmdWhatIf(deps: BotDeps, who: Actor, arg: string, today: IstDate): Promise<void> {
+  const tokens = arg.split(/\s+/).filter(Boolean);
+  const pct = tokens.find((t) => /^\d+(\.\d+)?%$/.test(t));
+  const rest = tokens.filter((t) => t !== pct && t.toLowerCase() !== "prepay");
+  const amountToken = rest.find((t) => (parseAmountToken(t) ?? 0) > 0);
+  const amount = amountToken ? parseAmountToken(amountToken) : null;
+  if (amount === null || amount === undefined) return void (await deps.telegram.sendMessage(who.chatId, botVoice.whatIfNeedsAmount));
+  const { loans: active } = await listLoans(deps.db, who.userId, "active");
+  if (active.length === 0) return void (await deps.telegram.sendMessage(who.chatId, botVoice.whatIfNoLoans));
+  const words = rest.filter((t) => t !== amountToken).join(" ").toLowerCase();
+  const exact = active.filter((l) => l.name.toLowerCase() === words);
+  const fits = exact.length ? exact : words ? active.filter((l) => l.name.toLowerCase().includes(words)) : active.length === 1 ? active : [];
+  if (fits.length !== 1) return void (await deps.telegram.sendMessage(who.chatId, words ? botVoice.whatIfNoMatch : botVoice.whatIfWhich(String(amount / 100))));
+  const loan = fits[0] as (typeof active)[number];
+  const returnPct = pct ? Number.parseFloat(pct) : undefined;
+  try {
+    const [shorten, lower] = await Promise.all([
+      simulatePrepay(deps.db, who.userId, loan.id, { amountPaise: amount, effect: "shorten", ...(returnPct !== undefined && { returnPct }) }, today),
+      simulatePrepay(deps.db, who.userId, loan.id, { amountPaise: amount, effect: "lower" }, today),
+    ]);
+    await deps.telegram.sendMessage(
+      who.chatId,
+      whatIfLines({
+        loanName: loan.name,
+        amountPaise: amount,
+        before: shorten.before,
+        shorten: { after: shorten.after, monthsSaved: shorten.monthsSaved, interestSavedPaise: shorten.interestSavedPaise },
+        lower: { after: lower.after, interestSavedPaise: lower.interestSavedPaise },
+        invest: shorten.invest,
+      }).join("\n"),
+    );
+  } catch (error) {
+    if (error instanceof ValidationError) return void (await deps.telegram.sendMessage(who.chatId, error.details?.[0]?.message ?? botVoice.failure));
+    throw error;
+  }
+}
+
 /** The salary day plan on request: for the latest salary credit, or where things stand when there is none. */
 async function cmdSalary(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
   const plan = await buildSalaryPlan(deps.db, who.userId, today, await latestSalary(deps.db, who.userId, today));
@@ -606,6 +645,8 @@ async function cmdBalance(deps: BotDeps, who: Actor, today: IstDate): Promise<vo
   if (overview.setAsidePaise > 0) lines.push(`Set aside, not counted: ${rupees(overview.setAsidePaise)}.`);
   if (overview.emiToComePaise > 0) lines.push(`EMIs still to be billed: ${rupees(overview.emiToComePaise)}. Net worth counts them; safe to spend does not, until they are billed.`);
   lines.push(`Net worth: ${rupees(overview.netWorthPaise)} (banks minus cards).`);
+  const run = runwayLine(await getRunway(deps.db, who.userId, today));
+  if (run) lines.push(run);
   await deps.telegram.sendMessage(who.chatId, lines.join("\n"));
 }
 
@@ -896,6 +937,8 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
         return await cmdSwipe(deps, who, arg, today);
       case "salary":
         return await cmdSalary(deps, who, today);
+      case "whatif":
+        return await cmdWhatIf(deps, who, arg, today);
       case "invest":
       case "investments":
         return await cmdInvest(deps, who, today);

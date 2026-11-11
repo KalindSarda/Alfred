@@ -122,3 +122,57 @@ export function emiAfterRateChange(keep: "emi" | "tenure", outstandingPaise: num
 
 export const bpFromPct = (pct: number): number => Math.round(pct * 100);
 export const pctFromBp = (bp: number): number => bp / 100;
+
+export interface Outlook {
+  /** Instalments still to pay. */
+  months: number;
+  /** Interest still to pay over them. */
+  interestPaise: number;
+  emiPaise: number;
+  /** The date of the last instalment; null once nothing is owed. */
+  lastDate: IstDate | null;
+}
+
+function outlook(outstandingPaise: number, ratePctBp: number, emiPaise: number, firstDue: IstDate, dueDay: number): Outlook {
+  const rows = projectSchedule(outstandingPaise, ratePctBp, emiPaise, firstDue, dueDay, 1200);
+  return { months: rows.length, interestPaise: rows.reduce((sum, r) => sum + r.interestPaise, 0), emiPaise, lastDate: rows.at(-1)?.date ?? null };
+}
+
+export interface PrepaySimInput {
+  outstandingPaise: number;
+  ratePctBp: number;
+  emiPaise: number;
+  /** The next instalment's date, and the day of the month they fall on. */
+  firstDue: IstDate;
+  dueDay: number;
+  amountPaise: number;
+  effect: "shorten" | "lower";
+  /** A yearly return to compare the same money invested instead; leave out to skip the comparison. */
+  returnPct?: number | undefined;
+}
+
+export interface PrepaySim {
+  before: Outlook;
+  after: Outlook;
+  monthsSaved: number;
+  /** Interest not paid because of the part-payment: certain, unlike an investment return. */
+  interestSavedPaise: number;
+  /** What the same money might grow by if invested instead, over the months the loan had left; null without a return. */
+  invest: { returnPct: number; months: number; gainPaise: number } | null;
+}
+
+/**
+ * What a part-payment would do, without recording it: how many instalments and how much interest it saves, and the new EMI
+ * when the EMI is lowered. With a return rate it also shows what the same money would grow by if invested over the months
+ * the loan had left (compounded monthly, before tax); a comparison of numbers, not a prediction.
+ */
+export function simulatePrepayment(i: PrepaySimInput): PrepaySim {
+  const before = outlook(i.outstandingPaise, i.ratePctBp, i.emiPaise, i.firstDue, i.dueDay);
+  const left = Math.max(0, i.outstandingPaise - i.amountPaise);
+  const emiAfter = emiAfterPrepayment(i.effect, i.outstandingPaise, i.amountPaise, i.ratePctBp, i.emiPaise);
+  const after: Outlook = left === 0 ? { months: 0, interestPaise: 0, emiPaise: 0, lastDate: null } : outlook(left, i.ratePctBp, emiAfter, i.firstDue, i.dueDay);
+  const monthly = (i.returnPct ?? 0) / 100 / 12;
+  const invest = i.returnPct !== undefined && i.returnPct > 0 && before.months > 0 ? { returnPct: i.returnPct, months: before.months, gainPaise: Math.round(i.amountPaise * ((1 + monthly) ** before.months - 1)) } : null;
+  return { before, after, monthsSaved: before.months - after.months, interestSavedPaise: before.interestPaise - after.interestPaise, invest };
+}
+

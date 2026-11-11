@@ -6,9 +6,9 @@ import { getAccount } from "../db/accounts";
 import { getCategoryByName } from "../db/categories";
 import { getLoanRow, type LoanRow } from "../db/loans";
 import { accounts, loans, transactions } from "../db/schema";
-import { bpFromPct, dueDateAfter, emiAfterPrepayment, emiAfterRateChange, emiClearsLoan, firstDueAfter, levelEmi, nextInstalment, pctFromBp, projectSchedule, type ScheduleRow } from "../domain/loans";
+import { bpFromPct, dueDateAfter, type PrepaySim, simulatePrepayment, emiAfterPrepayment, emiAfterRateChange, emiClearsLoan, firstDueAfter, levelEmi, nextInstalment, pctFromBp, projectSchedule, type ScheduleRow } from "../domain/loans";
 import { type IstDate, isValidIstDate } from "../domain/dates";
-import type { ChangeRateData, CreateLoanData, ForecloseLoanData, PrepayLoanData, UpdateLoanData } from "../schemas/loan";
+import type { ChangeRateData, CreateLoanData, ForecloseLoanData, PrepayLoanData, SimulatePrepayData, UpdateLoanData } from "../schemas/loan";
 import { newId, nowIso } from "../utils/id";
 import { formatRupees } from "../domain/money";
 import { createCategory } from "./categories";
@@ -357,6 +357,32 @@ export async function prepayLoan(db: Db, userId: string, id: string, input: Prep
   ] as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
   await closeIfClear(db, userId, row);
   return getLoan(db, userId, id);
+}
+
+export interface PrepaySimDto extends PrepaySim {
+  loanId: string;
+  loanName: string;
+  amountPaise: number;
+  effect: "shorten" | "lower";
+}
+
+/** What a part-payment would do to the loan, without recording anything. */
+export async function simulatePrepay(db: Db, userId: string, id: string, input: SimulatePrepayData, today: IstDate): Promise<PrepaySimDto> {
+  const row = await requireActive(db, userId, id);
+  const outstanding = await outstandingNow(db, userId, row);
+  if (input.amountPaise > outstanding) throw invalid("amountPaise", `That is more than the ${formatRupees(outstanding)} still owed.`);
+  const loan = await getLoan(db, userId, id);
+  const sim = simulatePrepayment({
+    outstandingPaise: outstanding,
+    ratePctBp: row.ratePctBp,
+    emiPaise: row.emiPaise,
+    firstDue: loan.nextDueDate ?? firstDueAfter(today, row.dueDay),
+    dueDay: row.dueDay,
+    amountPaise: input.amountPaise,
+    effect: input.effect,
+    returnPct: input.returnPct,
+  });
+  return { ...sim, loanId: id, loanName: row.name, amountPaise: input.amountPaise, effect: input.effect };
 }
 
 /** A new rate from now on: keep the EMI (the end date moves) or keep the end date (the EMI changes). */

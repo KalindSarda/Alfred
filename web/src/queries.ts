@@ -1,5 +1,5 @@
 import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type CommitmentsView, type EntryHints, type HoldingKind, type HoldingsOverview, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type CommitmentsView, type EntryHints, type Runway, type HoldingKind, type HoldingsOverview, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -34,6 +34,9 @@ export const useCategories = () =>
     queryFn: async () => (await api.get<{ items: Category[] }>("/api/categories")).items,
     staleTime: 5 * 60_000,
   });
+
+/** How many months the bank money would last at essential spending. */
+export const useRunway = () => useQuery({ queryKey: ["runway"], queryFn: () => api.get<Runway>("/api/runway") });
 
 /** What is coming before the next salary, and what is free to spend after it. */
 export const useCommitments = () => useQuery({ queryKey: ["commitments"], queryFn: () => api.get<CommitmentsView>("/api/commitments") });
@@ -151,6 +154,7 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["holdings"] }),
       client.invalidateQueries({ queryKey: ["holding-kinds"] }),
       client.invalidateQueries({ queryKey: ["commitments"] }),
+      client.invalidateQueries({ queryKey: ["runway"] }),
       client.invalidateQueries({ queryKey: ["loans"] }),
       client.invalidateQueries({ queryKey: ["hints"] }),
       client.invalidateQueries({ queryKey: ["networth"] }),

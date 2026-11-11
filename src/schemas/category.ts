@@ -11,6 +11,8 @@ export const UpdateCategory = z
   .object({
     name: Name.optional(),
     archived: z.boolean().optional(),
+    /** Counts as spending that cannot stop, for the runway. */
+    essential: z.boolean().optional(),
   })
   .strict();
 
@@ -22,6 +24,7 @@ export interface CategoryDto {
   kind: "expense" | "income";
   archived: boolean;
   isSystem: boolean;
+  essential: boolean;
   /** Live entries filed under it. */
   entryCount: number;
 }

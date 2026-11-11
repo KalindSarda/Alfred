@@ -52,4 +52,8 @@ export type ForecloseLoanData = z.output<typeof ForecloseLoan>;
 export const SetInstalmentTotal = z.object({ totalPaise: Amount }).strict();
 export type SetInstalmentTotalData = z.output<typeof SetInstalmentTotal>;
 
+/** What a part-payment would do, without recording it. */
+export const SimulatePrepay = z.object({ amountPaise: Amount, effect: z.enum(["shorten", "lower"]), returnPct: z.number().min(0).max(50).optional() }).strict();
+export type SimulatePrepayData = z.output<typeof SimulatePrepay>;
+
 export const ListLoansQuery = z.object({ status: z.enum(["active", "all"]).default("active") });

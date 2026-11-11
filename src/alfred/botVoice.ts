@@ -334,6 +334,45 @@ export function morningPushLines(greeting: string, safeLine: string | null, atte
   return [greeting, ...(safeLine ? ["", safeLine] : []), "", ...attention.map((a) => `• ${a}`)];
 }
 
+const monthYear = (date: string): string => new Date(`${date}T00:00:00Z`).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
+const monthsText = (n: number) => `${n} ${n === 1 ? "month" : "months"}`;
+
+export interface WhatIfSide {
+  months: number;
+  emiPaise: number;
+  lastDate: string | null;
+}
+
+export interface WhatIfText {
+  loanName: string;
+  amountPaise: number;
+  before: WhatIfSide;
+  shorten: { after: WhatIfSide; monthsSaved: number; interestSavedPaise: number };
+  lower: { after: WhatIfSide; interestSavedPaise: number };
+  invest: { returnPct: number; months: number; gainPaise: number } | null;
+}
+
+/** What part-paying a loan would do, both ways, and optionally the same money invested instead. */
+export function whatIfLines(w: WhatIfText): string[] {
+  const lines = [`${w.loanName}: part-paying ${rupees(w.amountPaise)} now.`];
+  if (w.shorten.after.months === 0) {
+    lines.push(`That clears the loan, and saves ${rupees(w.shorten.interestSavedPaise)} of interest.`);
+  } else {
+    lines.push(
+      `Keeping the EMI at ${rupees(w.before.emiPaise)}: it ends ${monthsText(w.shorten.monthsSaved)} sooner, around ${w.shorten.after.lastDate ? monthYear(w.shorten.after.lastDate) : "then"} instead of ${w.before.lastDate ? monthYear(w.before.lastDate) : "later"}, and saves ${rupees(w.shorten.interestSavedPaise)} of interest.`,
+    );
+    lines.push(`Lowering the EMI: it falls from ${rupees(w.before.emiPaise)} to ${rupees(w.lower.after.emiPaise)} a month, ending as planned, and saves ${rupees(w.lower.interestSavedPaise)} of interest.`);
+  }
+  if (w.invest) lines.push("", `For comparison, ${rupees(w.amountPaise)} invested at ${w.invest.returnPct}% a year might grow by about ${rupees(w.invest.gainPaise)} over the ${monthsText(w.invest.months)} the loan has left, before tax and with no guarantee. The interest saved by prepaying is certain.`);
+  return lines;
+}
+
+/** How long the bank money would last at essential spending, for /balance. Empty when there is nothing to say yet. */
+export function runwayLine(r: { burnPaise: number | null; months: number | null; solid: boolean; basedOnDays: number }): string | null {
+  if (r.burnPaise === null || r.months === null) return null;
+  return `Runway: at ${rupees(r.burnPaise)} a month of essential spending, your bank money would last about ${r.months} months${r.solid ? "" : ` (an early estimate, from ${r.basedOnDays} days of entries)`}.`;
+}
+
 export interface SwipeLine {
   name: string;
   days: number;
@@ -358,6 +397,10 @@ export function swipeReply(amountPaise: number, cards: SwipeLine[]): string {
 }
 
 export const botVoice = {
+  whatIfNeedsAmount: "Tell me the amount, for example /whatif 25000 home.",
+  whatIfNoLoans: "You have no bank loans recorded.",
+  whatIfWhich: (amount: string) => `Which loan would the ${amount} go toward? Name it, for example /whatif ${amount} home.`,
+  whatIfNoMatch: "I cannot tell which loan you mean. Use part of its name.",
   salaryNone: "I have no salary entry on record, so there is nothing to plan from. Log your pay as income in the Salary category.",
   swipeNeedsAmount: "Tell me the amount, for example /swipe 20000.",
   swipeNoCards: "You have no credit cards on record.",
@@ -459,6 +502,7 @@ export const botVoice = {
     "/invest  your investments; update one: /value tata 15200",
     "/loans  what you owe on bank loans, and the next EMI",
     "/salary  your salary day plan: what is still to leave and what is free",
+    "/whatif  what part-paying a loan would do: /whatif 25000 home (add 12% to compare investing)",
     "/swipe  which card to use today for a purchase: /swipe 20000",
     "/menu  buttons for the main things I can show you",
     "/emi  your card EMI plans and what is still to be billed",

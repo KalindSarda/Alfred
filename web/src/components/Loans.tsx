@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { bpFromPct, emiClearsLoan, firstDueAfter, levelEmi, projectSchedule } from "../../../src/domain/loans";
-import { type Loan, type LoanScheduleRow, api, describeError } from "../api";
+import { type Loan, type LoanScheduleRow, type PrepaySim, api, describeError } from "../api";
 import { rupeesToPaise } from "../filters";
 import { paiseToInput, rupees, shortDate, today } from "../format";
 import { useAccounts, useLoans, useRefreshMoney } from "../queries";
@@ -198,8 +198,19 @@ function LoanSheet({ loan, onClose }: { loan: Loan | null; onClose: () => void }
 function PrepaySheet({ loan, onClose }: { loan: Loan; onClose: () => void }) {
   const { run, error, setError, busy } = useAction(onClose);
   const [amount, setAmount] = useState("");
+  const [returnText, setReturnText] = useState("");
   const [date, setDate] = useState(today());
   const [effect, setEffect] = useState<"shorten" | "lower">("shorten");
+
+  const previewPaise = rupeesToPaise(amount);
+  const returnPct = returnText.trim() === "" ? undefined : Number(returnText);
+  const returnOk = returnPct === undefined || (Number.isFinite(returnPct) && returnPct > 0 && returnPct <= 50);
+  const preview = useQuery({
+    queryKey: ["loan-sim", loan.id, previewPaise, effect, returnPct],
+    enabled: !!previewPaise && previewPaise <= loan.outstandingPaise && returnOk,
+    queryFn: () => api.post<PrepaySim>(`/api/loans/${loan.id}/simulate`, { amountPaise: previewPaise, effect, ...(returnPct !== undefined && { returnPct }) }),
+  });
+  const sim = preview.data;
 
   const save = () => {
     const paise = rupeesToPaise(amount);
@@ -240,6 +251,29 @@ function PrepaySheet({ loan, onClose }: { loan: Loan; onClose: () => void }) {
             </label>
           ))}
         </div>
+        <Field label="Compare with investing it at (% a year, optional)" hint="A rough comparison with no guarantee, before tax. The interest saved by paying is certain.">
+          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="12" value={returnText} onChange={(e) => setReturnText(e.target.value)} />
+        </Field>
+        {sim && (
+          <div className="space-y-1 rounded-lg bg-sunk px-3 py-2 text-sm" aria-live="polite">
+            {sim.after.months === 0 ? (
+              <p>That clears the loan and saves {rupees(sim.interestSavedPaise)} of interest.</p>
+            ) : effect === "shorten" ? (
+              <p>
+                It ends {sim.monthsSaved} {sim.monthsSaved === 1 ? "month" : "months"} sooner and saves {rupees(sim.interestSavedPaise)} of interest.
+              </p>
+            ) : (
+              <p>
+                The EMI falls from {rupees(sim.before.emiPaise)} to {rupees(sim.after.emiPaise)} a month and saves {rupees(sim.interestSavedPaise)} of interest.
+              </p>
+            )}
+            {sim.invest && (
+              <p className="text-soft">
+                Invested at {sim.invest.returnPct}% a year, the same money might grow by about {rupees(sim.invest.gainPaise)} over the {sim.invest.months} months left.
+              </p>
+            )}
+          </div>
+        )}
         <ErrorText>{error}</ErrorText>
         <Button type="submit" className="w-full" disabled={busy}>
           Save
