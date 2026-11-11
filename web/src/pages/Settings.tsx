@@ -5,6 +5,7 @@ import { Button, Card, ErrorText, Field, inputClass, Spinner } from "../componen
 import { DeleteAccountCard } from "../components/DeleteAccountCard";
 import { PeopleCard } from "../components/PeopleCard";
 import { TelegramCard } from "../components/TelegramCard";
+import { shortDate, today } from "../format";
 import { endSession, useMe, useRefreshMoney } from "../queries";
 import { useState } from "react";
 import { Link } from "../router";
@@ -39,6 +40,14 @@ export function Settings() {
 
   const saveLead = useMutation({
     mutationFn: (nudgeLeadDays: number) => api.patch<Settings>("/api/settings", { nudgeLeadDays }),
+    onSuccess: (data) => {
+      client.setQueryData(["settings"], data);
+      toast.show("Saved");
+    },
+  });
+
+  const saveHabit = useMutation({
+    mutationFn: (patch: Partial<Pick<Settings, "logNudge" | "balanceCheck" | "logNudgeUntil">>) => api.patch<Settings>("/api/settings", patch),
     onSuccess: (data) => {
       client.setQueryData(["settings"], data);
       toast.show("Saved");
@@ -162,6 +171,38 @@ export function Settings() {
           </Field>
         )}
         <ErrorText>{saveLead.isError ? describeError(saveLead.error) : ""}</ErrorText>
+      </Card>
+
+      <Card id="habit" className="space-y-3">
+        <h2 className="font-medium">Keeping the books</h2>
+        <p className="text-sm text-soft">Alfred can nudge you when you go quiet, so the records stay close to what your bank shows. Both arrive on Telegram.</p>
+        {settings.data && (
+          <>
+            <label className="flex min-h-11 items-start gap-3 text-sm">
+              <input type="checkbox" className="mt-1 size-5 accent-brand" checked={settings.data.logNudge} onChange={(e) => saveHabit.mutate({ logNudge: e.target.checked })} />
+              <span>
+                Evening check-in
+                <span className="block text-xs text-soft">Around 10:45 pm, when nothing has been logged that day. It eases off the longer you are quiet.</span>
+              </span>
+            </label>
+            {settings.data.logNudge && settings.data.logNudgeUntil && settings.data.logNudgeUntil >= today() && (
+              <p className="flex flex-wrap items-center gap-3 rounded-lg bg-sunk px-3 py-2 text-sm">
+                Paused until {shortDate(settings.data.logNudgeUntil)}.
+                <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={() => saveHabit.mutate({ logNudgeUntil: null })}>
+                  Resume
+                </Button>
+              </p>
+            )}
+            <label className="flex min-h-11 items-start gap-3 text-sm">
+              <input type="checkbox" className="mt-1 size-5 accent-brand" checked={settings.data.balanceCheck} onChange={(e) => saveHabit.mutate({ balanceCheck: e.target.checked })} />
+              <span>
+                Weekly balance check
+                <span className="block text-xs text-soft">Sunday night: Alfred asks what your banks show and books any gap as one entry. It replaces that night's evening check-in.</span>
+              </span>
+            </label>
+          </>
+        )}
+        <ErrorText>{saveHabit.isError ? describeError(saveHabit.error) : ""}</ErrorText>
       </Card>
 
       <Card id="data" className="space-y-3">

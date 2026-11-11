@@ -5,6 +5,7 @@ import { getDb } from "./db/client";
 import { runMaintenance } from "./services/maintenance";
 import { runEmiCheckIns } from "./services/emiJob";
 import { runLoanCheckIns } from "./services/loanJob";
+import { EVENING_CRON, runEveningCheckIns } from "./services/habitJob";
 import { runMandateChecks } from "./services/mandateJob";
 import { runHoldingNudges, runUnitsCheckIns } from "./services/holdingsJob";
 import { runDebtReminders } from "./services/debtJob";
@@ -26,6 +27,17 @@ export default {
     const config = getConfig(env);
     const db = getDb(env.DB);
     const now = () => Date.now();
+
+    // The late-evening trigger only runs the check-in; the daily job below is for the morning one.
+    if (controller.cron === EVENING_CRON) {
+      try {
+        const result = await runEveningCheckIns({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });
+        logger.info("evening_check_ins_done", { ...result });
+      } catch (error) {
+        logger.error("evening_check_ins_failed", { error: error instanceof Error ? error.message : "unknown" });
+      }
+      return;
+    }
 
     // Instalments first, so a statement that has just come round already holds its EMI when reminders are worked out.
     try {

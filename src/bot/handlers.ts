@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, commitmentsLines, describeEntry, emiReply, goalsReply, holdsReply, investReply, loansReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
+import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, commitmentsLines, usualLabel, describeEntry, emiReply, goalsReply, holdsReply, investReply, loansReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
 import { AppError, ConflictError, NotFoundError, RateLimitedError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
@@ -19,10 +19,15 @@ import { holdingsValue, listHoldings, setEntryUnits, setRate, setValue } from ".
 import { unitWord, unitsQuestionFor } from "../services/holdingsJob";
 import { parseQuantityE4 } from "../domain/holdings";
 import { getCommitments } from "../services/commitments";
+import { previewBalance, settleBalance } from "../services/balanceCheck";
+import { checkinLog } from "../db/schema";
+import { updateSettings } from "../services/settings";
+import { addDays } from "../domain/dates";
+import { newId, nowIso } from "../utils/id";
 import { getLoan, listLoans, loansOutstanding, setInstalmentTotal } from "../services/loans";
 import { addContribution, listGoals, removeContribution } from "../services/goals";
 import { parseAmountToken } from "./parser";
-import { createEmiFix, createLoanFix, createUnitsFix, takeAmountFix } from "./pending";
+import { createBalanceFix, createBalanceProposal, createEmiFix, createLoanFix, createUnitsFix, deletePending as removePending, getBalanceProposal, takeAmountFix } from "./pending";
 import { balanceOverview, setArchived, toAccountDto } from "../services/accounts";
 import { getCashflow } from "../services/cashflow";
 import { createCategory } from "../services/categories";
@@ -355,6 +360,24 @@ async function runMenuItem(deps: BotDeps, who: Actor, id: string, today: IstDate
 async function cmdLoans(deps: BotDeps, who: Actor): Promise<void> {
   const o = await listLoans(deps.db, who.userId, "active");
   await deps.telegram.sendMessage(who.chatId, loansReply(o.loans));
+}
+
+/** The weekly check: a typed bank balance becomes a question about the gap, or a thank-you when there is none. */
+async function proposeBalance(deps: BotDeps, who: Actor, accountId: string, typedPaise: number, today: IstDate): Promise<void> {
+  try {
+    const p = await previewBalance(deps.db, who.userId, accountId, typedPaise, today);
+    if (p.differencePaise === 0) return void (await deps.telegram.sendMessage(who.chatId, botVoice.balanceMatches));
+    const lower = p.differencePaise < 0;
+    const gap = Math.abs(p.differencePaise);
+    const id = await createBalanceProposal(deps.db, who.userId, who.chatId, accountId, typedPaise, deps.now());
+    await deps.telegram.sendMessage(who.chatId, (lower ? botVoice.balanceLower : botVoice.balanceHigher)(p.accountName, p.alfredPaise, p.typedPaise, gap), [
+      [{ text: lower ? `Book ${formatRupees(gap)} as unlogged spending` : `Book ${formatRupees(gap)} as unrecorded income`, data: `b:${id}:s` }],
+      [{ text: "Leave it", data: `b:${id}:n` }],
+    ]);
+  } catch (error) {
+    if (error instanceof NotFoundError || error instanceof ValidationError) return void (await deps.telegram.sendMessage(who.chatId, botVoice.balanceGone));
+    throw error;
+  }
 }
 
 /** Gives the quantity a purchase into a holding bought, then says what is held now. */
@@ -695,6 +718,8 @@ async function cmdSettings(deps: BotDeps, who: Actor): Promise<void> {
       `I call you ${me.displayName}.`,
       `I remind you ${settings.nudgeLeadDays} ${settings.nudgeLeadDays === 1 ? "day" : "days"} before a card payment is due.`,
       `Your month starts on day ${settings.periodStartDay}.`,
+      settings.logNudge ? "I look in about 10:45 in the evening if nothing has been logged that day." : "I shall not check in on you in the evening.",
+      settings.balanceCheck ? "On Sunday nights I ask what your banks show." : "I shall not ask for your bank balances on Sundays.",
       "",
       "These can be changed in the app, under Everything, then Settings.",
     ].join("\n"),
@@ -769,6 +794,9 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
         if (waiting.kind === "units") {
           const units = parseQuantityE4(text);
           if (units !== null) return await fixUnits(deps, who, waiting.txnId, units, today);
+        } else if (waiting.kind === "balance") {
+          const paise = parseAmountToken(text);
+          if (paise !== null) return await proposeBalance(deps, who, waiting.accountId, paise, today);
         } else {
           const paise = parseAmountToken(text);
           if (paise !== null) return waiting.kind === "emi" ? await fixEmiAmount(deps, who, waiting.txnId, paise, today) : await fixLoanAmount(deps, who, waiting.loanId, waiting.on, paise);
@@ -979,6 +1007,57 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
       } else {
         await createLoanFix(deps.db, userId, chatId, id, argument, deps.now());
         await reply(deps, to, botVoice.loanAskAmount(loan.name, argument));
+      }
+    } else if (kind === "z" && (id === "n" || id === "p")) {
+      // The evening check-in: "Nothing today", or "Pause a week".
+      const today = todayIst(new Date(deps.now()));
+      if (id === "n") {
+        await deps.db.insert(checkinLog).values({ id: newId(), userId, kind: "none_today", day: today, createdAt: nowIso() }).onConflictDoNothing();
+        await reply(deps, to, botVoice.noneToday);
+      } else {
+        const until = addDays(today, 7);
+        await updateSettings(deps.db, userId, { logNudgeUntil: until });
+        await reply(deps, to, botVoice.logPaused(until));
+      }
+    } else if (kind === "y" && id) {
+      // One of the usual spends, offered by the evening check-in: recorded again for today.
+      const today = todayIst(new Date(deps.now()));
+      const template = await getTransactionRow(deps.db, userId, id);
+      if (!template || template.deletedAt !== null || template.type !== "expense" || !["web", "telegram", "ai"].includes(template.source)) {
+        await reply(deps, { chatId }, botVoice.expired);
+      } else {
+        const txn = await createTransaction(
+          deps.db,
+          userId,
+          { type: "expense", amountPaise: template.amountPaise, txnDate: today, accountId: template.accountId, categoryId: template.categoryId, merchant: template.merchant, note: template.note },
+          { source: "telegram" },
+        );
+        await reply(deps, { chatId }, botVoice.recorded(summaryOfTxn(txn, c)), [[{ text: "Undo", data: `u:${txn.id}` }]]);
+      }
+    } else if (kind === "b" && id && (action === "y" || action === "d")) {
+      // The weekly balance check: "Yes, it matches" or "Different".
+      const account = await getAccount(deps.db, userId, id);
+      if (!account || account.kind !== "bank" || account.archivedAt) {
+        await reply(deps, to, botVoice.balanceGone);
+      } else if (action === "y") {
+        await reply(deps, to, botVoice.balanceMatches);
+      } else {
+        await createBalanceFix(deps.db, userId, chatId, id, deps.now());
+        await reply(deps, to, botVoice.balanceAskAmount(account.name));
+      }
+    } else if (kind === "b" && id && (action === "s" || action === "n")) {
+      // What to do about the gap the person's bank balance showed.
+      const proposal = await getBalanceProposal(deps.db, userId, chatId, id, deps.now());
+      if (!proposal) {
+        await reply(deps, to, botVoice.balanceGone);
+      } else {
+        await removePending(deps.db, id);
+        if (action === "n") {
+          await reply(deps, to, botVoice.balanceLeft);
+        } else {
+          const done = await settleBalance(deps.db, userId, proposal.accountId, proposal.typedPaise, todayIst(new Date(deps.now())));
+          await reply(deps, to, done.kind === "none" ? botVoice.balanceMatches : botVoice.balanceBooked(done.kind, done.bookedPaise, done.accountName, done.balancePaise));
+        }
       }
     } else if (kind === "q" && id) {
       // "Tell me": the next message is how much a purchase into a holding bought.

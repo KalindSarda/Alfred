@@ -169,12 +169,12 @@ The original design above still holds: one Cloudflare Worker (Hono) serving the 
 | Jobs | `src/services/*Job.ts` | The daily work, described below. |
 | Web | `web/src` | React and Vite. Pages are thin; components own their sheets; `queries.ts` holds the data hooks. |
 
-### Data model (30 tables)
+### Data model (31 tables)
 - **People and access:** `users`, `invites`, `sessions`, `login_codes`, `rate_limits`, `app_settings`, `idempotency_keys`, `telegram_links`, `telegram_link_codes`, `telegram_updates`, `bot_pending`.
 - **The ledger:** `accounts` (banks and cards), `categories`, `transactions`, `merchant_aliases`, `budgets`.
 - **Things that repeat or are owed:** `recurring_rules`, `emi_plans`, `loans`, `holds` (blocked IPO money), `contacts`, `debts`, `debt_payments`.
 - **Things owned or set aside:** `holdings`, `holding_values`, `holding_lots`, `holding_kinds`, `goals`, `goal_contributions`.
-- **Bookkeeping:** `nudge_log` (card due dates announced once), `mandate_alerts` (a short bank warned about once per debit and date).
+- **Bookkeeping:** `nudge_log` (card due dates announced once), `mandate_alerts` (a short bank warned about once per debit and date), `checkin_log` (the evening and Sunday check-ins sent, and "nothing today" answers).
 
 ### Money rules in one place
 - Amounts are whole paise (integers); dates are IST calendar dates ("YYYY-MM-DD"). There is no floating point in stored money; percentages and rates are held as whole numbers (basis points for loans).
@@ -191,6 +191,9 @@ The original design above still holds: one Cloudflare Worker (Hono) serving the 
 6. **One suggestion source.** `loadEntryHints` (merchant to usual category and account, recently used accounts) feeds both the bot's reader and the web form's one-line add, so both suggest the same things.
 7. **One list of places.** `web/src/features.ts` lists every feature once; the Everything page, the find-anything search and the Home shortcuts all read it. A section on a page is reached with a `#section` in the address.
 8. **Views by address.** Accounts (`accounts`, `commitments`, `investments`) and Plan (`budgets`, `recurring`, `goals`) keep their view in `?view=`, so any link, briefing line or search result can open them.
+
+### The evening job (cron 17:15 UTC, 22:45 IST)
+A separate trigger runs only `runEveningCheckIns`: the Sunday balance check, or the "nothing logged today" check-in with usual spends as buttons. The `scheduled` handler branches on `controller.cron`.
 
 ### The daily job (cron 04:30 UTC, 10:00 IST), in order
 1. EMI check-ins: add due instalments, ask whether they agree.
@@ -225,3 +228,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-11-06: slice 21 noted: holdings counted by quantity (migration 0019, `holding_lots`, rate snapshots).
 - 2026-11-06: slice 22 noted: investment kinds are per-person rows (`holding_kinds`) that carry unit and rate quantity; `holdings.kind` stores the kind key.
 - 2026-11-07: slice 23 noted: the commitments timeline (`domain/commitments.ts`, `services/commitments.ts`) joins cards, EMIs, loans, recurring rules and borrowed money; free to spend is a second figure beside safe-to-spend.
+- 2026-11-11: slice 24 noted: the logging habit (last-logged in the briefing, the evening cron, usual spends, the weekly balance check booking gaps as source `check`).

@@ -82,7 +82,7 @@ export const transactions = sqliteTable(
     merchant: text("merchant"),
     note: text("note"),
     status: text("status", { enum: ["draft", "confirmed"] }).notNull().default("confirmed"),
-    source: text("source", { enum: ["web", "telegram", "seed", "ai", "emi", "recurring", "loan"] }).notNull().default("web"),
+    source: text("source", { enum: ["web", "telegram", "seed", "ai", "emi", "recurring", "loan", "check"] }).notNull().default("web"),
     /** Set on the entries a recurring rule adds by itself, with the date it was due. No foreign key: rules and their entries are handled together in code. */
     recurringRuleId: text("recurring_rule_id"),
     recurringOn: text("recurring_on"),
@@ -446,7 +446,28 @@ export const appSettings = sqliteTable("app_settings", {
   periodStartDay: integer("period_start_day").notNull().default(1),
   /** When the first-run setup guide was finished or skipped; null means it should still be offered. */
   onboardedAt: text("onboarded_at"),
+  /** The evening "nothing logged today" check-in, and the Sunday balance check. */
+  logNudge: integer("log_nudge", { mode: "boolean" }).notNull().default(true),
+  balanceCheck: integer("balance_check", { mode: "boolean" }).notNull().default(true),
+  /** The evening check-in is paused through this day (inclusive); null when it is not paused. */
+  logNudgeUntil: text("log_nudge_until"),
 });
+
+/**
+ * What the logging habit tools have done on a day: the evening check-in or weekly balance check was sent (so a retried run
+ * never doubles it), or the person said "nothing today" (which counts as having logged).
+ */
+export const checkinLog = sqliteTable(
+  "checkin_log",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    kind: text("kind", { enum: ["evening", "balance", "none_today"] }).notNull(),
+    day: text("day").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("checkin_log_uq").on(t.userId, t.kind, t.day)],
+);
 
 /**
  * A savings goal. Money put toward it is only set aside: it stays in the bank, but is taken off safe-to-spend

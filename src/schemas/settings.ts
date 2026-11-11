@@ -9,6 +9,11 @@ export const UpdateSettings = z
     periodStartDay: z.number().int().min(1).max(31),
     /** null clears the name so Alfred falls back to one derived from the email. */
     displayName: z.string().trim().min(1).max(40).nullable(),
+    /** The evening check-in when nothing was logged, and the Sunday balance check. */
+    logNudge: z.boolean(),
+    balanceCheck: z.boolean(),
+    /** Pause the evening check-in through this day; null resumes it. */
+    logNudgeUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   })
   .partial()
   .strict();
@@ -19,4 +24,7 @@ export interface SettingsDto {
   sessionDays: number;
   displayName: string | null;
   periodStartDay: number;
+  logNudge: boolean;
+  balanceCheck: boolean;
+  logNudgeUntil: string | null;
 }

@@ -172,6 +172,8 @@ export interface BriefingFacts {
   loans?: BriefingLoans;
   /** What is still to leave before the next salary; leave out when nothing is coming. */
   commitments?: { count: number; untilDate: string; freeToSpendPaise: number };
+  /** How long since the person last logged an entry; leave out when they never have. */
+  logging?: { daysSince: number; lastDate: string };
 }
 
 export interface BriefingLine {
@@ -195,6 +197,10 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
         : `Your recorded balances are ${rupees(-facts.safeToSpendPaise)} short of what your cards currently owe.${setAside}`,
     to: "/accounts",
   });
+
+  if (facts.logging && facts.logging.daysSince >= 2) {
+    lines.push({ key: "habit", text: `Nothing logged since ${formatDate(facts.logging.lastDate)}, ${facts.logging.daysSince} days. Shall we catch up?`, to: "/transactions" });
+  }
 
   if (facts.commitments && facts.commitments.count > 0) {
     const c = facts.commitments;

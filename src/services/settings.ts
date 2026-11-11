@@ -3,7 +3,7 @@ import type { Db } from "../db/client";
 import { appSettings } from "../db/schema";
 import type { SettingsDto } from "../schemas/settings";
 
-export const DEFAULT_SETTINGS: SettingsDto = { nudgeLeadDays: 3, nudgeTimeIst: "10:00", sessionDays: 30, displayName: null, periodStartDay: 1 };
+export const DEFAULT_SETTINGS: SettingsDto = { nudgeLeadDays: 3, nudgeTimeIst: "10:00", sessionDays: 30, displayName: null, periodStartDay: 1, logNudge: true, balanceCheck: true, logNudgeUntil: null };
 
 export async function getSettings(db: Db, userId: string): Promise<SettingsDto> {
   const [row] = await db.select().from(appSettings).where(eq(appSettings.userId, userId)).limit(1);
@@ -14,6 +14,9 @@ export async function getSettings(db: Db, userId: string): Promise<SettingsDto> 
         sessionDays: row.sessionDays,
         displayName: row.displayName,
         periodStartDay: row.periodStartDay,
+        logNudge: row.logNudge,
+        balanceCheck: row.balanceCheck,
+        logNudgeUntil: row.logNudgeUntil,
       }
     : { ...DEFAULT_SETTINGS };
 }

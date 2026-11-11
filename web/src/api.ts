@@ -251,7 +251,7 @@ export interface Transaction {
   note: string | null;
   holdingId: string | null;
   status: "draft" | "confirmed";
-  source: "web" | "telegram" | "seed" | "ai" | "emi" | "recurring" | "loan";
+  source: "web" | "telegram" | "seed" | "ai" | "emi" | "recurring" | "loan" | "check";
 }
 
 export interface Summary {
@@ -321,6 +321,26 @@ export interface Settings {
   sessionDays: number;
   displayName: string | null;
   periodStartDay: number;
+  logNudge: boolean;
+  balanceCheck: boolean;
+  /** The evening check-in is paused through this day. */
+  logNudgeUntil: string | null;
+}
+
+export interface BalancePreview {
+  accountId: string;
+  accountName: string;
+  alfredPaise: number;
+  typedPaise: number;
+  /** The bank's figure less Alfred's: negative means spending that was not logged. */
+  differencePaise: number;
+}
+
+export interface BalanceSettled {
+  kind: "spending" | "income" | "none";
+  bookedPaise: number;
+  accountName: string;
+  balancePaise: number;
 }
 
 export interface GoalContribution {

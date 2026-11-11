@@ -304,7 +304,25 @@ export function commitmentsLines(c: CommitmentsText): string[] {
   return lines;
 }
 
+/** A usual spend as a button: "Rapido ₹50". */
+export const usualLabel = (name: string, amountPaise: number): string => `${name.length > 22 ? `${name.slice(0, 21)}…` : name} ${rupees(amountPaise)}`;
+
 export const botVoice = {
+  eveningNone: "Good evening. Nothing has been logged today. Anything to add?",
+  eveningSilent: (days: number, lastDate: string) => `Good evening. ${days} days have passed since your last entry, on ${shortDate(lastDate)}. A moment now keeps the books honest. What went out today?`,
+  noneToday: "Understood. A quiet day, noted. I shall not ask again tonight.",
+  logPaused: (until: string) => `Very well. I shall keep quiet until ${shortDate(until)}.`,
+  balanceAsk: (name: string, paise: number) => `Weekly check. I have ${name} at ${rupees(paise)}. Does your bank say the same?`,
+  balanceMatches: "Splendid. That matches your bank.",
+  balanceAskAmount: (name: string) => `What does your bank show for ${name}? Send the balance, such as 100284.52.`,
+  balanceLower: (name: string, alfredPaise: number, typedPaise: number, diffPaise: number) =>
+    `${name}: I have ${rupees(alfredPaise)} and your bank shows ${rupees(typedPaise)}. That is ${rupees(diffPaise)} less than I know of, so some spending was not logged.`,
+  balanceHigher: (name: string, alfredPaise: number, typedPaise: number, diffPaise: number) =>
+    `${name}: I have ${rupees(alfredPaise)} and your bank shows ${rupees(typedPaise)}. That is ${rupees(diffPaise)} more than I know of, so some money was not recorded.`,
+  balanceBooked: (kind: "spending" | "income", paise: number, name: string, balancePaise: number) =>
+    `Booked ${rupees(paise)} as ${kind === "spending" ? "unlogged spending" : "unrecorded income"}. ${name} now stands at ${rupees(balancePaise)}, as your bank says.`,
+  balanceLeft: "Very well. I have left it as it is.",
+  balanceGone: "That check has expired. Ask me again next Sunday, or use Check balance in the app.",
   mandateShort: (title: string, amountPaise: number, accountName: string, whenText: string, balancePaise: number, shortByPaise: number) =>
     `${title}: ${rupees(amountPaise)} is due to leave ${accountName} ${whenText}, and it holds ${rupees(Math.max(0, balancePaise))}. It is ${rupees(shortByPaise)} short. A transfer in beforehand would spare you a failed debit.`,
   loanCheck: (name: string, totalPaise: number, interestPaise: number, principalPaise: number, accountName: string) =>
