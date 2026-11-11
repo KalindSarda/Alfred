@@ -7,6 +7,7 @@ import { runEmiCheckIns } from "./services/emiJob";
 import { runLoanCheckIns } from "./services/loanJob";
 import { EVENING_CRON, runEveningCheckIns } from "./services/habitJob";
 import { runMandateChecks } from "./services/mandateJob";
+import { runMorningPush, runSalaryPlans } from "./services/planJob";
 import { runStatementChecks } from "./services/statementJob";
 import { runHoldingNudges, runUnitsCheckIns } from "./services/holdingsJob";
 import { runDebtReminders } from "./services/debtJob";
@@ -36,6 +37,13 @@ export default {
         logger.info("evening_check_ins_done", { ...result });
       } catch (error) {
         logger.error("evening_check_ins_failed", { error: error instanceof Error ? error.message : "unknown" });
+      }
+      // A salary logged during the day is planned for the same night.
+      try {
+        const plans = await runSalaryPlans({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });
+        logger.info("salary_plans_done", { ...plans });
+      } catch (error) {
+        logger.error("salary_plans_failed", { error: error instanceof Error ? error.message : "unknown" });
       }
       return;
     }
@@ -100,6 +108,18 @@ export default {
       logger.info("hold_reminders_done", { ...holdsResult });
     } catch (error) {
       logger.error("hold_reminders_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+    try {
+      const plans = await runSalaryPlans({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });
+      logger.info("salary_plans_done", { ...plans });
+    } catch (error) {
+      logger.error("salary_plans_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+    try {
+      const push = await runMorningPush({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });
+      logger.info("morning_push_done", { ...push });
+    } catch (error) {
+      logger.error("morning_push_failed", { error: error instanceof Error ? error.message : "unknown" });
     }
     try {
       await runMaintenance(db, now());

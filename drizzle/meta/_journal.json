@@ -169,6 +169,13 @@
       "when": 1794398168305,
       "tag": "0023_statement_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1794400598642,
+      "tag": "0024_salary_plan",
+      "breakpoints": true
     }
   ]
 }

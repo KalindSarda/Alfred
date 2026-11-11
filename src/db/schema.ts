@@ -472,7 +472,21 @@ export const appSettings = sqliteTable("app_settings", {
   balanceCheck: integer("balance_check", { mode: "boolean" }).notNull().default(true),
   /** The evening check-in is paused through this day (inclusive); null when it is not paused. */
   logNudgeUntil: text("log_nudge_until"),
+  /** The morning briefing sent to Telegram, only on days when something needs attention. Off until switched on. */
+  morningPush: integer("morning_push", { mode: "boolean" }).notNull().default(false),
 });
+
+/** A salary credit that has been planned for, so each is planned once. */
+export const salaryLog = sqliteTable(
+  "salary_log",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    txnId: text("txn_id").notNull(),
+    sentAt: text("sent_at").notNull(),
+  },
+  (t) => [uniqueIndex("salary_log_uq").on(t.userId, t.txnId)],
+);
 
 /**
  * What the logging habit tools have done on a day: the evening check-in or weekly balance check was sent (so a retried run
@@ -483,7 +497,7 @@ export const checkinLog = sqliteTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull().references(() => users.id),
-    kind: text("kind", { enum: ["evening", "balance", "none_today"] }).notNull(),
+    kind: text("kind", { enum: ["evening", "balance", "none_today", "morning"] }).notNull(),
     day: text("day").notNull(),
     createdAt: text("created_at").notNull(),
   },

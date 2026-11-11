@@ -325,6 +325,7 @@ export interface Settings {
   balanceCheck: boolean;
   /** The evening check-in is paused through this day. */
   logNudgeUntil: string | null;
+  morningPush: boolean;
 }
 
 /** A card ranked for a purchase today: the longest time before the bill first. */

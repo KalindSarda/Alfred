@@ -307,6 +307,33 @@ export function commitmentsLines(c: CommitmentsText): string[] {
 /** A usual spend as a button: "Rapido ₹50". */
 export const usualLabel = (name: string, amountPaise: number): string => `${name.length > 22 ? `${name.slice(0, 21)}…` : name} ${rupees(amountPaise)}`;
 
+export interface SalaryPlanText {
+  /** The salary entry this plan is for; null when asked for with no salary on record. */
+  salary: { amountPaise: number; date: string } | null;
+  commitments: CommitmentsText;
+  perDay: { paise: number; days: number } | null;
+  goals: { name: string; paise: number }[];
+}
+
+/** The salary day plan: what has come in, what is still to leave before the next salary, and what is left to spend. */
+export function salaryPlanLines(p: SalaryPlanText): string[] {
+  const c = p.commitments;
+  const lines: string[] = [];
+  lines.push(p.salary ? `Salary of ${rupees(p.salary.amountPaise)} came in on ${shortDate(p.salary.date)}.` : "I have no salary entry yet. Log your pay as income in the Salary category and I shall plan from it. Here is where things stand.");
+  lines.push("");
+  if (c.items.length > 0) lines.push(...commitmentsLines(c));
+  else lines.push(`Nothing is due before ${shortDate(c.until)}.`, "", `Free to spend until then: ${rupees(c.freeToSpendPaise)}.`);
+  if (p.perDay) lines.push(`That is about ${rupees(p.perDay.paise)} a day for ${p.perDay.days} days.`);
+  if (p.goals.length > 0) lines.push("", `Goals that want money this month: ${p.goals.map((g) => `${g.name} ${rupees(g.paise)}`).join(", ")}.`);
+  if (c.basis === "month") lines.push("", "I do not know your salary day, so I have planned to your month start. Add your pay as repeating income, under Plan, then Recurring, and I shall plan up to it.");
+  return lines;
+}
+
+/** The morning briefing sent to Telegram: the greeting, what is available, and only the things that need attention. */
+export function morningPushLines(greeting: string, safeLine: string | null, attention: string[]): string[] {
+  return [greeting, ...(safeLine ? ["", safeLine] : []), "", ...attention.map((a) => `• ${a}`)];
+}
+
 export interface SwipeLine {
   name: string;
   days: number;
@@ -331,6 +358,7 @@ export function swipeReply(amountPaise: number, cards: SwipeLine[]): string {
 }
 
 export const botVoice = {
+  salaryNone: "I have no salary entry on record, so there is nothing to plan from. Log your pay as income in the Salary category.",
   swipeNeedsAmount: "Tell me the amount, for example /swipe 20000.",
   swipeNoCards: "You have no credit cards on record.",
   statementAsk: (name: string, statementDate: string, expectedPaise: number) =>
@@ -430,6 +458,7 @@ export const botVoice = {
     "/goals  your savings goals; put money toward one: /save 5000 laptop",
     "/invest  your investments; update one: /value tata 15200",
     "/loans  what you owe on bank loans, and the next EMI",
+    "/salary  your salary day plan: what is still to leave and what is free",
     "/swipe  which card to use today for a purchase: /swipe 20000",
     "/menu  buttons for the main things I can show you",
     "/emi  your card EMI plans and what is still to be billed",

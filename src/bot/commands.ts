@@ -41,6 +41,7 @@ export const BOT_COMMANDS: BotCommand[] = [
   { command: "accounts", description: "Your accounts and cards; archive or restore one" },
   { command: "category", description: "List categories, or add one: /category add Pets" },
   { command: "due", description: "Card payments coming up" },
+  { command: "salary", description: "Your salary day plan: what is coming and what is free" },
   { command: "swipe", description: "Which card to use today: /swipe 20000" },
   { command: "summary", description: "Your month so far" },
   { command: "settings", description: "Your current preferences" },

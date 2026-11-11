@@ -169,12 +169,12 @@ The original design above still holds: one Cloudflare Worker (Hono) serving the 
 | Jobs | `src/services/*Job.ts` | The daily work, described below. |
 | Web | `web/src` | React and Vite. Pages are thin; components own their sheets; `queries.ts` holds the data hooks. |
 
-### Data model (32 tables)
+### Data model (33 tables)
 - **People and access:** `users`, `invites`, `sessions`, `login_codes`, `rate_limits`, `app_settings`, `idempotency_keys`, `telegram_links`, `telegram_link_codes`, `telegram_updates`, `bot_pending`.
 - **The ledger:** `accounts` (banks and cards), `categories`, `transactions`, `merchant_aliases`, `budgets`.
 - **Things that repeat or are owed:** `recurring_rules`, `emi_plans`, `loans`, `holds` (blocked IPO money), `contacts`, `debts`, `debt_payments`.
 - **Things owned or set aside:** `holdings`, `holding_values`, `holding_lots`, `holding_kinds`, `goals`, `goal_contributions`.
-- **Bookkeeping:** `nudge_log` (card due dates announced once), `mandate_alerts` (a short bank warned about once per debit and date), `checkin_log` (the evening and Sunday check-ins sent, and "nothing today" answers), `statement_checks` (card statements asked about and what was found).
+- **Bookkeeping:** `nudge_log` (card due dates announced once), `mandate_alerts` (a short bank warned about once per debit and date), `checkin_log` (the evening and Sunday check-ins sent, and "nothing today" answers), `statement_checks` (card statements asked about and what was found), `salary_log` (salary credits already planned for).
 
 ### Money rules in one place
 - Amounts are whole paise (integers); dates are IST calendar dates ("YYYY-MM-DD"). There is no floating point in stored money; percentages and rates are held as whole numbers (basis points for loans).
@@ -205,6 +205,8 @@ A separate trigger runs only `runEveningCheckIns`: the Sunday balance check, or 
 5. Card due-date nudges (once per due date, recorded in `nudge_log`).
 6. Investment value nudge (the 1st of the month only).
 7. IPO outcome reminders.
+7b. Salary day plan: plan for any new salary credit.
+7c. Morning briefing on Telegram, for people who switched it on, when something needs attention.
 8. Maintenance: purge expired codes, sessions and pending rows.
 Each step is isolated: one failing never stops the rest, and a person who fails never stops the others. Messages are best effort; the work itself (adding entries) is not tied to a message being delivered.
 
@@ -231,3 +233,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-11-07: slice 23 noted: the commitments timeline (`domain/commitments.ts`, `services/commitments.ts`) joins cards, EMIs, loans, recurring rules and borrowed money; free to spend is a second figure beside safe-to-spend.
 - 2026-11-11: slice 24 noted: the logging habit (last-logged in the briefing, the evening cron, usual spends, the weekly balance check booking gaps as source `check`).
 - 2026-11-12: slice 25 noted: card float ranking (`domain/cardFloat.ts`) and statement checks (`domain/statementGap.ts`, `services/cardTools.ts`, `statementJob.ts`).
+- 2026-11-13: slice 26 noted: the salary day plan (`services/salary.ts`, `planJob.ts`) built on the commitments view, and the opt-in morning briefing.

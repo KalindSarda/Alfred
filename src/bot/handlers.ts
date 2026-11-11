@@ -19,6 +19,7 @@ import { holdingsValue, listHoldings, setEntryUnits, setRate, setValue } from ".
 import { unitWord, unitsQuestionFor } from "../services/holdingsJob";
 import { parseQuantityE4 } from "../domain/holdings";
 import { getCommitments } from "../services/commitments";
+import { buildSalaryPlan, latestSalary } from "../services/salary";
 import { previewBalance, settleBalance } from "../services/balanceCheck";
 import { analyseStatement, recordCheck, rankCardsForToday, settleStatement, statementFacts } from "../services/cardTools";
 import { checkinLog } from "../db/schema";
@@ -356,6 +357,12 @@ async function runMenuItem(deps: BotDeps, who: Actor, id: string, today: IstDate
     default:
       return void (await deps.telegram.sendMessage(who.chatId, botVoice.unknownCommand));
   }
+}
+
+/** The salary day plan on request: for the latest salary credit, or where things stand when there is none. */
+async function cmdSalary(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
+  const plan = await buildSalaryPlan(deps.db, who.userId, today, await latestSalary(deps.db, who.userId, today));
+  await deps.telegram.sendMessage(who.chatId, plan.text, plan.buttons.length > 0 ? plan.buttons : undefined);
 }
 
 /** Which card to use today for an amount: the longest interest-free time first. */
@@ -755,6 +762,7 @@ async function cmdSettings(deps: BotDeps, who: Actor): Promise<void> {
       `Your month starts on day ${settings.periodStartDay}.`,
       settings.logNudge ? "I look in about 10:45 in the evening if nothing has been logged that day." : "I shall not check in on you in the evening.",
       settings.balanceCheck ? "On Sunday nights I ask what your banks show." : "I shall not ask for your bank balances on Sundays.",
+      settings.morningPush ? "I send your briefing here each morning when something needs attention." : "I shall not send a morning briefing here unless you ask me to, in Settings.",
       "",
       "These can be changed in the app, under Everything, then Settings.",
     ].join("\n"),
@@ -886,6 +894,8 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
         return await cmdLoans(deps, who);
       case "swipe":
         return await cmdSwipe(deps, who, arg, today);
+      case "salary":
+        return await cmdSalary(deps, who, today);
       case "invest":
       case "investments":
         return await cmdInvest(deps, who, today);
