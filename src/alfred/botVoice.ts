@@ -373,6 +373,44 @@ export function runwayLine(r: { burnPaise: number | null; months: number | null;
   return `Runway: at ${rupees(r.burnPaise)} a month of essential spending, your bank money would last about ${r.months} months${r.solid ? "" : ` (an early estimate, from ${r.basedOnDays} days of entries)`}.`;
 }
 
+export interface ReviewText {
+  from: string;
+  to: string;
+  incomePaise: number;
+  spentPaise: number;
+  savingsPaise: number;
+  savingsRatePct: number | null;
+  needsPaise: number;
+  wantsPaise: number;
+  needsPct: number | null;
+  wantsPct: number | null;
+  emiPaise: number;
+  emiBurdenPct: number | null;
+  investedPaise: number;
+  principalRepaidPaise: number;
+  utilizationPct: number | null;
+  runway: { months: number | null; burnPaise: number | null; solid: boolean; basedOnDays: number };
+  netWorth: { endPaise: number; changePaise: number } | null;
+}
+
+/** The monthly review: what came in, what went out, what was saved, and a few ratios with their usual reference lines. */
+export function monthlyReviewLines(v: ReviewText): string[] {
+  const lines = [`Your month, ${shortDate(v.from)} to ${shortDate(v.to)}.`, ""];
+  lines.push(`Income ${rupees(v.incomePaise)}. Spent ${rupees(v.spentPaise)}.`);
+  if (v.savingsPaise >= 0) lines.push(`Saved ${rupees(v.savingsPaise)}${v.savingsRatePct === null ? "" : `, which is ${v.savingsRatePct}% of income (a common aim is 20% or more)`}.`);
+  else lines.push(`More went out than came in, by ${rupees(-v.savingsPaise)}.`);
+  if (v.needsPct !== null && v.wantsPct !== null) lines.push(`Needs ${rupees(v.needsPaise)} (${v.needsPct}%), wants ${rupees(v.wantsPaise)} (${v.wantsPct}%). A common rule of thumb is 50% needs, 30% wants, 20% saved.`);
+  if (v.investedPaise > 0 || v.principalRepaidPaise > 0) {
+    const parts = [v.investedPaise > 0 ? `${rupees(v.investedPaise)} went into investments` : "", v.principalRepaidPaise > 0 ? `${rupees(v.principalRepaidPaise)} repaid loan principal` : ""].filter(Boolean);
+    lines.push(`${parts.join(" and ")}.`);
+  }
+  if (v.emiBurdenPct !== null && v.emiPaise > 0) lines.push(`EMIs took ${v.emiBurdenPct}% of income (about 40% is the usual ceiling).`);
+  if (v.utilizationPct !== null) lines.push(`Your cards owe ${v.utilizationPct}% of their limits (under 30% is the usual aim).`);
+  if (v.runway.months !== null && v.runway.burnPaise !== null) lines.push(`Your bank money would last about ${v.runway.months} months at ${rupees(v.runway.burnPaise)} a month of essential spending${v.runway.solid ? "" : ` (an early estimate, from ${v.runway.basedOnDays} days of entries)`}.`);
+  if (v.netWorth) lines.push(`Net worth ${rupees(v.netWorth.endPaise)}, ${v.netWorth.changePaise >= 0 ? "up" : "down"} ${rupees(Math.abs(v.netWorth.changePaise))} over the month.`);
+  return lines;
+}
+
 export interface SwipeLine {
   name: string;
   days: number;
@@ -397,6 +435,7 @@ export function swipeReply(amountPaise: number, cards: SwipeLine[]): string {
 }
 
 export const botVoice = {
+  reviewNothing: "There is nothing to review yet: no income or spending in your last full month.",
   whatIfNeedsAmount: "Tell me the amount, for example /whatif 25000 home.",
   whatIfNoLoans: "You have no bank loans recorded.",
   whatIfWhich: (amount: string) => `Which loan would the ${amount} go toward? Name it, for example /whatif ${amount} home.`,
@@ -502,6 +541,7 @@ export const botVoice = {
     "/invest  your investments; update one: /value tata 15200",
     "/loans  what you owe on bank loans, and the next EMI",
     "/salary  your salary day plan: what is still to leave and what is free",
+    "/review  your last month: what came in, what went out, and what was saved",
     "/whatif  what part-paying a loan would do: /whatif 25000 home (add 12% to compare investing)",
     "/swipe  which card to use today for a purchase: /swipe 20000",
     "/menu  buttons for the main things I can show you",

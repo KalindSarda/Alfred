@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `monthly_review` integer DEFAULT true NOT NULL;

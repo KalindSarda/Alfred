@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, commitmentsLines, runwayLine, swipeReply, whatIfLines, usualLabel, describeEntry, emiReply, goalsReply, holdsReply, investReply, loansReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
+import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, commitmentsLines, monthlyReviewLines, runwayLine, swipeReply, whatIfLines, usualLabel, describeEntry, emiReply, goalsReply, holdsReply, investReply, loansReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
 import { AppError, ConflictError, NotFoundError, RateLimitedError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
@@ -21,6 +21,7 @@ import { parseQuantityE4 } from "../domain/holdings";
 import { getCommitments } from "../services/commitments";
 import { buildSalaryPlan, latestSalary } from "../services/salary";
 import { getRunway } from "../services/runway";
+import { getHealth } from "../services/health";
 import { previewBalance, settleBalance } from "../services/balanceCheck";
 import { analyseStatement, recordCheck, rankCardsForToday, settleStatement, statementFacts } from "../services/cardTools";
 import { checkinLog } from "../db/schema";
@@ -358,6 +359,13 @@ async function runMenuItem(deps: BotDeps, who: Actor, id: string, today: IstDate
     default:
       return void (await deps.telegram.sendMessage(who.chatId, botVoice.unknownCommand));
   }
+}
+
+/** The last full month in words: what came in, what went out, what was saved. */
+async function cmdReview(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
+  const view = await getHealth(deps.db, who.userId, today, "last");
+  if (view.empty) return void (await deps.telegram.sendMessage(who.chatId, botVoice.reviewNothing));
+  await deps.telegram.sendMessage(who.chatId, monthlyReviewLines({ ...view, from: view.period.from, to: view.period.to }).join("\n"));
 }
 
 /** What part-paying a loan would do: "/whatif 25000 home" (add "12%" to compare the same money invested). */
@@ -803,6 +811,7 @@ async function cmdSettings(deps: BotDeps, who: Actor): Promise<void> {
       `Your month starts on day ${settings.periodStartDay}.`,
       settings.logNudge ? "I look in about 10:45 in the evening if nothing has been logged that day." : "I shall not check in on you in the evening.",
       settings.balanceCheck ? "On Sunday nights I ask what your banks show." : "I shall not ask for your bank balances on Sundays.",
+      settings.monthlyReview ? "On the first morning of each month I send you a review of the one just ended." : "I shall not send a monthly review.",
       settings.morningPush ? "I send your briefing here each morning when something needs attention." : "I shall not send a morning briefing here unless you ask me to, in Settings.",
       "",
       "These can be changed in the app, under Everything, then Settings.",
@@ -939,6 +948,8 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
         return await cmdSalary(deps, who, today);
       case "whatif":
         return await cmdWhatIf(deps, who, arg, today);
+      case "review":
+        return await cmdReview(deps, who, today);
       case "invest":
       case "investments":
         return await cmdInvest(deps, who, today);

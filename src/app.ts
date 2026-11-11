@@ -14,6 +14,7 @@ import { authPublic, authSession } from "./routes/auth";
 import { balanceCheckRoutes } from "./routes/balanceCheck";
 import { cardToolRoutes } from "./routes/cardTools";
 import { categoryRoutes } from "./routes/categories";
+import { moneyHealthRoutes } from "./routes/moneyHealth";
 import { runwayRoutes } from "./routes/runway";
 import { commitmentRoutes } from "./routes/commitments";
 import { holdingKindRoutes } from "./routes/holdingKinds";
@@ -88,6 +89,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/accounts", accountRoutes);
   app.route("/api/transactions", transactionRoutes);
   app.route("/api/categories", categoryRoutes);
+  app.route("/api/money-health", moneyHealthRoutes);
   app.route("/api/runway", runwayRoutes);
   app.route("/api/cards", cardToolRoutes);
   app.route("/api/balance-check", balanceCheckRoutes);

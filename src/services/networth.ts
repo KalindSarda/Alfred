@@ -7,7 +7,7 @@ import { loadLedgerTxns } from "../db/transactions";
 import { bankBalance, cardOwed } from "../domain/balances";
 import { type IstDate, toIstDate } from "../domain/dates";
 import { emiToCome, instalmentSchedule } from "../domain/emi";
-import { type DebtFact, debtOutstandingAsOf, monthPoints, type NetWorthPoint, netWorthOf, trimLeading } from "../domain/networth";
+import { type DebtFact, debtOutstandingAsOf, type MonthPoint, monthPoints, type NetWorthPoint, netWorthOf, trimLeading } from "../domain/networth";
 import { valuePaise } from "../domain/holdings";
 import { loadHoldings } from "./holdings";
 import { loanFacts } from "./loans";
@@ -23,6 +23,17 @@ export interface NetWorthTrend {
  * stored. Months before the first entry are left out, and the latest point is today, so it equals the headline figure.
  */
 export async function getNetWorthTrend(db: Db, userId: string, today: IstDate, months: number): Promise<NetWorthTrend> {
+  const { points, firstDate } = await computePoints(db, userId, monthPoints(today, months));
+  return { points: trimLeading(points, firstDate) };
+}
+
+/** Net worth as of each of the given days, with the day of the person's earliest entry (null when there is none). */
+export async function getNetWorthAt(db: Db, userId: string, days: IstDate[]): Promise<{ values: Map<IstDate, number>; firstDate: IstDate | null }> {
+  const { points, firstDate } = await computePoints(db, userId, days.map((asOf) => ({ month: asOf.slice(0, 7), asOf })));
+  return { values: new Map(points.map((p) => [p.asOf, p.netWorthPaise])), firstDate };
+}
+
+async function computePoints(db: Db, userId: string, pointsFor: MonthPoint[]): Promise<{ points: NetWorthPoint[]; firstDate: IstDate | null }> {
   const [accountRows, txns, planRows, debtRows, paymentRows, held, loanList] = await Promise.all([
     listAccounts(db, userId),
     loadLedgerTxns(db, userId),
@@ -53,7 +64,7 @@ export async function getNetWorthTrend(db: Db, userId: string, today: IstDate, m
     cancelledOn: plan.cancelledAt ? toIstDate(new Date(plan.cancelledAt)) : null,
   }));
 
-  const points = monthPoints(today, months).map((p): NetWorthPoint => {
+  const points = pointsFor.map((p): NetWorthPoint => {
     let banksPaise = 0;
     let cardsOwedPaise = 0;
     for (const a of ledger) {
@@ -83,5 +94,5 @@ export async function getNetWorthTrend(db: Db, userId: string, today: IstDate, m
   });
 
   const dates = [...txns.map((t) => t.txnDate), ...debtRows.map((d) => d.date)].sort();
-  return { points: trimLeading(points, dates[0] ?? null) };
+  return { points, firstDate: dates[0] ?? null };
 }

@@ -328,6 +328,7 @@ export interface Settings {
   /** The evening check-in is paused through this day. */
   logNudgeUntil: string | null;
   morningPush: boolean;
+  monthlyReview: boolean;
 }
 
 /** A card ranked for a purchase today: the longest time before the bill first. */
@@ -523,6 +524,29 @@ export interface HoldingsOverview {
   totalInvestedPaise: number;
   gainPaise: number;
   holdings: Holding[];
+}
+
+/** How a month looked: what came in, what had to be spent, what was chosen, and what was saved. */
+export interface MoneyHealth {
+  period: { kind: "last" | "current"; from: string; to: string };
+  empty: boolean;
+  incomePaise: number;
+  needsPaise: number;
+  wantsPaise: number;
+  spentPaise: number;
+  savingsPaise: number;
+  investedPaise: number;
+  principalRepaidPaise: number;
+  emiPaise: number;
+  savingsRatePct: number | null;
+  needsPct: number | null;
+  wantsPct: number | null;
+  emiBurdenPct: number | null;
+  savingsBand: "strong" | "fair" | "low" | null;
+  emiBand: "comfortable" | "stretched" | "heavy" | null;
+  utilizationPct: number | null;
+  runway: { months: number | null; burnPaise: number | null; solid: boolean; basedOnDays: number };
+  netWorth: { endPaise: number; changePaise: number } | null;
 }
 
 /** How many months the bank money would last at what must be spent. */

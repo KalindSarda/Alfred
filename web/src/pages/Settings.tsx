@@ -47,7 +47,7 @@ export function Settings() {
   });
 
   const saveHabit = useMutation({
-    mutationFn: (patch: Partial<Pick<Settings, "logNudge" | "balanceCheck" | "logNudgeUntil" | "morningPush">>) => api.patch<Settings>("/api/settings", patch),
+    mutationFn: (patch: Partial<Pick<Settings, "logNudge" | "balanceCheck" | "logNudgeUntil" | "morningPush" | "monthlyReview">>) => api.patch<Settings>("/api/settings", patch),
     onSuccess: (data) => {
       client.setQueryData(["settings"], data);
       toast.show("Saved");
@@ -193,6 +193,13 @@ export function Settings() {
                 </Button>
               </p>
             )}
+            <label className="flex min-h-11 items-start gap-3 text-sm">
+              <input type="checkbox" className="mt-1 size-5 accent-brand" checked={settings.data.monthlyReview} onChange={(e) => saveHabit.mutate({ monthlyReview: e.target.checked })} />
+              <span>
+                Monthly review on Telegram
+                <span className="block text-xs text-soft">On the first morning of your month: what came in, what went out, what you saved, and a few ratios.</span>
+              </span>
+            </label>
             <label className="flex min-h-11 items-start gap-3 text-sm">
               <input type="checkbox" className="mt-1 size-5 accent-brand" checked={settings.data.morningPush} onChange={(e) => saveHabit.mutate({ morningPush: e.target.checked })} />
               <span>

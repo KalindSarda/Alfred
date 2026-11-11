@@ -8,6 +8,7 @@ import { runLoanCheckIns } from "./services/loanJob";
 import { EVENING_CRON, runEveningCheckIns } from "./services/habitJob";
 import { runMandateChecks } from "./services/mandateJob";
 import { runMorningPush, runSalaryPlans } from "./services/planJob";
+import { runMonthlyReview } from "./services/reviewJob";
 import { runStatementChecks } from "./services/statementJob";
 import { runHoldingNudges, runUnitsCheckIns } from "./services/holdingsJob";
 import { runDebtReminders } from "./services/debtJob";
@@ -114,6 +115,12 @@ export default {
       logger.info("salary_plans_done", { ...plans });
     } catch (error) {
       logger.error("salary_plans_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+    try {
+      const review = await runMonthlyReview({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });
+      logger.info("monthly_review_done", { ...review });
+    } catch (error) {
+      logger.error("monthly_review_failed", { error: error instanceof Error ? error.message : "unknown" });
     }
     try {
       const push = await runMorningPush({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });

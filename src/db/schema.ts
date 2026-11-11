@@ -476,6 +476,8 @@ export const appSettings = sqliteTable("app_settings", {
   logNudgeUntil: text("log_nudge_until"),
   /** The morning briefing sent to Telegram, only on days when something needs attention. Off until switched on. */
   morningPush: integer("morning_push", { mode: "boolean" }).notNull().default(false),
+  /** On the first morning of each month, a review of the month just ended on Telegram. On unless switched off. */
+  monthlyReview: integer("monthly_review", { mode: "boolean" }).notNull().default(true),
 });
 
 /** A salary credit that has been planned for, so each is planned once. */
@@ -499,7 +501,7 @@ export const checkinLog = sqliteTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull().references(() => users.id),
-    kind: text("kind", { enum: ["evening", "balance", "none_today", "morning"] }).notNull(),
+    kind: text("kind", { enum: ["evening", "balance", "none_today", "morning", "review"] }).notNull(),
     day: text("day").notNull(),
     createdAt: text("created_at").notNull(),
   },

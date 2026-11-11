@@ -14,6 +14,7 @@ export const UpdateSettings = z
     balanceCheck: z.boolean(),
     /** Pause the evening check-in through this day; null resumes it. */
     morningPush: z.boolean(),
+    monthlyReview: z.boolean(),
     logNudgeUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   })
   .partial()
@@ -29,4 +30,5 @@ export interface SettingsDto {
   balanceCheck: boolean;
   logNudgeUntil: string | null;
   morningPush: boolean;
+  monthlyReview: boolean;
 }

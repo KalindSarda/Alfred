@@ -207,6 +207,7 @@ A separate trigger runs only `runEveningCheckIns`: the Sunday balance check, or 
 7. IPO outcome reminders.
 7b. Salary day plan: plan for any new salary credit.
 7c. Morning briefing on Telegram, for people who switched it on, when something needs attention.
+7d. Monthly review, on the first morning of the person's month.
 8. Maintenance: purge expired codes, sessions and pending rows.
 Each step is isolated: one failing never stops the rest, and a person who fails never stops the others. Messages are best effort; the work itself (adding entries) is not tied to a message being delivered.
 
@@ -236,3 +237,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-11-12: slice 25 noted: card float ranking (`domain/cardFloat.ts`) and statement checks (`domain/statementGap.ts`, `services/cardTools.ts`, `statementJob.ts`).
 - 2026-11-13: slice 26 noted: the salary day plan (`services/salary.ts`, `planJob.ts`) built on the commitments view, and the opt-in morning briefing.
 - 2026-11-14: slice 27 noted: runway (`domain/runway.ts`, `services/runway.ts`, the essential flag on categories) and the part-payment what-if (`simulatePrepayment` in `domain/loans.ts`).
+- 2026-11-15: slice 28 noted: money health (`domain/health.ts`, `services/health.ts`), the monthly review, and `getNetWorthAt` for net worth at any day.
