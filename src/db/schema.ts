@@ -423,6 +423,27 @@ export const mandateAlerts = sqliteTable(
   (t) => [uniqueIndex("mandate_alerts_uq").on(t.userId, t.key, t.dueDate)],
 );
 
+/**
+ * A card statement that has been checked against what Alfred expected: asked about once per card and statement, and
+ * what was found (it matched, a gap was booked, or the person left it).
+ */
+export const statementChecks = sqliteTable(
+  "statement_checks",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    cardAccountId: text("card_account_id").notNull().references(() => accounts.id),
+    statementDate: text("statement_date").notNull(),
+    /** What Alfred made the statement total, when it was asked about. */
+    expectedPaise: integer("expected_paise").notNull(),
+    /** What the statement said; null until the person says. */
+    billedPaise: integer("billed_paise"),
+    status: text("status", { enum: ["asked", "matched", "booked", "left"] }).notNull().default("asked"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("statement_checks_uq").on(t.userId, t.cardAccountId, t.statementDate)],
+);
+
 /** Lets a retried POST /api/transactions (flaky mobile network) return the original instead of duplicating. */
 export const idempotencyKeys = sqliteTable(
   "idempotency_keys",

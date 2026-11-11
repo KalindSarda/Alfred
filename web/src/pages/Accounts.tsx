@@ -3,6 +3,7 @@ import { type AccountsView, accountsPath, searchForView, viewFromSearch } from "
 import type { Account, BankAccount, CardAccount } from "../api";
 import { AccountForm } from "../components/AccountForm";
 import { BalanceCheckSheet } from "../components/BalanceCheck";
+import { BestCard, StatementCheckSheet } from "../components/CardTools";
 import { BlockedFunds } from "../components/BlockedFunds";
 import { NetWorthTrend } from "../components/NetWorthTrend";
 import { EmiPlans } from "../components/EmiPlans";
@@ -67,6 +68,7 @@ export function Accounts() {
   const overview = useBalanceOverview();
   const [editing, setEditing] = useState<Account | "new" | null>(null);
   const [checking, setChecking] = useState(false);
+  const [checkingStatement, setCheckingStatement] = useState(false);
 
   const banks = (accounts.data ?? []).filter((a) => a.kind === "bank");
   const cards = (accounts.data ?? []).filter((a): a is CardAccount => a.kind === "card");
@@ -171,7 +173,12 @@ export function Accounts() {
 
           {cards.length > 0 && (
             <Card pad="p-0">
-              <h2 className="border-b border-line px-4 py-2 text-sm font-medium text-soft">Credit cards</h2>
+              <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-1">
+                <h2 className="text-sm font-medium text-soft">Credit cards</h2>
+                <button type="button" onClick={() => setCheckingStatement(true)} className="min-h-11 text-sm font-medium text-brand hover:underline">
+                  Check statement
+                </button>
+              </div>
               <ul className="divide-y divide-line">
                 {cards.map((c) => (
                   <CardRow key={c.id} card={c} onOpen={() => setEditing(c)} />
@@ -180,6 +187,7 @@ export function Accounts() {
             </Card>
           )}
 
+          {cards.some((c) => !c.archived) && <BestCard />}
         </>
         )
       )}
@@ -191,6 +199,7 @@ export function Accounts() {
         </label>
       )}
 
+      {checkingStatement && <StatementCheckSheet cards={cards.filter((c): c is CardAccount => c.kind === "card" && !c.archived)} onClose={() => setCheckingStatement(false)} />}
       {checking && <BalanceCheckSheet banks={banks.filter((b): b is BankAccount => b.kind === "bank" && !b.archived)} onClose={() => setChecking(false)} />}
 
       {editing && (

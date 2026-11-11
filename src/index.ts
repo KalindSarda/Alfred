@@ -7,6 +7,7 @@ import { runEmiCheckIns } from "./services/emiJob";
 import { runLoanCheckIns } from "./services/loanJob";
 import { EVENING_CRON, runEveningCheckIns } from "./services/habitJob";
 import { runMandateChecks } from "./services/mandateJob";
+import { runStatementChecks } from "./services/statementJob";
 import { runHoldingNudges, runUnitsCheckIns } from "./services/holdingsJob";
 import { runDebtReminders } from "./services/debtJob";
 import { runRecurring } from "./services/recurringJob";
@@ -51,6 +52,12 @@ export default {
       logger.info("loan_instalments_added", { ...loanResult });
     } catch (error) {
       logger.error("loan_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+    try {
+      const statements = await runStatementChecks({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });
+      logger.info("statement_checks_done", { ...statements });
+    } catch (error) {
+      logger.error("statement_checks_failed", { error: error instanceof Error ? error.message : "unknown" });
     }
     try {
       const recurring = await runRecurring({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });

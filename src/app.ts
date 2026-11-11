@@ -12,6 +12,7 @@ import { alfredRoutes } from "./routes/alfred";
 import { budgetRoutes } from "./routes/budgets";
 import { authPublic, authSession } from "./routes/auth";
 import { balanceCheckRoutes } from "./routes/balanceCheck";
+import { cardToolRoutes } from "./routes/cardTools";
 import { categoryRoutes } from "./routes/categories";
 import { commitmentRoutes } from "./routes/commitments";
 import { holdingKindRoutes } from "./routes/holdingKinds";
@@ -86,6 +87,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/accounts", accountRoutes);
   app.route("/api/transactions", transactionRoutes);
   app.route("/api/categories", categoryRoutes);
+  app.route("/api/cards", cardToolRoutes);
   app.route("/api/balance-check", balanceCheckRoutes);
   app.route("/api/commitments", commitmentRoutes);
   app.route("/api/holding-kinds", holdingKindRoutes);

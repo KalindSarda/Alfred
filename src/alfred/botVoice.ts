@@ -307,7 +307,41 @@ export function commitmentsLines(c: CommitmentsText): string[] {
 /** A usual spend as a button: "Rapido ₹50". */
 export const usualLabel = (name: string, amountPaise: number): string => `${name.length > 22 ? `${name.slice(0, 21)}…` : name} ${rupees(amountPaise)}`;
 
+export interface SwipeLine {
+  name: string;
+  days: number;
+  statementDate: string;
+  dueDate: string;
+  fits: boolean;
+  availableCreditPaise: number;
+  waitDate: string | null;
+  waitDays: number | null;
+}
+
+/** Which card gives the longest time before the bill, for an amount. */
+export function swipeReply(amountPaise: number, cards: SwipeLine[]): string {
+  const lines = [`For ${rupees(amountPaise)}, the longest time before the bill first:`];
+  for (const c of cards) {
+    const credit = c.fits ? "" : `, but only ${rupees(Math.max(0, c.availableCreditPaise))} of credit is left`;
+    lines.push(`${c.name}: ${c.days} days (statement ${shortDate(c.statementDate)}, bill due ${shortDate(c.dueDate)})${credit}`);
+  }
+  const best = cards.find((c) => c.fits);
+  if (best?.waitDate && best.waitDays !== null) lines.push("", `If it can wait until ${shortDate(best.waitDate)}, the day after its statement, ${best.name} would give ${best.waitDays} days instead of ${best.days}.`);
+  return lines.join("\n");
+}
+
 export const botVoice = {
+  swipeNeedsAmount: "Tell me the amount, for example /swipe 20000.",
+  swipeNoCards: "You have no credit cards on record.",
+  statementAsk: (name: string, statementDate: string, expectedPaise: number) =>
+    `${name}: your statement of ${shortDate(statementDate)} should be out. I make the total ${rupees(expectedPaise)}. What does it say?`,
+  statementMatches: "Splendid. That matches the statement.",
+  statementAskAmount: (name: string) => `What is the total amount due on the ${name} statement? Send the amount, such as 20988.76.`,
+  statementGap: (name: string, expectedPaise: number, billedPaise: number, reason: string) => `${name}: I made the statement ${rupees(expectedPaise)} and it says ${rupees(billedPaise)}. ${reason}`,
+  statementBooked: (kind: "fee" | "spending" | "credit", paise: number, name: string) =>
+    `Booked ${rupees(paise)} as ${kind === "fee" ? "a fee" : kind === "spending" ? "unlogged spending" : "a credit"} on ${name}, dated its statement. We agree now.`,
+  statementLeft: "Very well. I have left it as it is.",
+  statementGone: "That statement has been superseded or the question has expired. Use Check statement in the app if you still want to compare it.",
   eveningNone: "Good evening. Nothing has been logged today. Anything to add?",
   eveningSilent: (days: number, lastDate: string) => `Good evening. ${days} days have passed since your last entry, on ${shortDate(lastDate)}. A moment now keeps the books honest. What went out today?`,
   noneToday: "Understood. A quiet day, noted. I shall not ask again tonight.",
@@ -396,6 +430,7 @@ export const botVoice = {
     "/goals  your savings goals; put money toward one: /save 5000 laptop",
     "/invest  your investments; update one: /value tata 15200",
     "/loans  what you owe on bank loans, and the next EMI",
+    "/swipe  which card to use today for a purchase: /swipe 20000",
     "/menu  buttons for the main things I can show you",
     "/emi  your card EMI plans and what is still to be billed",
     "/ipo  money blocked for IPO applications, or: /ipo 15000 hdfc tata tech",

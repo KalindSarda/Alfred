@@ -327,6 +327,44 @@ export interface Settings {
   logNudgeUntil: string | null;
 }
 
+/** A card ranked for a purchase today: the longest time before the bill first. */
+export interface RankedCard {
+  id: string;
+  name: string;
+  statementDate: string;
+  dueDate: string;
+  days: number;
+  availableCreditPaise: number;
+  utilizationPct: number;
+  fits: boolean;
+  waitDate: string | null;
+  waitDays: number | null;
+}
+
+export interface StatementFacts {
+  cardId: string;
+  cardName: string;
+  statementDate: string;
+  dueDate: string;
+  expectedPaise: number;
+  previousUnpaidPaise: number;
+}
+
+export interface StatementAnalysis {
+  differencePaise: number;
+  kind: "matches" | "fee_gst" | "interest" | "unrecorded" | "credit";
+  reason: string;
+  bookAs: "fee" | "spending" | "credit" | null;
+  facts: StatementFacts;
+  billedPaise: number;
+}
+
+export interface StatementSettled {
+  kind: "fee" | "spending" | "credit" | null;
+  bookedPaise: number;
+  cardName: string;
+}
+
 export interface BalancePreview {
   accountId: string;
   accountName: string;

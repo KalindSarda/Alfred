@@ -40,8 +40,8 @@ export async function getPending(db: Db, userId: string, chatId: string, id: str
     .limit(1);
   if (!row) return null;
   try {
-    const parsed = JSON.parse(row.payload) as PendingEntry & { emiFix?: unknown; loanFix?: unknown; unitsFix?: unknown; balanceFix?: unknown; balanceProposal?: unknown };
-    return parsed.emiFix || parsed.loanFix || parsed.unitsFix || parsed.balanceFix || parsed.balanceProposal ? null : parsed;
+    const parsed = JSON.parse(row.payload) as PendingEntry & { emiFix?: unknown; loanFix?: unknown; unitsFix?: unknown; balanceFix?: unknown; balanceProposal?: unknown; statementFix?: unknown; statementProposal?: unknown };
+    return parsed.emiFix || parsed.loanFix || parsed.unitsFix || parsed.balanceFix || parsed.balanceProposal || parsed.statementFix || parsed.statementProposal ? null : parsed;
   } catch {
     return null;
   }
@@ -125,8 +125,50 @@ export async function getBalanceProposal(db: Db, userId: string, chatId: string,
   }
 }
 
+/** Waiting for the total the statement shows (the person tapped "Different" on a statement question). */
+export async function createStatementFix(db: Db, userId: string, chatId: string, cardId: string, statementDate: string, nowMs: number): Promise<void> {
+  await db.insert(botPending).values({
+    id: randomString(10, "abcdefghijkmnpqrstuvwxyz23456789"),
+    userId,
+    chatId,
+    payload: JSON.stringify({ statementFix: { cardId, statementDate } }),
+    expiresAt: iso(nowMs + PENDING_TTL_MS),
+    createdAt: iso(nowMs),
+  });
+}
+
+/** A typed statement total waiting for the person to say what to do about the gap. Returns the id the buttons carry. */
+export async function createStatementProposal(db: Db, userId: string, chatId: string, cardId: string, billedPaise: number, nowMs: number): Promise<string> {
+  const id = randomString(10, "abcdefghijkmnpqrstuvwxyz23456789");
+  await db.insert(botPending).values({
+    id,
+    userId,
+    chatId,
+    payload: JSON.stringify({ statementProposal: { cardId, billedPaise } }),
+    expiresAt: iso(nowMs + PENDING_TTL_MS),
+    createdAt: iso(nowMs),
+  });
+  return id;
+}
+
+/** Only the owner, in the same chat, and only while it is fresh. */
+export async function getStatementProposal(db: Db, userId: string, chatId: string, id: string, nowMs: number): Promise<{ cardId: string; billedPaise: number } | null> {
+  const [row] = await db
+    .select()
+    .from(botPending)
+    .where(and(eq(botPending.id, id), eq(botPending.userId, userId), eq(botPending.chatId, chatId), gt(botPending.expiresAt, iso(nowMs))))
+    .limit(1);
+  if (!row) return null;
+  try {
+    const p = (JSON.parse(row.payload) as { statementProposal?: { cardId?: unknown; billedPaise?: unknown } }).statementProposal;
+    return typeof p?.cardId === "string" && typeof p.billedPaise === "number" ? { cardId: p.cardId, billedPaise: p.billedPaise } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** What a number typed next is for: an EMI entry's amount, a loan instalment's amount, or a purchase's quantity. */
-export type AmountFix = { kind: "emi"; txnId: string } | { kind: "loan"; loanId: string; on: string } | { kind: "units"; txnId: string } | { kind: "balance"; accountId: string };
+export type AmountFix = { kind: "emi"; txnId: string } | { kind: "loan"; loanId: string; on: string } | { kind: "units"; txnId: string } | { kind: "balance"; accountId: string } | { kind: "statement"; cardId: string; statementDate: string };
 
 /** The latest fresh amount-wait for this person and chat, removed so it is used once; null when there is none. */
 export async function takeAmountFix(db: Db, userId: string, chatId: string, nowMs: number): Promise<AmountFix | null> {
@@ -137,12 +179,13 @@ export async function takeAmountFix(db: Db, userId: string, chatId: string, nowM
   let found: { id: string; fix: AmountFix; createdAt: string } | null = null;
   for (const row of rows) {
     try {
-      const parsed = JSON.parse(row.payload) as { emiFix?: { txnId?: unknown }; loanFix?: { loanId?: unknown; on?: unknown }; unitsFix?: { txnId?: unknown }; balanceFix?: { accountId?: unknown } };
+      const parsed = JSON.parse(row.payload) as { emiFix?: { txnId?: unknown }; loanFix?: { loanId?: unknown; on?: unknown }; unitsFix?: { txnId?: unknown }; balanceFix?: { accountId?: unknown }; statementFix?: { cardId?: unknown; statementDate?: unknown } };
       let fix: AmountFix | null = null;
       if (typeof parsed.emiFix?.txnId === "string") fix = { kind: "emi", txnId: parsed.emiFix.txnId };
       else if (typeof parsed.loanFix?.loanId === "string" && typeof parsed.loanFix.on === "string") fix = { kind: "loan", loanId: parsed.loanFix.loanId, on: parsed.loanFix.on };
       else if (typeof parsed.unitsFix?.txnId === "string") fix = { kind: "units", txnId: parsed.unitsFix.txnId };
       else if (typeof parsed.balanceFix?.accountId === "string") fix = { kind: "balance", accountId: parsed.balanceFix.accountId };
+      else if (typeof parsed.statementFix?.cardId === "string" && typeof parsed.statementFix.statementDate === "string") fix = { kind: "statement", cardId: parsed.statementFix.cardId, statementDate: parsed.statementFix.statementDate };
       if (fix && (!found || row.createdAt > found.createdAt)) found = { id: row.id, fix, createdAt: row.createdAt };
     } catch {
       // Not ours; ignore.

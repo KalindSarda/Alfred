@@ -34,7 +34,7 @@ export async function previewBalance(db: Db, userId: string, accountId: string, 
 }
 
 /** The category for a booking, created the first time it is needed (and brought back if it was archived). */
-async function categoryFor(db: Db, userId: string, name: string, kind: "expense" | "income"): Promise<string> {
+export async function categoryFor(db: Db, userId: string, name: string, kind: "expense" | "income"): Promise<string> {
   const found = await getCategoryByName(db, userId, kind, name);
   if (!found) return (await createCategory(db, userId, { name, kind })).id;
   if (found.archivedAt) await updateCategory(db, userId, found.id, { archived: false });

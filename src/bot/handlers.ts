@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, commitmentsLines, usualLabel, describeEntry, emiReply, goalsReply, holdsReply, investReply, loansReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
+import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, commitmentsLines, swipeReply, usualLabel, describeEntry, emiReply, goalsReply, holdsReply, investReply, loansReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
 import { AppError, ConflictError, NotFoundError, RateLimitedError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
@@ -20,6 +20,7 @@ import { unitWord, unitsQuestionFor } from "../services/holdingsJob";
 import { parseQuantityE4 } from "../domain/holdings";
 import { getCommitments } from "../services/commitments";
 import { previewBalance, settleBalance } from "../services/balanceCheck";
+import { analyseStatement, recordCheck, rankCardsForToday, settleStatement, statementFacts } from "../services/cardTools";
 import { checkinLog } from "../db/schema";
 import { updateSettings } from "../services/settings";
 import { addDays } from "../domain/dates";
@@ -27,7 +28,7 @@ import { newId, nowIso } from "../utils/id";
 import { getLoan, listLoans, loansOutstanding, setInstalmentTotal } from "../services/loans";
 import { addContribution, listGoals, removeContribution } from "../services/goals";
 import { parseAmountToken } from "./parser";
-import { createBalanceFix, createBalanceProposal, createEmiFix, createLoanFix, createUnitsFix, deletePending as removePending, getBalanceProposal, takeAmountFix } from "./pending";
+import { createBalanceFix, createBalanceProposal, createEmiFix, createLoanFix, createStatementFix, createStatementProposal, createUnitsFix, deletePending as removePending, getBalanceProposal, getStatementProposal, takeAmountFix } from "./pending";
 import { balanceOverview, setArchived, toAccountDto } from "../services/accounts";
 import { getCashflow } from "../services/cashflow";
 import { createCategory } from "../services/categories";
@@ -354,6 +355,40 @@ async function runMenuItem(deps: BotDeps, who: Actor, id: string, today: IstDate
       return await cmdLoans(deps, who);
     default:
       return void (await deps.telegram.sendMessage(who.chatId, botVoice.unknownCommand));
+  }
+}
+
+/** Which card to use today for an amount: the longest interest-free time first. */
+async function cmdSwipe(deps: BotDeps, who: Actor, arg: string, today: IstDate): Promise<void> {
+  const amount = arg
+    .split(/\s+/)
+    .map((t) => parseAmountToken(t))
+    .find((p): p is number => p !== null && p > 0);
+  if (amount === undefined) return void (await deps.telegram.sendMessage(who.chatId, botVoice.swipeNeedsAmount));
+  const ranked = await rankCardsForToday(deps.db, who.userId, today, amount);
+  if (ranked.length === 0) return void (await deps.telegram.sendMessage(who.chatId, botVoice.swipeNoCards));
+  await deps.telegram.sendMessage(who.chatId, swipeReply(amount, ranked));
+}
+
+/** A typed statement total becomes a question about the gap, or a thank-you when there is none. */
+async function proposeStatement(deps: BotDeps, who: Actor, cardId: string, statementDate: string, billedPaise: number, today: IstDate): Promise<void> {
+  try {
+    const a = await analyseStatement(deps.db, who.userId, cardId, billedPaise, today);
+    if (a.facts.statementDate !== statementDate) return void (await deps.telegram.sendMessage(who.chatId, botVoice.statementGone));
+    if (a.bookAs === null) {
+      await recordCheck(deps.db, who.userId, cardId, a.facts.statementDate, a.facts.expectedPaise, billedPaise, "matched");
+      return void (await deps.telegram.sendMessage(who.chatId, botVoice.statementMatches));
+    }
+    const id = await createStatementProposal(deps.db, who.userId, who.chatId, cardId, billedPaise, deps.now());
+    const gap = formatRupees(Math.abs(a.differencePaise));
+    const label = a.bookAs === "fee" ? `Add ${gap} as Fees & Charges` : a.bookAs === "spending" ? `Add ${gap} as unlogged spending` : `Add ${gap} as a credit`;
+    await deps.telegram.sendMessage(who.chatId, botVoice.statementGap(a.facts.cardName, a.facts.expectedPaise, billedPaise, a.reason), [
+      [{ text: label, data: `s:${id}:b` }],
+      [{ text: "Leave it", data: `s:${id}:n` }],
+    ]);
+  } catch (error) {
+    if (error instanceof NotFoundError || error instanceof ValidationError) return void (await deps.telegram.sendMessage(who.chatId, botVoice.statementGone));
+    throw error;
   }
 }
 
@@ -794,6 +829,9 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
         if (waiting.kind === "units") {
           const units = parseQuantityE4(text);
           if (units !== null) return await fixUnits(deps, who, waiting.txnId, units, today);
+        } else if (waiting.kind === "statement") {
+          const paise = parseAmountToken(text);
+          if (paise !== null) return await proposeStatement(deps, who, waiting.cardId, waiting.statementDate, paise, today);
         } else if (waiting.kind === "balance") {
           const paise = parseAmountToken(text);
           if (paise !== null) return await proposeBalance(deps, who, waiting.accountId, paise, today);
@@ -846,6 +884,8 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
         return await cmdGoals(deps, who, today);
       case "loans":
         return await cmdLoans(deps, who);
+      case "swipe":
+        return await cmdSwipe(deps, who, arg, today);
       case "invest":
       case "investments":
         return await cmdInvest(deps, who, today);
@@ -1057,6 +1097,36 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
         } else {
           const done = await settleBalance(deps.db, userId, proposal.accountId, proposal.typedPaise, todayIst(new Date(deps.now())));
           await reply(deps, to, done.kind === "none" ? botVoice.balanceMatches : botVoice.balanceBooked(done.kind, done.bookedPaise, done.accountName, done.balancePaise));
+        }
+      }
+    } else if (kind === "s" && id && (action === "y" || action === "d") && argument) {
+      // The statement question the day after a statement: "Yes, it matches" or "Different".
+      const today = todayIst(new Date(deps.now()));
+      const facts = await statementFacts(deps.db, userId, id, today).catch(() => null);
+      if (!facts || facts.statementDate !== argument) {
+        await reply(deps, to, botVoice.statementGone);
+      } else if (action === "y") {
+        await recordCheck(deps.db, userId, id, facts.statementDate, facts.expectedPaise, facts.expectedPaise, "matched");
+        await reply(deps, to, botVoice.statementMatches);
+      } else {
+        await createStatementFix(deps.db, userId, chatId, id, facts.statementDate, deps.now());
+        await reply(deps, to, botVoice.statementAskAmount(facts.cardName));
+      }
+    } else if (kind === "s" && id && (action === "b" || action === "n")) {
+      // What to do about the gap the statement total showed.
+      const proposal = await getStatementProposal(deps.db, userId, chatId, id, deps.now());
+      if (!proposal) {
+        await reply(deps, to, botVoice.statementGone);
+      } else {
+        await removePending(deps.db, id);
+        if (action === "n") {
+          const today = todayIst(new Date(deps.now()));
+          const facts = await statementFacts(deps.db, userId, proposal.cardId, today).catch(() => null);
+          if (facts) await recordCheck(deps.db, userId, proposal.cardId, facts.statementDate, facts.expectedPaise, proposal.billedPaise, "left");
+          await reply(deps, to, botVoice.statementLeft);
+        } else {
+          const done = await settleStatement(deps.db, userId, proposal.cardId, proposal.billedPaise, todayIst(new Date(deps.now())));
+          await reply(deps, to, done.kind === null ? botVoice.statementMatches : botVoice.statementBooked(done.kind, done.bookedPaise, done.cardName));
         }
       }
     } else if (kind === "q" && id) {

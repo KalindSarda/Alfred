@@ -169,12 +169,12 @@ The original design above still holds: one Cloudflare Worker (Hono) serving the 
 | Jobs | `src/services/*Job.ts` | The daily work, described below. |
 | Web | `web/src` | React and Vite. Pages are thin; components own their sheets; `queries.ts` holds the data hooks. |
 
-### Data model (31 tables)
+### Data model (32 tables)
 - **People and access:** `users`, `invites`, `sessions`, `login_codes`, `rate_limits`, `app_settings`, `idempotency_keys`, `telegram_links`, `telegram_link_codes`, `telegram_updates`, `bot_pending`.
 - **The ledger:** `accounts` (banks and cards), `categories`, `transactions`, `merchant_aliases`, `budgets`.
 - **Things that repeat or are owed:** `recurring_rules`, `emi_plans`, `loans`, `holds` (blocked IPO money), `contacts`, `debts`, `debt_payments`.
 - **Things owned or set aside:** `holdings`, `holding_values`, `holding_lots`, `holding_kinds`, `goals`, `goal_contributions`.
-- **Bookkeeping:** `nudge_log` (card due dates announced once), `mandate_alerts` (a short bank warned about once per debit and date), `checkin_log` (the evening and Sunday check-ins sent, and "nothing today" answers).
+- **Bookkeeping:** `nudge_log` (card due dates announced once), `mandate_alerts` (a short bank warned about once per debit and date), `checkin_log` (the evening and Sunday check-ins sent, and "nothing today" answers), `statement_checks` (card statements asked about and what was found).
 
 ### Money rules in one place
 - Amounts are whole paise (integers); dates are IST calendar dates ("YYYY-MM-DD"). There is no floating point in stored money; percentages and rates are held as whole numbers (basis points for loans).
@@ -198,6 +198,7 @@ A separate trigger runs only `runEveningCheckIns`: the Sunday balance check, or 
 ### The daily job (cron 04:30 UTC, 10:00 IST), in order
 1. EMI check-ins: add due instalments, ask whether they agree.
 2. Loan check-ins: the same for loan instalments (interest expense and principal payment).
+2b. Statement checks: the day after a card statement, ask what it says and name any gap.
 3. Recurring: add due entries (drafts for the person to confirm), send reminders.
 3b. Mandate checks: warn when a bank cannot cover a debit due in the next two days.
 4. Lent and borrowed: follow up on money lent (not to trusted people), remind about money borrowed.
@@ -229,3 +230,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-11-06: slice 22 noted: investment kinds are per-person rows (`holding_kinds`) that carry unit and rate quantity; `holdings.kind` stores the kind key.
 - 2026-11-07: slice 23 noted: the commitments timeline (`domain/commitments.ts`, `services/commitments.ts`) joins cards, EMIs, loans, recurring rules and borrowed money; free to spend is a second figure beside safe-to-spend.
 - 2026-11-11: slice 24 noted: the logging habit (last-logged in the briefing, the evening cron, usual spends, the weekly balance check booking gaps as source `check`).
+- 2026-11-12: slice 25 noted: card float ranking (`domain/cardFloat.ts`) and statement checks (`domain/statementGap.ts`, `services/cardTools.ts`, `statementJob.ts`).
