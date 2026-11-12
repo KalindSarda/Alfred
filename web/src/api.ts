@@ -334,6 +334,8 @@ export interface Settings {
   emergencyMonths: number;
   emergencyTargetPaise: number | null;
   emergencyHorizonMonths: number;
+  emergencyBasis: "essentials" | "lifestyle";
+  medicalTargetPaise: number | null;
 }
 
 /** A card ranked for a purchase today: the longest time before the bill first. */
@@ -566,12 +568,27 @@ export interface FireView {
 }
 
 /** Where the emergency fund stands: the target, what is flagged as the fund, and what is still missing. */
+export interface FundLayer {
+  targetPaise: number;
+  fundedPaise: number;
+  gapPaise: number;
+  topUpPaise: number;
+}
+
 export interface EmergencyFund {
   months: number;
+  basis: "essentials" | "lifestyle";
   horizonMonths: number;
+  /** The burn of the chosen basis, and both, so the choice can be shown. */
   burnPaise: number | null;
+  essentialsBurnPaise: number | null;
+  lifestyleBurnPaise: number | null;
+  essentialsTargetPaise: number | null;
+  lifestyleTargetPaise: number | null;
   targetPaise: number | null;
-  basis: "burn" | "manual" | null;
+  targetBasis: "burn" | "manual" | null;
+  living: FundLayer | null;
+  medical: FundLayer | null;
   fundedPaise: number;
   bankPaise: number;
   holdingsPaise: number;

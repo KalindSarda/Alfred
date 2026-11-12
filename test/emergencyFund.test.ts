@@ -20,7 +20,7 @@ describe("the emergency fund", () => {
     await rent(w);
     expect((await flag(w, w.hdfc)).status).toBe(200);
     const v = await view(w);
-    expect(v).toMatchObject({ months: 6, burnPaise: BURN, targetPaise: 6 * BURN, basis: "burn", fundedPaise: 1_00_000_00, bankPaise: 1_00_000_00, nothingFlagged: false, early: true, fundedMonths: 2.8 });
+    expect(v).toMatchObject({ months: 6, burnPaise: BURN, targetPaise: 6 * BURN, targetBasis: "burn", fundedPaise: 1_00_000_00, bankPaise: 1_00_000_00, nothingFlagged: false, early: true, fundedMonths: 2.8 });
     expect(v.gapPaise).toBe(6 * BURN - 1_00_000_00);
     expect(v.topUpPaise).toBe(Math.ceil((6 * BURN - 1_00_000_00) / 12));
     expect(v.accounts).toEqual([{ id: w.hdfc.id, name: "HDFC Bank", paise: 1_00_000_00 }]);
@@ -54,17 +54,17 @@ describe("the emergency fund", () => {
     await rent(w);
     await flag(w, w.hdfc);
     await w.api("PATCH", "/api/settings", { emergencyTargetPaise: 3_00_000_00 });
-    expect(await view(w)).toMatchObject({ targetPaise: 3_00_000_00, basis: "manual", gapPaise: 2_00_000_00 });
+    expect(await view(w)).toMatchObject({ targetPaise: 3_00_000_00, targetBasis: "manual", gapPaise: 2_00_000_00 });
     await w.api("PATCH", "/api/settings", { emergencyTargetPaise: null, emergencyMonths: 3, emergencyHorizonMonths: 6 });
     const v = await view(w);
-    expect(v).toMatchObject({ months: 3, targetPaise: 3 * BURN, basis: "burn", horizonMonths: 6 });
+    expect(v).toMatchObject({ months: 3, targetPaise: 3 * BURN, targetBasis: "burn", horizonMonths: 6 });
     expect(v.topUpPaise).toBe(Math.ceil((3 * BURN - 1_00_000_00) / 6));
   });
 
   it("has no target without history, until one is typed", async () => {
     const w = await world();
     await flag(w, w.hdfc);
-    expect(await view(w)).toMatchObject({ burnPaise: null, targetPaise: null, basis: null, gapPaise: null, fundedPaise: 1_00_000_00 });
+    expect(await view(w)).toMatchObject({ essentialsBurnPaise: null, targetPaise: null, targetBasis: null, gapPaise: null, fundedPaise: 1_00_000_00 });
     await w.api("PATCH", "/api/settings", { emergencyTargetPaise: 2_00_000_00 });
     expect(await view(w)).toMatchObject({ targetPaise: 2_00_000_00, gapPaise: 1_00_000_00 });
   });
@@ -97,15 +97,52 @@ describe("the emergency fund", () => {
   });
 });
 
+describe("the living and medical layers", () => {
+  const food = (w: W) => w.api("POST", "/api/transactions", { type: "expense", amountPaise: 10_000_00, txnDate: "2026-10-03", accountId: w.sbi.id, categoryId: w.category("Food & Dining") });
+
+  it("measures on everything spent by default, or on essentials only, and shows both", async () => {
+    const w = await world();
+    await rent(w);
+    await food(w);
+    await flag(w, w.hdfc);
+    // ₹40,000 spent in 26 days is ₹46,153.85 a month; the rent alone is ₹34,615.38.
+    const v = await view(w);
+    expect(v).toMatchObject({ basis: "lifestyle", essentialsBurnPaise: BURN, lifestyleBurnPaise: 4_615_385, burnPaise: 4_615_385, targetPaise: 6 * 4_615_385, essentialsTargetPaise: 6 * BURN, lifestyleTargetPaise: 6 * 4_615_385 });
+    await w.api("PATCH", "/api/settings", { emergencyBasis: "essentials" });
+    expect(await view(w)).toMatchObject({ basis: "essentials", burnPaise: BURN, targetPaise: 6 * BURN });
+  });
+
+  it("puts the medical reserve on top of the living costs and fills it second", async () => {
+    const w = await world();
+    await rent(w);
+    await flag(w, w.hdfc);
+    await w.api("PATCH", "/api/settings", { emergencyBasis: "essentials", medicalTargetPaise: 4_00_000_00 });
+    const v = await view(w);
+    expect(v.targetPaise).toBe(6 * BURN + 4_00_000_00);
+    expect(v.living).toMatchObject({ targetPaise: 6 * BURN, fundedPaise: 1_00_000_00 });
+    expect(v.medical).toMatchObject({ targetPaise: 4_00_000_00, fundedPaise: 0, gapPaise: 4_00_000_00 });
+    // Money beyond the living costs goes into the medical layer.
+    await w.api("PATCH", "/api/settings", { emergencyTargetPaise: 50_000_00 });
+    expect((await view(w)).medical).toMatchObject({ fundedPaise: 50_000_00 });
+  });
+
+  it("validates the new settings", async () => {
+    const w = await world();
+    expect((await w.api("PATCH", "/api/settings", { emergencyBasis: "everything" })).status).toBe(422);
+    expect((await w.api("PATCH", "/api/settings", { medicalTargetPaise: 0 })).status).toBe(422);
+    expect((await w.api("PATCH", "/api/settings", { medicalTargetPaise: null })).status).toBe(200);
+  });
+});
+
 describe("the emergency fund in Telegram", () => {
   it("is in /balance, flagged or not", async () => {
     const w = await world();
     await rent(w);
     await w.say("/balance");
-    expect(w.tg.last.text).toContain("Emergency fund: nothing is marked as one yet. Your bank money alone would cover about 3.4 months of essentials");
+    expect(w.tg.last.text).toContain("Emergency fund: nothing is marked as one yet. Your bank money alone would cover about 3.4 months of your spending");
     await flag(w, w.hdfc);
     await w.say("/balance");
-    expect(w.tg.last.text).toContain("Emergency fund: ₹1,00,000 of ₹2,07,692.28, about 2.8 months of essentials");
+    expect(w.tg.last.text).toContain("Emergency fund: ₹1,00,000 of ₹2,07,692.28, about 2.8 months of your spending");
     expect(w.tg.last.text).toContain("Still to build:");
   });
 

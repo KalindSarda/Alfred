@@ -484,6 +484,10 @@ export const appSettings = sqliteTable("app_settings", {
   emergencyMonths: integer("emergency_months").notNull().default(6),
   emergencyTargetPaise: integer("emergency_target_paise"),
   emergencyHorizonMonths: integer("emergency_horizon_months").notNull().default(12),
+  /** Measure the living layer on essentials only, or on everything spent now. */
+  emergencyBasis: text("emergency_basis", { enum: ["essentials", "lifestyle"] }).notNull().default("lifestyle"),
+  /** An amount kept on top of the living layer for medical costs. */
+  medicalTargetPaise: integer("medical_target_paise"),
 });
 
 /** A salary credit that has been planned for, so each is planned once. */

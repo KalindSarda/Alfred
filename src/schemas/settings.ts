@@ -19,6 +19,8 @@ export const UpdateSettings = z
     emergencyMonths: z.number().int().min(1).max(24),
     emergencyTargetPaise: z.number().int().positive().max(100_000_000_000_00).nullable(),
     emergencyHorizonMonths: z.number().int().min(1).max(60),
+    emergencyBasis: z.enum(["essentials", "lifestyle"]),
+    medicalTargetPaise: z.number().int().positive().max(100_000_000_000_00).nullable(),
     logNudgeUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   })
   .partial()
@@ -38,4 +40,6 @@ export interface SettingsDto {
   emergencyMonths: number;
   emergencyTargetPaise: number | null;
   emergencyHorizonMonths: number;
+  emergencyBasis: "essentials" | "lifestyle";
+  medicalTargetPaise: number | null;
 }

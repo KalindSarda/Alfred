@@ -3,6 +3,7 @@ import type { Db } from "../db/client";
 import { type EmergencyFund, emergencyFund } from "../domain/emergency";
 import { valuePaise } from "../domain/holdings";
 import type { HoldingFacts } from "../domain/holdings";
+import { periodFacts } from "./health";
 import { listAccountsWithFigures } from "./ledger";
 import { loadHoldings } from "./holdings";
 import { getRunway } from "./runway";
@@ -31,11 +32,19 @@ export async function getEmergencyFund(db: Db, userId: string, today: IstDate): 
     .filter((r) => r.status === "active" && r.isEmergency)
     .map((r) => ({ id: r.id, name: r.name, paise: Math.max(0, valuePaise(loaded.facts.get(r.id) as HoldingFacts, today)) }));
 
+  // What is spent in all, as a month at the recent rate; needs the same 14 days of history as the essentials figure.
+  const days = runway.basedOnDays;
+  const spent = days >= 14 ? await periodFacts(db, userId, { from: runway.windowFrom, to: today }) : null;
+  const lifestyleBurnPaise = spent ? Math.round(((spent.needsPaise + spent.wantsPaise) * 30) / Math.max(1, days)) : null;
+
   const fund = emergencyFund({
     months: settings.emergencyMonths,
+    basis: settings.emergencyBasis,
     manualTargetPaise: settings.emergencyTargetPaise,
+    medicalTargetPaise: settings.medicalTargetPaise,
     horizonMonths: settings.emergencyHorizonMonths,
-    burnPaise: runway.burnPaise,
+    essentialsBurnPaise: runway.burnPaise,
+    lifestyleBurnPaise: lifestyleBurnPaise !== null && lifestyleBurnPaise > 0 ? lifestyleBurnPaise : null,
     bankPaise: accounts.reduce((s, a) => s + a.paise, 0),
     holdingsPaise: holdings.reduce((s, h) => s + h.paise, 0),
     flagged: accounts.length + holdings.length,

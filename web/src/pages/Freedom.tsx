@@ -58,7 +58,9 @@ function FundSettings({ fund, onClose }: { fund: EmergencyFund; onClose: () => v
   const client = useQueryClient();
   const toast = useToast();
   const [months, setMonths] = useState(String(fund.months));
-  const [target, setTarget] = useState(fund.basis === "manual" && fund.targetPaise !== null ? paiseToInput(fund.targetPaise) : "");
+  const [target, setTarget] = useState(fund.targetBasis === "manual" && fund.living ? paiseToInput(fund.living.targetPaise) : "");
+  const [basis, setBasis] = useState<"essentials" | "lifestyle">(fund.basis);
+  const [medical, setMedical] = useState(fund.medical ? paiseToInput(fund.medical.targetPaise) : "");
   const [horizon, setHorizon] = useState(String(fund.horizonMonths));
   const [error, setError] = useState("");
   const save = useMutation({
@@ -78,17 +80,39 @@ function FundSettings({ fund, onClose }: { fund: EmergencyFund; onClose: () => v
     if (!Number.isInteger(h) || h < 1 || h > 60) return setError("Months to build it in: a whole number from 1 to 60.");
     const typed = target.trim() ? rupeesToPaise(target) : null;
     if (target.trim() && !typed) return setError("The target looks wrong. Use a number such as 300000, or leave it empty.");
+    const med = medical.trim() ? rupeesToPaise(medical) : null;
+    if (medical.trim() && !med) return setError("The medical amount looks wrong. Use a number such as 400000, or leave it empty.");
     setError("");
-    save.mutate({ emergencyMonths: m, emergencyHorizonMonths: h, emergencyTargetPaise: typed });
+    save.mutate({ emergencyMonths: m, emergencyHorizonMonths: h, emergencyTargetPaise: typed, emergencyBasis: basis, medicalTargetPaise: med });
   };
   return (
     <Sheet title="Emergency fund settings" onClose={onClose}>
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Months of essential spending to cover" hint="Six is a common rule of thumb; some people keep more when income is uneven.">
+        <div role="radiogroup" aria-label="What to measure spending on" className="grid grid-cols-2 gap-1 rounded-xl bg-sunk p-1">
+          {(
+            [
+              ["lifestyle", "Everything I spend"],
+              ["essentials", "Essentials only"],
+            ] as const
+          ).map(([key, label]) => (
+            <button key={key} type="button" role="radio" aria-checked={basis === key} onClick={() => setBasis(key)} className={`min-h-11 rounded-lg text-sm font-medium ${basis === key ? "bg-card shadow-sm" : "text-soft"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="-mt-2 text-xs text-soft">
+          {basis === "lifestyle"
+            ? `Keeps your life as it is now${fund.lifestyleBurnPaise !== null ? `: about ${rupees(fund.lifestyleBurnPaise)} a month` : ""}.`
+            : `Rent, bills, groceries and instalments only${fund.essentialsBurnPaise !== null ? `: about ${rupees(fund.essentialsBurnPaise)} a month` : ""}.`}
+        </p>
+        <Field label="Months of spending to cover" hint="Six is a common rule of thumb; some people keep more when income is uneven.">
           <input className={inputClass} inputMode="numeric" value={months} onChange={(e) => setMonths(e.target.value)} />
         </Field>
-        <Field label="Or a target of your own (₹)" hint="Optional. When set, it replaces months times your essential spending.">
+        <Field label="Or a target of your own (₹)" hint="Optional. When set, it replaces months times your spending.">
           <input className={inputClass} inputMode="decimal" placeholder="Leave empty to use the months" value={target} onChange={(e) => setTarget(e.target.value)} />
+        </Field>
+        <Field label="Medical reserve on top (₹)" hint="Optional. Kept in the same pool, filled after the living costs. It helps with what insurance does not pay.">
+          <input className={inputClass} inputMode="decimal" placeholder="For example 400000" value={medical} onChange={(e) => setMedical(e.target.value)} />
         </Field>
         <Field label="Months to close the gap in" hint="Sets the monthly amount shown to put aside.">
           <input className={inputClass} inputMode="numeric" value={horizon} onChange={(e) => setHorizon(e.target.value)} />
@@ -125,7 +149,7 @@ function EmergencyCard() {
           </p>
           {f.liquidMonths !== null && f.burnPaise !== null && (
             <p className="text-sm">
-              Your bank money alone would cover about <span className="font-medium">{f.liquidMonths} months</span> of essentials at {rupees(f.burnPaise)} a month. A common aim is {f.months}.
+              Your bank money alone would cover about <span className="font-medium">{f.liquidMonths} months</span> of {f.basis === "lifestyle" ? "your spending" : "essentials"} at {rupees(f.burnPaise)} a month. A common aim is {f.months}.
               {early}
             </p>
           )}
@@ -137,13 +161,39 @@ function EmergencyCard() {
             <>
               <p className="text-sm text-soft">
                 of {rupees(f.targetPaise)}
-                {f.basis === "manual" ? ", your own target" : `, ${f.months} months of essentials`}
+                {f.targetBasis === "manual" ? ", with your own target for living costs" : `, ${f.months} months of ${f.basis === "lifestyle" ? "your spending" : "essentials"}`}
+                {f.medical ? " plus a medical reserve" : ""}
                 {f.fundedMonths !== null ? `. It covers about ${f.fundedMonths} months.` : "."}
                 {early}
               </p>
               <div className="h-3 overflow-hidden rounded-full bg-sunk" role="img" aria-label={`${f.progressPct}% of the target`}>
                 <span className="block h-full bg-good" style={{ width: `${f.progressPct ?? 0}%` }} />
               </div>
+              {f.living && f.medical && (
+                <ul className="divide-y divide-line text-sm">
+                  {(
+                    [
+                      ["Living costs", f.living],
+                      ["Medical reserve", f.medical],
+                    ] as const
+                  ).map(([label, l]) => (
+                    <li key={label} className="flex justify-between gap-3 py-1.5">
+                      <span>
+                        {label}
+                        <span className="block text-xs text-faint">{l.gapPaise ? `${rupees(l.gapPaise)} still to build` : "Complete"}</span>
+                      </span>
+                      <span className="tabular-nums">
+                        {rupees(l.fundedPaise)} of {rupees(l.targetPaise)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {f.essentialsTargetPaise !== null && f.lifestyleTargetPaise !== null && f.targetBasis === "burn" && f.essentialsTargetPaise !== f.lifestyleTargetPaise && (
+                <p className="text-xs text-soft">
+                  Living costs for {f.months} months: {rupees(f.lifestyleTargetPaise)} for your current spending, or {rupees(f.essentialsTargetPaise)} for essentials only. Switch under Settings.
+                </p>
+              )}
               {f.gapPaise ? (
                 <p className="text-sm">
                   Still to build: <span className="font-medium">{rupees(f.gapPaise)}</span>. About {rupees(f.topUpPaise ?? 0)} a month would close it in {f.horizonMonths} months.

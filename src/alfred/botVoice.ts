@@ -375,6 +375,9 @@ export function runwayLine(r: { burnPaise: number | null; months: number | null;
 
 export interface EmergencyText {
   months: number;
+  basis: "essentials" | "lifestyle";
+  living: { targetPaise: number; gapPaise: number } | null;
+  medical: { targetPaise: number; gapPaise: number } | null;
   burnPaise: number | null;
   targetPaise: number | null;
   fundedPaise: number;
@@ -391,13 +394,15 @@ export interface EmergencyText {
 /** Where the emergency fund stands, for /balance and the monthly review. Empty when there is nothing useful to say yet. */
 export function emergencyLine(e: EmergencyText): string | null {
   const early = e.early ? ` (an early estimate, from ${e.basedOnDays} days of entries)` : "";
+  const of = e.basis === "lifestyle" ? "your spending" : "essentials";
   if (e.nothingFlagged) {
     if (e.liquidMonths === null) return null;
-    return `Emergency fund: nothing is marked as one yet. Your bank money alone would cover about ${e.liquidMonths} months of essentials${early}; a common aim is ${e.months}. You can mark accounts or holdings in the app.`;
+    return `Emergency fund: nothing is marked as one yet. Your bank money alone would cover about ${e.liquidMonths} months of ${of}${early}; a common aim is ${e.months}. You can mark accounts or holdings in the app.`;
   }
   if (e.targetPaise === null) return `Emergency fund: ${rupees(e.fundedPaise)} set apart. Once there are about two weeks of entries I can size a target.`;
-  const cover = e.fundedMonths === null ? "" : `, about ${e.fundedMonths} months of essentials`;
-  const head = `Emergency fund: ${rupees(e.fundedPaise)} of ${rupees(e.targetPaise)}${cover}${early}.`;
+  const cover = e.fundedMonths === null ? "" : `, about ${e.fundedMonths} months of ${of}`;
+  const split = e.living && e.medical ? ` That is ${rupees(e.living.targetPaise)} for living costs, then ${rupees(e.medical.targetPaise)} for medical.` : "";
+  const head = `Emergency fund: ${rupees(e.fundedPaise)} of ${rupees(e.targetPaise)}${cover}${early}.${split}`;
   if (!e.gapPaise) return `${head} The target is met.`;
   return `${head} Still to build: ${rupees(e.gapPaise)}; about ${rupees(e.topUpPaise ?? 0)} a month would close it in ${e.horizonMonths} months.`;
 }
