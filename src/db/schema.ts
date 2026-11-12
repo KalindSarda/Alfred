@@ -689,3 +689,47 @@ export const firePlan = sqliteTable("fire_plan", {
   stepupBp: integer("stepup_bp").notNull().default(0),
   updatedAt: text("updated_at").notNull(),
 });
+
+/** A health or life cover the person holds, or one through work. Only personal policies carry a premium Alfred plans for. */
+export const insurancePolicies = sqliteTable(
+  "insurance_policies",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    kind: text("kind", { enum: ["health", "term", "other"] }).notNull(),
+    source: text("source", { enum: ["personal", "employer"] }).notNull().default("personal"),
+    insurer: text("insurer").notNull(),
+    coverPaise: integer("cover_paise").notNull().default(0),
+    /** What is paid each period; 0 when someone else pays (cover through work). */
+    premiumPaise: integer("premium_paise").notNull().default(0),
+    frequency: text("frequency", { enum: ["yearly", "half_yearly", "quarterly", "monthly"] }).notNull().default("yearly"),
+    /** A premium or renewal date; later ones follow from it by the frequency. */
+    renewalDate: text("renewal_date").notNull(),
+    note: text("note"),
+    status: text("status", { enum: ["active", "lapsed"] }).notNull().default("active"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("insurance_user_idx").on(t.userId, t.status)],
+);
+
+/** The two answers the protection check rests on. */
+export const protectionProfile = sqliteTable("protection_profile", {
+  userId: text("user_id").primaryKey().references(() => users.id),
+  /** Does anyone depend on your income, or would your loans fall on family. */
+  dependants: text("dependants", { enum: ["yes", "no", "partly", "unknown"] }).notNull().default("unknown"),
+  employerHealth: text("employer_health", { enum: ["yes", "no", "unknown"] }).notNull().default("unknown"),
+  updatedAt: text("updated_at").notNull(),
+});
+
+/** A renewal reminder that has been sent, so each premium date is reminded once. */
+export const insuranceReminders = sqliteTable(
+  "insurance_reminders",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    policyId: text("policy_id").notNull(),
+    dueDate: text("due_date").notNull(),
+    sentAt: text("sent_at").notNull(),
+  },
+  (t) => [uniqueIndex("insurance_reminders_uq").on(t.userId, t.policyId, t.dueDate)],
+);

@@ -494,7 +494,7 @@ export interface Commitment {
   date: string;
   title: string;
   amountPaise: number;
-  source: "card" | "emi" | "loan" | "recurring" | "debt";
+  source: "card" | "emi" | "loan" | "recurring" | "debt" | "insurance";
   accountId: string | null;
   accountName: string | null;
   accountKind: "bank" | "card" | null;
@@ -533,6 +533,30 @@ export interface HoldingsOverview {
   totalInvestedPaise: number;
   gainPaise: number;
   holdings: Holding[];
+}
+
+/** A health or life cover the person holds, or has through work. */
+export interface Policy {
+  id: string;
+  kind: "health" | "term" | "other";
+  source: "personal" | "employer";
+  insurer: string;
+  coverPaise: number;
+  premiumPaise: number;
+  frequency: "yearly" | "half_yearly" | "quarterly" | "monthly";
+  renewalDate: string;
+  nextDueDate: string;
+  daysToDue: number;
+  note: string | null;
+  status: "active" | "lapsed";
+}
+
+/** The protection check: the answers, the policies, and where there is no cover. */
+export interface ProtectionView {
+  profile: { dependants: "yes" | "no" | "partly" | "unknown"; employerHealth: "yes" | "no" | "unknown" };
+  policies: Policy[];
+  gaps: { key: string; severity: "high" | "medium" | "info"; title: string; detail: string }[];
+  yearlyPremiumPaise: number;
 }
 
 /** Where financial independence stands: the number, the corpus toward it, and when the assumptions reach it. */

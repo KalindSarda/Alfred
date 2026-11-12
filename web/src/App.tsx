@@ -10,6 +10,7 @@ import { Login } from "./pages/Login";
 import { Setup } from "./pages/Setup";
 import { Everything } from "./pages/Everything";
 import { Freedom } from "./pages/Freedom";
+import { Protection } from "./pages/Protection";
 import { Settings } from "./pages/Settings";
 import { Plan } from "./pages/Plan";
 import { Transactions } from "./pages/Transactions";
@@ -43,6 +44,8 @@ function Page({ path, onSearch }: { path: string; onSearch: () => void }) {
       return <Categories />;
     case "/freedom":
       return <Freedom />;
+    case "/protection":
+      return <Protection />;
     default:
       return <Home />;
   }
@@ -68,7 +71,7 @@ export function App() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
-  const isActive = (to: string) => path === to || (to === "/more" && (path === "/categories" || path === "/settings" || path === "/freedom")) || (to === "/plan" && path === "/budgets");
+  const isActive = (to: string) => path === to || (to === "/more" && (path === "/categories" || path === "/settings" || path === "/freedom" || path === "/protection")) || (to === "/plan" && path === "/budgets");
   // The Budgets tab is now the Plan tab; an old link or bookmark moves over quietly.
   useEffect(() => {
     if (path === "/budgets") replacePath(`/plan${window.location.search}`);

@@ -3,7 +3,7 @@ import { rupees, shortDate, today } from "../format";
 import { useCommitments } from "../queries";
 import { Card } from "./ui";
 
-const SOURCE: Record<string, string> = { card: "Card bill", emi: "Card EMI", loan: "Loan EMI", recurring: "Repeats", debt: "Borrowed" };
+const SOURCE: Record<string, string> = { card: "Card bill", emi: "Card EMI", loan: "Loan EMI", recurring: "Repeats", debt: "Borrowed", insurance: "Insurance" };
 
 /**
  * Free to spend until the next salary, shown beside safe-to-spend: safe-to-spend less what is still to leave. A card bill

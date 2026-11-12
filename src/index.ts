@@ -7,6 +7,7 @@ import { runEmiCheckIns } from "./services/emiJob";
 import { runLoanCheckIns } from "./services/loanJob";
 import { EVENING_CRON, runEveningCheckIns } from "./services/habitJob";
 import { runMandateChecks } from "./services/mandateJob";
+import { runInsuranceReminders } from "./services/insuranceJob";
 import { runMorningPush, runSalaryPlans } from "./services/planJob";
 import { runMonthlyReview } from "./services/reviewJob";
 import { runStatementChecks } from "./services/statementJob";
@@ -79,6 +80,12 @@ export default {
       logger.info("mandate_checks_done", { ...mandate });
     } catch (error) {
       logger.error("mandate_checks_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+    try {
+      const insurance = await runInsuranceReminders({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });
+      logger.info("insurance_reminders_done", { ...insurance });
+    } catch (error) {
+      logger.error("insurance_reminders_failed", { error: error instanceof Error ? error.message : "unknown" });
     }
     try {
       const debtsResult = await runDebtReminders({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });

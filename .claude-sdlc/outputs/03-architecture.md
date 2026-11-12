@@ -241,3 +241,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-11-16: slice 29 noted: the emergency fund (`domain/emergency.ts`, `services/emergency.ts`), flags on accounts and holdings, and three settings.
 - 2026-11-17: slice 30 noted: the FIRE planner (`domain/fire.ts`, `services/fire.ts`, `fire_plan` table) and the built-in Retirement investment kind.
 - 2026-11-18: slice 31 noted: the emergency fund has a living layer (essentials or lifestyle basis) and a medical layer in one pool.
+- 2026-11-19: slice 32 noted: protection (`domain/protection.ts`, `services/protection.ts`, `services/insuranceJob.ts`), policies and the two-question profile, premiums in the commitments timeline, and a renewal-reminder step in the daily job after the mandate checks.

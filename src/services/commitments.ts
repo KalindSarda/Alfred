@@ -6,6 +6,7 @@ import { listDebts } from "./debts";
 import { listPlans } from "./emi";
 import { getSafeToSpend, listAccountsWithFigures } from "./ledger";
 import { listLoans } from "./loans";
+import { premiumsDue } from "./protection";
 import { listRules, outflowOccurrences } from "./recurring";
 import { getSettings } from "./settings";
 
@@ -27,12 +28,13 @@ export interface CommitmentsView {
 
 /** Every dated outflow from `from` up to, not including, `to`, from what Alfred already tracks. */
 export async function collectCommitments(db: Db, userId: string, from: IstDate, to: IstDate, today: IstDate): Promise<Commitment[]> {
-  const [figures, plans, loanOverview, debtOverview, outflows] = await Promise.all([
+  const [figures, plans, loanOverview, debtOverview, outflows, premiums] = await Promise.all([
     listAccountsWithFigures(db, userId, today),
     listPlans(db, userId, today),
     listLoans(db, userId, "active"),
     listDebts(db, userId, today, "open"),
     outflowOccurrences(db, userId, from, to),
+    premiumsDue(db, userId, from, to),
   ]);
   const kindOf = new Map(figures.map((a) => [a.id, a.kind] as const));
   const items: Commitment[] = [];
@@ -62,6 +64,11 @@ export async function collectCommitments(db: Db, userId: string, from: IstDate, 
     for (const date of r.dates) {
       items.push({ key: `recurring:${r.id}`, date, title: r.title, amountPaise: r.amountPaise, source: "recurring", accountId: r.accountId, accountName: r.accountName, accountKind: kindOf.get(r.accountId) ?? null, counted: false });
     }
+  }
+
+  // Insurance premiums: paid from whichever account the person chooses, not yet inside safe-to-spend.
+  for (const p of premiums) {
+    items.push({ key: `insurance:${p.id}`, date: p.date, title: `${p.insurer} premium`, amountPaise: p.amountPaise, source: "insurance", accountId: null, accountName: null, accountKind: null, counted: false });
   }
 
   // Borrowed money that has a due date.

@@ -8,7 +8,7 @@ import { clampDay, type IstDate, parseIstDate, shiftMonth } from "./dates";
  * money to repay) is not in safe-to-spend yet, so it is taken off to give "free to spend".
  */
 
-export type CommitmentSource = "card" | "emi" | "loan" | "recurring" | "debt";
+export type CommitmentSource = "card" | "emi" | "loan" | "recurring" | "debt" | "insurance";
 
 export interface Commitment {
   /** Identifies what is due, stable between runs: "loan:<id>", "recurring:<id>". */

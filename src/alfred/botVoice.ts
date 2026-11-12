@@ -373,6 +373,14 @@ export function runwayLine(r: { burnPaise: number | null; months: number | null;
   return `Runway: at ${rupees(r.burnPaise)} a month of essential spending, your bank money would last about ${r.months} months${r.solid ? "" : ` (an early estimate, from ${r.basedOnDays} days of entries)`}.`;
 }
 
+/** A renewal reminder for a policy that falls due soon. */
+export function renewalReminder(p: { insurer: string; kind: "health" | "term" | "other"; premiumPaise: number; dueDate: string; days: number }): string {
+  const what = p.kind === "health" ? "health" : p.kind === "term" ? "term life" : "insurance";
+  const when = p.days === 0 ? "today" : p.days === 1 ? "tomorrow" : `in ${p.days} days (${shortDate(p.dueDate)})`;
+  const premium = p.premiumPaise > 0 ? ` The premium is ${rupees(p.premiumPaise)}.` : "";
+  return `Your ${what} policy with ${p.insurer} is due ${when}.${premium} Paying on time keeps the cover from lapsing.`;
+}
+
 export interface EmergencyText {
   months: number;
   basis: "essentials" | "lifestyle";
