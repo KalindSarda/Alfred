@@ -26,6 +26,8 @@ export interface LadderView extends Foundations {
   /** The yearly rate, in basis points, from which a bank loan counts as costly debt. */
   costlyDebtBp: number;
   flows: Flows;
+  /** Some account or investment is marked as the emergency fund. */
+  fundMarked: boolean;
 }
 
 /**
@@ -69,5 +71,5 @@ export async function getLadder(db: Db, userId: string, today: IstDate): Promise
     leftOverLeanPaise: fund.pace ? fund.pace.cautiousPaise : null,
     early: fund.pace ? fund.pace.early : false,
   };
-  return { ...buildFoundations(facts), costlyDebtBp: settings.costlyDebtBp, flows };
+  return { ...buildFoundations(facts), costlyDebtBp: settings.costlyDebtBp, flows, fundMarked: !fund.nothingFlagged };
 }

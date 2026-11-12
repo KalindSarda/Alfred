@@ -231,8 +231,9 @@ describe("blocked funds in the briefing", () => {
     expect(l?.to).toBe("/accounts?view=commitments");
   });
 
-  it("sits right after the safe-to-spend line", () => {
-    expect(lines({ holds: [hold()] }).map((l) => l.key).slice(0, 2)).toEqual(["safe", "blocked"]);
+  it("is only something to know while an outcome is awaited, and needs the person once one is overdue", () => {
+    expect(find({ holds: [hold()] }, "blocked")).toMatchObject({ section: "coming" });
+    expect(find({ holds: [hold({ expectedDate: "2026-10-25" })] }, "blocked")).toMatchObject({ section: "needs" });
   });
 });
 
@@ -307,8 +308,7 @@ describe("GET /api/alfred/briefing", () => {
     await api("POST", "/api/transactions", { type: "expense", amountPaise: 1_000_00, txnDate: "2026-10-20", accountId: bank.id });
     const res = (await api("GET", "/api/alfred/briefing")).json;
     const byKey = Object.fromEntries(res.lines.map((l: { key: string; text: string }) => [l.key, l.text]));
-    expect(byKey.safe).toBe("₹9,000 is available to spend, as recorded.");
-    expect(byKey.due).toBe("No card payments are pending.");
+    expect(byKey.position).toBe("₹9,000 is available to spend, as recorded.");
     expect(byKey.spend).toContain("You have spent ₹1,000 so far this month.");
     expect(byKey.uncategorized).toBe("1 entry needs a category.");
   });

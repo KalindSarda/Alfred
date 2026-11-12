@@ -94,15 +94,16 @@ describe("the morning briefing on Telegram", () => {
     expect(((await w.api("GET", "/api/settings")).json as Json).morningPush).toBe(false);
   });
 
-  it("sends the greeting, what is available and only what needs attention, once a day", async () => {
+  it("sends the greeting, where you stand and only what needs you or is due within two days, once a day", async () => {
     const w = await world();
     await rent(w);
     await w.api("PATCH", "/api/settings", { morningPush: true });
     await push(w);
     const text = mine(w).at(-1)!.text;
     expect(text).toMatch(/^Good morning/);
-    expect(text).toContain("is available to spend, as recorded.");
-    expect(text).toContain("• After 1 payment still to leave before 1 Nov, ₹1,28,000 is free to spend.");
+    // Telegram keeps exact figures; the web shows lakhs compactly.
+    expect(text).toContain("₹1,28,000 is free to spend until 1 Nov. You have ₹1,50,000 in hand, with ₹22,000 still to leave in 1 payment.");
+    expect(text).toContain("• Rent, ₹22,000, comes up on 29 Oct (tomorrow).");
     expect(text).not.toContain("Goals");
     const sent = mine(w).length;
     await push(w);

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { BriefingLine } from "../api";
+import type { BriefingLine, BriefingSection } from "../api";
 import { Link } from "../router";
 
 export function Orb({ className = "size-8" }: { className?: string }) {
@@ -7,7 +7,9 @@ export function Orb({ className = "size-8" }: { className?: string }) {
 }
 
 /** Alfred's briefing: the greeting and the facts that matter now, plus a reserved spot for conversation. */
-export function AlfredPanel({ greeting, subline, lines, footer }: { greeting: string; subline?: string; lines: BriefingLine[]; footer?: ReactNode }) {
+export function AlfredPanel({ greeting, subline, lines, sections, footer }: { greeting: string; subline?: string; lines: BriefingLine[]; sections?: BriefingSection[]; footer?: ReactNode }) {
+  // Sections give the briefing its shape; without them the flat list is shown as it always was.
+  const groups: BriefingSection[] = sections && sections.length > 0 ? sections : [{ key: "position", title: "", lines }];
   return (
     <section aria-label="Alfred's briefing" className="rounded-3xl bg-navy p-5 text-on-navy md:p-6">
       <div className="flex items-center gap-3">
@@ -18,26 +20,30 @@ export function AlfredPanel({ greeting, subline, lines, footer }: { greeting: st
         </div>
       </div>
 
-      <ul className="mt-4 space-y-1">
-        {lines.map((line) => (
-          <li key={line.key}>
-            {line.to ? (
-              <Link
-                to={line.to}
-                className="-mx-2 flex min-h-11 items-start gap-3 rounded-xl px-2 py-2 text-[15px] leading-snug hover:bg-navy-soft"
-              >
-                <span className="mt-2 size-1.5 shrink-0 rounded-full bg-brass" aria-hidden="true" />
-                <span>{line.text}</span>
-              </Link>
-            ) : (
-              <p className="flex items-start gap-3 py-2 text-[15px] leading-snug">
-                <span className="mt-2 size-1.5 shrink-0 rounded-full bg-brass" aria-hidden="true" />
-                <span>{line.text}</span>
-              </p>
-            )}
-          </li>
+      <div className="mt-4 space-y-4">
+        {groups.map((group) => (
+          <div key={group.key}>
+            {group.title && groups.length > 1 && <h3 className="mb-1 text-xs font-medium tracking-wide text-navy-muted uppercase">{group.title}</h3>}
+            <ul className="space-y-1">
+              {group.lines.map((line) => (
+                <li key={line.key}>
+                  {line.to ? (
+                    <Link to={line.to} className="-mx-2 flex min-h-11 items-start gap-3 rounded-xl px-2 py-2 text-[15px] leading-snug hover:bg-navy-soft">
+                      <span className="mt-2 size-1.5 shrink-0 rounded-full bg-brass" aria-hidden="true" />
+                      <span>{line.text}</span>
+                    </Link>
+                  ) : (
+                    <p className="flex items-start gap-3 py-2 text-[15px] leading-snug">
+                      <span className="mt-2 size-1.5 shrink-0 rounded-full bg-brass" aria-hidden="true" />
+                      <span>{line.text}</span>
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
         ))}
-      </ul>
+      </div>
 
       <div
         aria-disabled="true"

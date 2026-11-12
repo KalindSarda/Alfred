@@ -56,7 +56,7 @@ export function Home() {
   }
 
   const b = briefing.data;
-  const panel = <AlfredPanel greeting={b.greeting} subline={b.subline} lines={b.lines} footer={b.footer} />;
+  const panel = <AlfredPanel greeting={b.greeting} subline={b.subline} lines={b.lines} sections={b.sections} footer={b.footer} />;
   if ((accounts.data ?? []).length === 0) return <div className="space-y-5">{panel}</div>;
 
   const s = summary.data;

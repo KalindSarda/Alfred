@@ -151,11 +151,12 @@ describe("the briefing", () => {
   it("says what is free to spend after what is still to leave, and says nothing when nothing is coming", async () => {
     const w = await world();
     const lines = async () => ((await w.api("GET", "/api/alfred/briefing")).json.lines as Json[]).map((l) => [l.key, l.text]);
-    expect((await lines()).some(([k]) => k === "free")).toBe(false);
+    expect((await lines()).find(([k]) => k === "position")![1]).not.toContain("free to spend until");
     await salary(w);
     await rule(w);
-    const free = (await lines()).find(([k]) => k === "free");
-    expect(free![1]).toBe("After 1 payment still to leave before 1 Nov, ₹1,28,000 is free to spend.");
+    // The web shows lakhs compactly.
+    const position = (await lines()).find(([k]) => k === "position");
+    expect(position![1]).toBe("₹1.28 L is free to spend until 1 Nov. You have ₹1.5 L in hand, with ₹22,000 still to leave in 1 payment.");
   });
 });
 

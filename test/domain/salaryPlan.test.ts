@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attentionLines, goalAsks, perDayPaise } from "../../src/domain/salaryPlan";
+import { goalAsks, perDayPaise, pushLines } from "../../src/domain/salaryPlan";
 
 describe("perDayPaise", () => {
   it("spreads what is free over the days until the window ends", () => {
@@ -28,13 +28,21 @@ describe("goalAsks", () => {
   });
 });
 
-describe("attentionLines", () => {
-  it("keeps what needs attention and drops what is only for when you look", () => {
-    const lines = ["safe", "goals", "free", "due", "investments", "habit", "loans"].map((key) => ({ key, text: key }));
-    expect(attentionLines(lines).map((l) => l.key)).toEqual(["free", "habit", "loans"]);
+describe("pushLines", () => {
+  it("keeps what needs the person and what is due within two days, and drops what is only for when you look", () => {
+    const lines = [
+      { key: "position", text: "p", section: "position" },
+      { key: "shortfall", text: "s", section: "needs" },
+      { key: "emergency", text: "e", section: "progress" },
+      { key: "recurring", text: "r", section: "coming", soon: true },
+      { key: "emi", text: "m", section: "coming" },
+      { key: "spend", text: "t", section: "trends" },
+      { key: "habit", text: "h", section: "needs" },
+    ];
+    expect(pushLines(lines).map((l) => l.key)).toEqual(["shortfall", "recurring", "habit"]);
   });
 
   it("is empty on a quiet day", () => {
-    expect(attentionLines([{ key: "safe", text: "x" }, { key: "goals", text: "y" }])).toEqual([]);
+    expect(pushLines([{ key: "position", text: "x", section: "position" }, { key: "goals", text: "y", section: "progress" }])).toEqual([]);
   });
 });

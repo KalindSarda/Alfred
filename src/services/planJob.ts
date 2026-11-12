@@ -4,7 +4,7 @@ import type { TelegramApi } from "../bot/telegramApi";
 import type { Db } from "../db/client";
 import { checkinLog, salaryLog } from "../db/schema";
 import { addDays, todayIst } from "../domain/dates";
-import { attentionLines } from "../domain/salaryPlan";
+import { pushLines } from "../domain/salaryPlan";
 import { newId, nowIso } from "../utils/id";
 import { logger } from "../utils/logger";
 import { getBriefing } from "./alfred";
@@ -72,12 +72,12 @@ export async function runMorningPush(deps: PlanJobDeps): Promise<{ sent: number 
     try {
       const settings = await getSettings(db, userId);
       if (!settings.morningPush) continue;
-      const briefing = await getBriefing(db, userId, today, now);
-      const attention = attentionLines(briefing.lines);
+      const briefing = await getBriefing(db, userId, today, now, { compact: false });
+      const attention = pushLines(briefing.lines);
       if (attention.length === 0) continue;
       const claimed = await db.insert(checkinLog).values({ id: newId(), userId, kind: "morning", day: today, createdAt: nowIso() }).onConflictDoNothing().returning({ id: checkinLog.id });
       if (claimed.length === 0) continue;
-      const safe = briefing.lines.find((l) => l.key === "safe")?.text ?? null;
+      const safe = briefing.lines.find((l) => l.key === "position")?.text ?? null;
       try {
         await telegram.sendMessage(chat, morningPushLines(briefing.greeting, safe, attention.map((l) => l.text)).join("\n"));
         sent += 1;

@@ -31,16 +31,17 @@ export function goalAsks(goals: readonly GoalWish[], limit = 3): { id: string; n
     .map((g) => ({ id: g.id, name: g.name, paise: g.monthlyNeededPaise as number }));
 }
 
-/**
- * Briefing lines that are worth a message of their own. The safe-to-spend figure, goals, investments and the
- * card-due line are not: the card reminder already covers the last, and the rest are for when you look.
- */
-export const ATTENTION_KEYS: readonly string[] = ["blocked", "budget", "debts", "drafts", "emi", "free", "habit", "loans", "recurring", "uncategorized"];
-
 export interface Line {
   key: string;
   text: string;
+  section?: string;
+  /** Something to do now or within two days. */
+  soon?: boolean;
 }
 
-/** The lines that need attention; empty means there is nothing worth waking someone for. */
-export const attentionLines = <T extends Line>(lines: readonly T[]): T[] => lines.filter((l) => ATTENTION_KEYS.includes(l.key));
+/**
+ * The briefing lines that are worth a message of their own in the morning: what needs the person (the first section) and
+ * anything due within two days. Where they stand, progress and trends are for when they look; empty means there is nothing
+ * worth waking someone for.
+ */
+export const pushLines = <T extends Line>(lines: readonly T[]): T[] => lines.filter((l) => l.section === "needs" || l.soon === true);

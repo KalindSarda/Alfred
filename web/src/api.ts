@@ -308,12 +308,23 @@ export interface BriefingLine {
   key: string;
   text: string;
   to?: string;
+  section: "needs" | "position" | "progress" | "coming" | "trends";
+  importance: number;
+  soon?: boolean;
+}
+
+/** The briefing's lines grouped as they are shown: needs you, where you stand, progress, coming up, trends. */
+export interface BriefingSection {
+  key: BriefingLine["section"];
+  title: string;
+  lines: BriefingLine[];
 }
 
 export interface Briefing {
   greeting: string;
   subline: string;
   lines: BriefingLine[];
+  sections: BriefingSection[];
   source: "template" | "ai";
   generatedAt: string;
   footer: string;
