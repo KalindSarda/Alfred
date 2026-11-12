@@ -445,36 +445,49 @@ export function transferLines(t: TransferText): string[] {
 
 export interface EmergencyText {
   months: number;
-  basis: "essentials" | "lifestyle";
-  living: { targetPaise: number; gapPaise: number } | null;
-  medical: { targetPaise: number; gapPaise: number } | null;
-  burnPaise: number | null;
-  targetPaise: number | null;
   fundedPaise: number;
   nothingFlagged: boolean;
-  gapPaise: number | null;
-  topUpPaise: number | null;
-  horizonMonths: number;
-  fundedMonths: number | null;
   liquidMonths: number | null;
   early: boolean;
   basedOnDays: number;
+  monthsOnEssentials: number | null;
+  verdict: "none" | "building" | "essentials" | "complete";
+  targets: {
+    lifestyle: { totalPaise: number | null; gapPaise: number | null; pct: number | null; monthsAtTypical: number | null; monthsAtCautious: number | null };
+    essentials: { totalPaise: number | null; pct: number | null };
+  };
+  pace: { typicalPaise: number } | null;
+  monthsIfSpendingLess: number | null;
+  topUpPaise: number | null;
+  horizonMonths: number;
 }
 
-/** Where the emergency fund stands, for /balance and the monthly review. Empty when there is nothing useful to say yet. */
+/** Where the emergency fund stands against both ways of judging it, for /balance and the monthly review. Empty when there is nothing useful to say yet. */
 export function emergencyLine(e: EmergencyText): string | null {
   const early = e.early ? ` (an early estimate, from ${e.basedOnDays} days of entries)` : "";
-  const of = e.basis === "lifestyle" ? "your spending" : "essentials";
   if (e.nothingFlagged) {
     if (e.liquidMonths === null) return null;
-    return `Emergency fund: nothing is marked as one yet. Your bank money alone would cover about ${e.liquidMonths} months of ${of}${early}; a common aim is ${e.months}. You can mark accounts or holdings in the app.`;
+    return `Emergency fund: nothing is marked as one yet. Your bank money alone would cover about ${e.liquidMonths} months of your spending${early}; a common aim is ${e.months}. You can mark accounts or holdings in the app.`;
   }
-  if (e.targetPaise === null) return `Emergency fund: ${rupees(e.fundedPaise)} set apart. Once there are about two weeks of entries I can size a target.`;
-  const cover = e.fundedMonths === null ? "" : `, about ${e.fundedMonths} months of ${of}`;
-  const split = e.living && e.medical ? ` That is ${rupees(e.living.targetPaise)} for living costs, then ${rupees(e.medical.targetPaise)} for medical.` : "";
-  const head = `Emergency fund: ${rupees(e.fundedPaise)} of ${rupees(e.targetPaise)}${cover}${early}.${split}`;
-  if (!e.gapPaise) return `${head} The target is met.`;
-  return `${head} Still to build: ${rupees(e.gapPaise)}; about ${rupees(e.topUpPaise ?? 0)} a month would close it in ${e.horizonMonths} months.`;
+  const life = e.targets.lifestyle;
+  const ess = e.targets.essentials;
+  if (life.totalPaise === null || life.pct === null) return `Emergency fund: ${rupees(e.fundedPaise)} set apart. Once there are about two weeks of entries I can size a target.`;
+  const essentialsPart = ess.totalPaise !== null && ess.pct !== null ? ` and ${ess.pct}% of essentials only (${rupees(ess.totalPaise)})` : "";
+  const parts = [`Emergency fund: ${rupees(e.fundedPaise)}, which is ${life.pct}% of your lifestyle goal (${rupees(life.totalPaise)})${essentialsPart}${early}.`];
+
+  if (e.verdict === "essentials" && life.gapPaise) parts.push(`You could live on essentials alone for about ${e.monthsOnEssentials} months today. ${rupees(life.gapPaise)} more covers your full lifestyle.`);
+  else if (e.verdict === "complete") parts.push("Both are covered: your full lifestyle and essentials.");
+  else if (e.monthsOnEssentials !== null) parts.push(`That covers about ${e.monthsOnEssentials} months of essentials alone.`);
+
+  if (life.gapPaise) {
+    if (e.pace === null) parts.push(`Still to build: ${rupees(life.gapPaise)}; about ${rupees(e.topUpPaise ?? 0)} a month would close it in ${e.horizonMonths} months.`);
+    else if (e.pace.typicalPaise <= 0) parts.push(`Recent months leave nothing over after spending and investing, so I cannot give a time.${e.monthsIfSpendingLess ? ` Spending 10% less would take about ${e.monthsIfSpendingLess} months.` : ""}`);
+    else {
+      const lean = life.monthsAtCautious && life.monthsAtCautious !== life.monthsAtTypical ? `, ${life.monthsAtCautious} if a month is lean` : "";
+      parts.push(`At your usual surplus of ${rupees(e.pace.typicalPaise)} a month, after what you already invest, about ${life.monthsAtTypical} months to the full goal${lean}.`);
+    }
+  }
+  return parts.join(" ");
 }
 
 export interface FireText {

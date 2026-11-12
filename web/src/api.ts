@@ -334,7 +334,6 @@ export interface Settings {
   emergencyMonths: number;
   emergencyTargetPaise: number | null;
   emergencyHorizonMonths: number;
-  emergencyBasis: "essentials" | "lifestyle";
   medicalTargetPaise: number | null;
   costlyDebtBp: number;
   ladderSkipped: string[];
@@ -632,16 +631,43 @@ export interface FundLayer {
   topUpPaise: number;
 }
 
+/** One way of judging the fund: months of spending (or a typed target) for living costs, plus the medical amount on top. */
+export interface FundTarget {
+  livingPaise: number | null;
+  medicalPaise: number;
+  totalPaise: number | null;
+  fundedPaise: number;
+  gapPaise: number | null;
+  pct: number | null;
+  /** Months to close the gap at a typical and at a lean month's surplus; null when nothing is left over, 0 when nothing is missing. */
+  monthsAtTypical: number | null;
+  monthsAtCautious: number | null;
+}
+
+/** What is left over each month after spending and after what already goes into investing and loan principal. */
+export interface FundPace {
+  typicalPaise: number;
+  cautiousPaise: number;
+  spentPaise: number;
+  investingPaise: number;
+  /** Complete months it rests on; 0 when it rests on the recent weeks scaled to a month. */
+  cycles: number;
+  early: boolean;
+}
+
 export interface EmergencyFund {
   months: number;
-  basis: "essentials" | "lifestyle";
   horizonMonths: number;
-  /** The burn of the chosen basis, and both, so the choice can be shown. */
-  burnPaise: number | null;
   essentialsBurnPaise: number | null;
   lifestyleBurnPaise: number | null;
-  essentialsTargetPaise: number | null;
-  lifestyleTargetPaise: number | null;
+  monthsOnEssentials: number | null;
+  monthsOnLifestyle: number | null;
+  targets: { lifestyle: FundTarget; essentials: FundTarget };
+  verdict: "none" | "building" | "essentials" | "complete";
+  pace: FundPace | null;
+  monthsIfSpendingLess: number | null;
+  /** The lifestyle goal, which the ladder and the transfer suggestion work toward. */
+  burnPaise: number | null;
   targetPaise: number | null;
   targetBasis: "burn" | "manual" | null;
   living: FundLayer | null;

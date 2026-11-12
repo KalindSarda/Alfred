@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
-import { type EmergencyFund, type FireView, type LadderStep, type MoneyHealth, type Settings, type TransferView, api, describeError } from "../api";
+import { type EmergencyFund, type FireView, type FundTarget, type LadderStep, type MoneyHealth, type Settings, type TransferView, api, describeError } from "../api";
 import { useToast } from "../components/toast";
 import { Amount, AmountInput, Button, Card, Empty, ErrorText, Field, Sheet, Spinner, inputClass } from "../components/ui";
 import { rupeesToPaise } from "../filters";
@@ -53,14 +53,13 @@ function SplitBar({ h }: { h: MoneyHealth }) {
   );
 }
 
-/** The months to cover, an optional target of your own, and how fast to close a gap. */
+/** The months to cover, an optional target of your own, a medical amount, and how fast to close a gap when no pace is known. */
 function FundSettings({ fund, onClose }: { fund: EmergencyFund; onClose: () => void }) {
   const client = useQueryClient();
   const toast = useToast();
   const [months, setMonths] = useState(String(fund.months));
   const [target, setTarget] = useState(fund.targetBasis === "manual" && fund.living ? paiseToInput(fund.living.targetPaise) : "");
-  const [basis, setBasis] = useState<"essentials" | "lifestyle">(fund.basis);
-  const [medical, setMedical] = useState(fund.medical ? paiseToInput(fund.medical.targetPaise) : "");
+  const [medical, setMedical] = useState(fund.targets.lifestyle.medicalPaise > 0 ? paiseToInput(fund.targets.lifestyle.medicalPaise) : "");
   const [horizon, setHorizon] = useState(String(fund.horizonMonths));
   const [error, setError] = useState("");
   const save = useMutation({
@@ -68,6 +67,8 @@ function FundSettings({ fund, onClose }: { fund: EmergencyFund; onClose: () => v
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["emergency-fund"] });
       await client.invalidateQueries({ queryKey: ["settings"] });
+      await client.invalidateQueries({ queryKey: ["ladder"] });
+      await client.invalidateQueries({ queryKey: ["transfer-suggestion"] });
       toast.show("Saved");
       onClose();
     },
@@ -83,38 +84,22 @@ function FundSettings({ fund, onClose }: { fund: EmergencyFund; onClose: () => v
     const med = medical.trim() ? rupeesToPaise(medical) : null;
     if (medical.trim() && !med) return setError("The medical amount looks wrong. Use a number such as 400000, or leave it empty.");
     setError("");
-    save.mutate({ emergencyMonths: m, emergencyHorizonMonths: h, emergencyTargetPaise: typed, emergencyBasis: basis, medicalTargetPaise: med });
+    save.mutate({ emergencyMonths: m, emergencyHorizonMonths: h, emergencyTargetPaise: typed, medicalTargetPaise: med });
   };
   return (
     <Sheet title="Emergency fund settings" onClose={onClose}>
       <form className="space-y-4" onSubmit={submit}>
-        <div role="radiogroup" aria-label="What to measure spending on" className="grid grid-cols-2 gap-1 rounded-xl bg-sunk p-1">
-          {(
-            [
-              ["lifestyle", "Everything I spend"],
-              ["essentials", "Essentials only"],
-            ] as const
-          ).map(([key, label]) => (
-            <button key={key} type="button" role="radio" aria-checked={basis === key} onClick={() => setBasis(key)} className={`min-h-11 rounded-lg text-sm font-medium ${basis === key ? "bg-card shadow-sm" : "text-soft"}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <p className="-mt-2 text-xs text-soft">
-          {basis === "lifestyle"
-            ? `Keeps your life as it is now${fund.lifestyleBurnPaise !== null ? `: about ${rupees(fund.lifestyleBurnPaise)} a month` : ""}.`
-            : `Rent, bills, groceries and instalments only${fund.essentialsBurnPaise !== null ? `: about ${rupees(fund.essentialsBurnPaise)} a month` : ""}.`}
-        </p>
-        <Field label="Months of spending to cover" hint="Six is a common rule of thumb; some people keep more when income is uneven.">
+        <p className="text-sm text-soft">You do not need to change any of this. Alfred shows how long it takes at your own pace.</p>
+        <Field label="Months of spending to cover" hint="Six is a common rule of thumb; some people keep more when income is uneven. Used for both targets.">
           <input className={inputClass} inputMode="numeric" value={months} onChange={(e) => setMonths(e.target.value)} />
         </Field>
-        <Field label="Or a target of your own (₹)" hint="Optional. When set, it replaces months times your spending.">
-          <AmountInput className={inputClass} placeholder="Leave empty to use the months" value={target} onChange={(e) => setTarget(e.target.value)} />
-        </Field>
-        <Field label="Medical reserve on top (₹)" hint="Optional. Kept in the same pool, filled after the living costs. It helps with what insurance does not pay.">
+        <Field label="Medical reserve on top (₹)" hint="Optional. Added to both targets, in the same pool. It helps with what insurance does not pay.">
           <AmountInput className={inputClass} placeholder="For example 400000" value={medical} onChange={(e) => setMedical(e.target.value)} />
         </Field>
-        <Field label="Months to close the gap in" hint="Sets the monthly amount shown to put aside.">
+        <Field label="Or a living-costs target of your own (₹)" hint="Optional. Replaces months times your spending for the lifestyle target only.">
+          <AmountInput className={inputClass} placeholder="Leave empty to use the months" value={target} onChange={(e) => setTarget(e.target.value)} />
+        </Field>
+        <Field label="Months to close the gap in" hint="Only used when Alfred cannot tell your pace yet.">
           <input className={inputClass} inputMode="numeric" value={horizon} onChange={(e) => setHorizon(e.target.value)} />
         </Field>
         <ErrorText>{error || (save.isError ? describeError(save.error) : "")}</ErrorText>
@@ -126,13 +111,67 @@ function FundSettings({ fund, onClose }: { fund: EmergencyFund; onClose: () => v
   );
 }
 
-/** Money kept for when income stops, sized from what you must spend. */
+const monthsText = (n: number) => `${n} ${n === 1 ? "month" : "months"}`;
+
+/** How long closing a gap takes at a typical month's surplus, and at a lean one. */
+function timeText(t: FundTarget): string | null {
+  if (t.gapPaise === null) return null;
+  if (t.gapPaise === 0) return "Complete";
+  if (t.monthsAtTypical === null) return "No time can be given yet";
+  const lean = t.monthsAtCautious !== null && t.monthsAtCautious !== t.monthsAtTypical ? `, ${t.monthsAtCautious} if a month is lean` : "";
+  return `About ${monthsText(t.monthsAtTypical)} at your usual pace${lean}`;
+}
+
+/** One way of judging the fund, with its total, how far along it is, and how long the rest takes. */
+function TargetBar({ title, hint, t }: { title: string; hint: string; t: FundTarget }) {
+  if (t.totalPaise === null || t.pct === null) {
+    return (
+      <div>
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-soft">Once there are about two weeks of entries, or a target of your own, Alfred can size this.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-1">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-sm font-medium">{title}</p>
+        <p className="tabular-nums">
+          <Amount paise={t.totalPaise} className="font-medium" /> <span className="text-sm text-soft">· {t.pct}%</span>
+        </p>
+      </div>
+      <div className="h-3 overflow-hidden rounded-full bg-sunk" role="img" aria-label={`${title}: ${t.pct}% done`}>
+        <span className="block h-full bg-good" style={{ width: `${t.pct}%` }} />
+      </div>
+      <p className="text-xs text-soft">
+        {hint}
+        {t.gapPaise ? ` · ${rupees(t.gapPaise)} to go` : ""}
+      </p>
+      <p className="text-xs">{timeText(t)}</p>
+    </div>
+  );
+}
+
+/** Alfred's reading of where the fund stands between the two. */
+function verdictText(f: EmergencyFund): string | null {
+  const gap = f.targets.lifestyle.gapPaise;
+  if (f.verdict === "complete") return "Both are covered: your full lifestyle and essentials.";
+  if (f.verdict === "essentials" && gap) return `You could live on essentials alone for about ${f.monthsOnEssentials} months today. ${rupees(gap)} more covers your full lifestyle.`;
+  if (f.monthsOnEssentials !== null) return `The fund covers about ${f.monthsOnEssentials} months of essentials alone.`;
+  return null;
+}
+
+/** Money kept for when income stops, judged against the life you live now and against essentials only. */
 function EmergencyCard() {
   const query = useEmergencyFund();
   const [editing, setEditing] = useState(false);
   const f = query.data;
   if (!f) return null;
-  const early = f.early && f.burnPaise !== null ? ` An early estimate, from ${f.basedOnDays} days of entries.` : "";
+  const early = f.early ? ` An early estimate, from ${f.basedOnDays} days of entries.` : "";
+  const life = f.targets.lifestyle;
+  const ess = f.targets.essentials;
+  const split = (t: FundTarget, what: string) => (t === life && f.targetBasis === "manual" && t.livingPaise !== null ? `${rupees(t.livingPaise)} living costs (your own target)${t.medicalPaise > 0 ? ` + ${rupees(t.medicalPaise)} medical` : ""}` : t.livingPaise !== null && t.medicalPaise > 0 ? `${rupees(t.livingPaise)} for ${f.months} months of ${what} + ${rupees(t.medicalPaise)} medical` : t.livingPaise !== null ? `${f.months} months of ${what}` : "");
+  const verdict = verdictText(f);
   return (
     <Card id="emergency" className="space-y-3">
       <div className="flex items-baseline justify-between gap-3">
@@ -149,62 +188,39 @@ function EmergencyCard() {
           </p>
           {f.liquidMonths !== null && f.burnPaise !== null && (
             <p className="text-sm">
-              Your bank money alone would cover about <span className="font-medium">{f.liquidMonths} months</span> of {f.basis === "lifestyle" ? "your spending" : "essentials"} at {rupees(f.burnPaise)} a month. A common aim is {f.months}.
+              Your bank money alone would cover about <span className="font-medium">{f.liquidMonths} months</span> of your spending at {rupees(f.burnPaise)} a month. A common aim is {f.months}.
               {early}
             </p>
           )}
         </>
       ) : (
         <>
-          <p className="font-display text-4xl tabular-nums"><Amount paise={f.fundedPaise} /></p>
-          {f.targetPaise !== null ? (
-            <>
+          <div>
+            <p className="font-display text-4xl tabular-nums">
+              <Amount paise={f.fundedPaise} />
+            </p>
+            <p className="text-sm text-soft">set apart as your emergency fund{early}</p>
+          </div>
+          <TargetBar title="Live as you do now" hint={split(life, "spending")} t={life} />
+          <TargetBar title="Essentials only" hint={split(ess, "essentials")} t={ess} />
+          {verdict && <p className="rounded-xl bg-sunk p-3 text-sm">{verdict}</p>}
+
+          {life.gapPaise ? (
+            f.pace === null ? (
+              <p className="text-sm text-soft">Alfred needs a little more history to tell how fast you can build this. Until then, about {rupees(f.topUpPaise ?? 0)} a month would close it in {f.horizonMonths} months.</p>
+            ) : f.pace.typicalPaise <= 0 ? (
               <p className="text-sm text-soft">
-                of {rupees(f.targetPaise)}
-                {f.targetBasis === "manual" ? ", with your own target for living costs" : `, ${f.months} months of ${f.basis === "lifestyle" ? "your spending" : "essentials"}`}
-                {f.medical ? " plus a medical reserve" : ""}
-                {f.fundedMonths !== null ? `. It covers about ${f.fundedMonths} months.` : "."}
-                {early}
+                Recent months leave nothing over after spending and investing, so Alfred cannot give a time.
+                {f.monthsIfSpendingLess ? ` Spending 10% less would take about ${monthsText(f.monthsIfSpendingLess)}.` : ""}
               </p>
-              <div className="h-3 overflow-hidden rounded-full bg-sunk" role="img" aria-label={`${f.progressPct}% of the target`}>
-                <span className="block h-full bg-good" style={{ width: `${f.progressPct ?? 0}%` }} />
-              </div>
-              {f.living && f.medical && (
-                <ul className="divide-y divide-line text-sm">
-                  {(
-                    [
-                      ["Living costs", f.living],
-                      ["Medical reserve", f.medical],
-                    ] as const
-                  ).map(([label, l]) => (
-                    <li key={label} className="flex justify-between gap-3 py-1.5">
-                      <span>
-                        {label}
-                        <span className="block text-xs text-faint">{l.gapPaise ? `${rupees(l.gapPaise)} still to build` : "Complete"}</span>
-                      </span>
-                      <span className="tabular-nums">
-                        {rupees(l.fundedPaise)} of {rupees(l.targetPaise)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {f.essentialsTargetPaise !== null && f.lifestyleTargetPaise !== null && f.targetBasis === "burn" && f.essentialsTargetPaise !== f.lifestyleTargetPaise && (
-                <p className="text-xs text-soft">
-                  Living costs for {f.months} months: {rupees(f.lifestyleTargetPaise)} for your current spending, or {rupees(f.essentialsTargetPaise)} for essentials only. Switch under Settings.
-                </p>
-              )}
-              {f.gapPaise ? (
-                <p className="text-sm">
-                  Still to build: <span className="font-medium">{rupees(f.gapPaise)}</span>. About {rupees(f.topUpPaise ?? 0)} a month would close it in {f.horizonMonths} months.
-                </p>
-              ) : (
-                <p className="text-sm text-good">The target is met.</p>
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-soft">Once there are about two weeks of entries, Alfred can size a target from what you must spend. Or set your own under Settings.</p>
-          )}
+            ) : (
+              <p className="text-sm text-soft">
+                Your usual surplus is {rupees(f.pace.typicalPaise)} a month after spending, and after {rupees(f.pace.investingPaise)} that already goes into investments and loan principal.
+                {f.pace.early ? (f.pace.cycles === 0 ? " An early estimate, from your recent weeks." : ` An early estimate, from ${monthsText(f.pace.cycles)}.`) : ""}
+              </p>
+            )
+          ) : null}
+
           <ul className="divide-y divide-line text-sm">
             {f.accounts.map((a) => (
               <li key={a.id} className="flex justify-between py-1.5">

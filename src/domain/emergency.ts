@@ -1,25 +1,24 @@
 /**
- * The emergency fund: money kept for when income stops or something big goes wrong. Pure rules. It has two layers in one
- * pool: living costs first (a number of months of what you spend, measured either on essentials only or on everything you
- * spend now, unless a target was typed), then a medical amount on top. What counts as the fund is what the person flagged:
- * bank accounts and holdings. "Six months" is a common rule of thumb, not advice.
+ * The emergency fund: money kept for when income stops or something big goes wrong. Pure rules. It is judged two ways at
+ * once so the person sees where they stand without choosing: against the lifestyle they live now (months of everything they
+ * spend) and against essentials only (rent, bills, groceries, instalments), each with a medical amount on top. The lifestyle
+ * total is the goal; essentials is a milestone on the way. What counts as the fund is what the person flagged: bank accounts and
+ * holdings. "Six months" is a common rule of thumb, not advice.
  */
+
+import { monthsToClose, type Pace } from "./pace";
 
 export const DEFAULT_MONTHS = 6;
 export const DEFAULT_HORIZON_MONTHS = 12;
 
-export type EmergencyBasis = "essentials" | "lifestyle";
-
 export interface EmergencyFacts {
-  /** The months of spending the living layer should cover. */
+  /** The months of spending each living layer should cover. */
   months: number;
-  /** Measure that spending on essentials only, or on everything spent now. */
-  basis: EmergencyBasis;
-  /** A typed target for the living layer, which replaces months times the burn. */
+  /** A typed target for the lifestyle living layer, which replaces months times the burn. */
   manualTargetPaise: number | null;
-  /** A typed amount kept on top for medical costs. */
+  /** A typed amount kept on top for medical costs, in both totals. */
   medicalTargetPaise: number | null;
-  /** The months over which a gap is to be closed. */
+  /** The months over which a gap is to be closed when no pace is known. */
   horizonMonths: number;
   /** What must be spent in a month (rent, bills, groceries, instalments), and what is spent in all; null when there is too little history. */
   essentialsBurnPaise: number | null;
@@ -31,6 +30,8 @@ export interface EmergencyFacts {
   flagged: number;
   /** The bank money counted as available, flagged or not, for what to say when nothing is flagged. */
   liquidPaise: number;
+  /** What is left over in a typical and a lean month, when it can be told. */
+  pace: Pace | null;
 }
 
 export interface Layer {
@@ -42,18 +43,41 @@ export interface Layer {
   topUpPaise: number;
 }
 
+/** One way of judging the fund: a living layer and the medical amount on top. */
+export interface Target {
+  /** Null when the living layer cannot be sized yet (no history and no typed target). */
+  livingPaise: number | null;
+  medicalPaise: number;
+  totalPaise: number | null;
+  fundedPaise: number;
+  gapPaise: number | null;
+  /** Funded against the total, capped at 100, to one decimal. */
+  pct: number | null;
+  /** Months to close the gap at a typical and at a lean month's surplus; null when nothing is left over, 0 when nothing is missing. */
+  monthsAtTypical: number | null;
+  monthsAtCautious: number | null;
+}
+
+/** Where the fund stands between the two milestones. */
+export type Verdict = "none" | "building" | "essentials" | "complete";
+
 export interface EmergencyFund {
   months: number;
-  basis: EmergencyBasis;
   horizonMonths: number;
-  /** The burn of the chosen basis, and both of them so the choice can be shown. */
-  burnPaise: number | null;
+  /** The burn each way, and what the fund covers today of each, in months to one decimal, rounded down. */
   essentialsBurnPaise: number | null;
   lifestyleBurnPaise: number | null;
-  /** The living layer if measured each way (null without history), so both can be seen. */
-  essentialsTargetPaise: number | null;
-  lifestyleTargetPaise: number | null;
-  /** The whole target: living layer plus medical. Null when there is no typed target and not enough history. */
+  monthsOnEssentials: number | null;
+  monthsOnLifestyle: number | null;
+  targets: { lifestyle: Target; essentials: Target };
+  verdict: Verdict;
+  /** What is left over each month, as far as it can be told. */
+  pace: Pace | null;
+  /** The months to close the lifestyle gap if spending were 10% less; only when it would help or nothing is left over now. */
+  monthsIfSpendingLess: number | null;
+
+  /** The lifestyle goal, kept as the fields the ladder, the transfer suggestion and Telegram read. */
+  burnPaise: number | null;
   targetPaise: number | null;
   /** How the living layer was sized: from the burn, or typed. */
   targetBasis: "burn" | "manual" | null;
@@ -65,12 +89,9 @@ export interface EmergencyFund {
   living: Layer | null;
   /** Present when a medical amount is set and the living layer can be sized. */
   medical: Layer | null;
-  /** The total still missing, and what to put aside each month to close it within the horizon. */
   gapPaise: number | null;
   topUpPaise: number | null;
-  /** How many months of the chosen basis the fund covers, to one decimal, rounded down. */
   fundedMonths: number | null;
-  /** Funded against the whole target, capped at 100, to one decimal. */
   progressPct: number | null;
   liquidPaise: number;
   liquidMonths: number | null;
@@ -83,29 +104,56 @@ function layer(targetPaise: number, fundedPaise: number, horizonMonths: number):
   return { targetPaise, fundedPaise, gapPaise, topUpPaise: Math.ceil(gapPaise / Math.max(1, horizonMonths)) };
 }
 
+function target(livingPaise: number | null, medicalPaise: number, fundedPaise: number, pace: Pace | null): Target {
+  const totalPaise = livingPaise === null ? null : livingPaise + medicalPaise;
+  const gapPaise = totalPaise === null ? null : Math.max(0, totalPaise - fundedPaise);
+  return {
+    livingPaise,
+    medicalPaise,
+    totalPaise,
+    fundedPaise,
+    gapPaise,
+    pct: totalPaise === null || totalPaise <= 0 ? null : Math.min(100, Math.round((Math.max(0, fundedPaise) / totalPaise) * 1000) / 10),
+    monthsAtTypical: gapPaise === null || pace === null ? null : monthsToClose(gapPaise, pace.typicalPaise),
+    monthsAtCautious: gapPaise === null || pace === null ? null : monthsToClose(gapPaise, pace.cautiousPaise),
+  };
+}
+
 export function emergencyFund(f: EmergencyFacts): EmergencyFund {
   const manual = f.manualTargetPaise !== null && f.manualTargetPaise > 0 ? f.manualTargetPaise : null;
   const medicalPaise = f.medicalTargetPaise !== null && f.medicalTargetPaise > 0 ? f.medicalTargetPaise : 0;
-  const burnPaise = f.basis === "lifestyle" ? f.lifestyleBurnPaise : f.essentialsBurnPaise;
-  const livingTargetPaise = manual ?? (burnPaise === null ? null : f.months * burnPaise);
   const fundedPaise = f.bankPaise + f.holdingsPaise;
   const funded = Math.max(0, fundedPaise);
 
-  const living = livingTargetPaise === null ? null : layer(livingTargetPaise, Math.min(funded, livingTargetPaise), f.horizonMonths);
-  const medical = livingTargetPaise === null || medicalPaise === 0 ? null : layer(medicalPaise, Math.min(Math.max(0, funded - livingTargetPaise), medicalPaise), f.horizonMonths);
-  const targetPaise = livingTargetPaise === null ? null : livingTargetPaise + medicalPaise;
-  const gapPaise = targetPaise === null ? null : Math.max(0, targetPaise - fundedPaise);
+  const lifestyleLiving = manual ?? (f.lifestyleBurnPaise === null ? null : f.months * f.lifestyleBurnPaise);
+  const essentialsLiving = f.essentialsBurnPaise === null ? null : f.months * f.essentialsBurnPaise;
+  const lifestyle = target(lifestyleLiving, medicalPaise, fundedPaise, f.pace);
+  const essentials = target(essentialsLiving, medicalPaise, fundedPaise, f.pace);
+
+  let verdict: Verdict = "none";
+  if (lifestyle.totalPaise !== null && lifestyle.gapPaise === 0 && !(f.flagged === 0)) verdict = "complete";
+  else if (essentials.totalPaise !== null && essentials.gapPaise === 0 && f.flagged > 0) verdict = "essentials";
+  else if (f.flagged > 0 && (lifestyle.totalPaise !== null || essentials.totalPaise !== null)) verdict = "building";
+
+  const living = lifestyleLiving === null ? null : layer(lifestyleLiving, Math.min(funded, lifestyleLiving), f.horizonMonths);
+  const medical = lifestyleLiving === null || medicalPaise === 0 ? null : layer(medicalPaise, Math.min(Math.max(0, funded - lifestyleLiving), medicalPaise), f.horizonMonths);
+  const gapPaise = lifestyle.gapPaise;
+  const trimmed = f.pace && gapPaise !== null && gapPaise > 0 ? monthsToClose(gapPaise, f.pace.typicalPaise + Math.round(f.pace.spentPaise / 10)) : null;
+
   return {
     months: f.months,
-    basis: f.basis,
     horizonMonths: f.horizonMonths,
-    burnPaise,
     essentialsBurnPaise: f.essentialsBurnPaise,
     lifestyleBurnPaise: f.lifestyleBurnPaise,
-    essentialsTargetPaise: manual ?? (f.essentialsBurnPaise === null ? null : f.months * f.essentialsBurnPaise),
-    lifestyleTargetPaise: manual ?? (f.lifestyleBurnPaise === null ? null : f.months * f.lifestyleBurnPaise),
-    targetPaise,
-    targetBasis: manual !== null ? "manual" : livingTargetPaise !== null ? "burn" : null,
+    monthsOnEssentials: monthsOf(fundedPaise, f.essentialsBurnPaise),
+    monthsOnLifestyle: monthsOf(fundedPaise, f.lifestyleBurnPaise),
+    targets: { lifestyle, essentials },
+    verdict,
+    pace: f.pace,
+    monthsIfSpendingLess: trimmed,
+    burnPaise: f.lifestyleBurnPaise,
+    targetPaise: lifestyle.totalPaise,
+    targetBasis: manual !== null ? "manual" : lifestyleLiving !== null ? "burn" : null,
     fundedPaise,
     bankPaise: f.bankPaise,
     holdingsPaise: f.holdingsPaise,
@@ -114,9 +162,9 @@ export function emergencyFund(f: EmergencyFacts): EmergencyFund {
     medical,
     gapPaise,
     topUpPaise: gapPaise === null ? null : Math.ceil(gapPaise / Math.max(1, f.horizonMonths)),
-    fundedMonths: monthsOf(fundedPaise, burnPaise),
-    progressPct: targetPaise === null || targetPaise <= 0 ? null : Math.min(100, Math.round((funded / targetPaise) * 1000) / 10),
+    fundedMonths: monthsOf(fundedPaise, f.lifestyleBurnPaise),
+    progressPct: lifestyle.pct,
     liquidPaise: f.liquidPaise,
-    liquidMonths: monthsOf(f.liquidPaise, burnPaise),
+    liquidMonths: monthsOf(f.liquidPaise, f.lifestyleBurnPaise),
   };
 }
