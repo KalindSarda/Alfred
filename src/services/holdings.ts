@@ -38,6 +38,8 @@ export interface HoldingDto {
   status: "active" | "closed";
   /** Part of the emergency fund. */
   isEmergency: boolean;
+  /** Counted in the FIRE corpus. */
+  countsForFire: boolean;
   openingInvestedPaise: number;
   /** Put in: what was invested before tracking plus every purchase. */
   investedPaise: number;
@@ -160,6 +162,7 @@ function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lot
     kindName: kind?.name ?? row.kind,
     status: row.status,
     isEmergency: row.isEmergency,
+    countsForFire: row.countsForFire,
     openingInvestedPaise: row.openingInvestedPaise,
     investedPaise: investedPaise(f, today),
     soldPaise: soldPaise(f, today),
@@ -279,7 +282,7 @@ export async function updateHolding(db: Db, userId: string, id: string, patch: U
   }
   await db
     .update(holdings)
-    .set({ name: patch.name === undefined ? row.name : tidy(patch.name), kind: patch.kind ?? row.kind, isEmergency: patch.isEmergency ?? row.isEmergency })
+    .set({ name: patch.name === undefined ? row.name : tidy(patch.name), kind: patch.kind ?? row.kind, isEmergency: patch.isEmergency ?? row.isEmergency, countsForFire: patch.countsForFire ?? row.countsForFire })
     .where(and(eq(holdings.id, id), eq(holdings.userId, userId)));
   return getHolding(db, userId, id, today);
 }

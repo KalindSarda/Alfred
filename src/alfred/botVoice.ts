@@ -402,6 +402,24 @@ export function emergencyLine(e: EmergencyText): string | null {
   return `${head} Still to build: ${rupees(e.gapPaise)}; about ${rupees(e.topUpPaise ?? 0)} a month would close it in ${e.horizonMonths} months.`;
 }
 
+export interface FireText {
+  numberPaise: number | null;
+  progressPct: number | null;
+  corpusPaise: number;
+  projection: { months: number | null; year: number | null; age: number | null; reached: boolean } | null;
+}
+
+/** Where financial independence stands, for the monthly review. Empty without a spending figure to measure against. */
+export function fireLine(f: FireText): string | null {
+  if (f.numberPaise === null) return null;
+  const head = `Financial independence: ${rupees(f.corpusPaise)} of ${rupees(f.numberPaise)} (${f.progressPct ?? 0}%).`;
+  const p = f.projection;
+  if (!p) return head;
+  if (p.reached) return `${head} The number is reached on today's assumptions.`;
+  if (p.months === null || p.year === null) return `${head} At the current saving it is not reached within 60 years; the Freedom page shows what would change that.`;
+  return `${head} At the current saving and assumptions, around ${p.year}${p.age === null ? "" : `, at about ${p.age}`}. An estimate, not a promise.`;
+}
+
 export interface ReviewText {
   from: string;
   to: string;
@@ -421,6 +439,7 @@ export interface ReviewText {
   runway: { months: number | null; burnPaise: number | null; solid: boolean; basedOnDays: number };
   netWorth: { endPaise: number; changePaise: number } | null;
   emergency?: EmergencyText;
+  fire?: FireText;
 }
 
 /** The monthly review: what came in, what went out, what was saved, and a few ratios with their usual reference lines. */
@@ -439,6 +458,8 @@ export function monthlyReviewLines(v: ReviewText): string[] {
   if (v.runway.months !== null && v.runway.burnPaise !== null) lines.push(`Your bank money would last about ${v.runway.months} months at ${rupees(v.runway.burnPaise)} a month of essential spending${v.runway.solid ? "" : ` (an early estimate, from ${v.runway.basedOnDays} days of entries)`}.`);
   const fund = v.emergency ? emergencyLine(v.emergency) : null;
   if (fund) lines.push(fund);
+  const independence = v.fire ? fireLine(v.fire) : null;
+  if (independence) lines.push(independence);
   if (v.netWorth) lines.push(`Net worth ${rupees(v.netWorth.endPaise)}, ${v.netWorth.changePaise >= 0 ? "up" : "down"} ${rupees(Math.abs(v.netWorth.changePaise))} over the month.`);
   return lines;
 }

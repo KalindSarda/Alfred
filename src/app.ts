@@ -15,6 +15,7 @@ import { balanceCheckRoutes } from "./routes/balanceCheck";
 import { cardToolRoutes } from "./routes/cardTools";
 import { categoryRoutes } from "./routes/categories";
 import { moneyHealthRoutes } from "./routes/moneyHealth";
+import { fireRoutes } from "./routes/fire";
 import { emergencyRoutes } from "./routes/emergency";
 import { runwayRoutes } from "./routes/runway";
 import { commitmentRoutes } from "./routes/commitments";
@@ -93,6 +94,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/money-health", moneyHealthRoutes);
   app.route("/api/runway", runwayRoutes);
   app.route("/api/emergency-fund", emergencyRoutes);
+  app.route("/api/fire", fireRoutes);
   app.route("/api/cards", cardToolRoutes);
   app.route("/api/balance-check", balanceCheckRoutes);
   app.route("/api/commitments", commitmentRoutes);

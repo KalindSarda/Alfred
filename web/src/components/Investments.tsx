@@ -75,6 +75,7 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
   const [rate, setRate] = useState("");
   const [typed, setTyped] = useState(false);
   const [emergency, setEmergency] = useState(holding?.isEmergency ?? false);
+  const [forFire, setForFire] = useState(holding?.countsForFire ?? true);
   const unit = unitOfKind(kinds.find((k) => k.key === kind));
   const counted = !holding && !!unit && !typed;
   const key = name.trim().replace(/\s+/g, " ").toLowerCase();
@@ -82,7 +83,7 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
 
   const save = () => {
     if (!name.trim()) return setError("Name it, such as Gold coins or Tata Technologies.");
-    if (holding) return void run(() => api.patch(`/api/holdings/${holding.id}`, { name: name.trim(), kind, isEmergency: emergency }), "Saved.");
+    if (holding) return void run(() => api.patch(`/api/holdings/${holding.id}`, { name: name.trim(), kind, isEmergency: emergency, countsForFire: forFire }), "Saved.");
     if (dupe) return setError(`You already have ${dupe.name}. Add a purchase to it instead.`);
     const put = invested.trim() ? rupeesToPaise(invested) : 0;
     if (invested.trim() && put === null) return setError("What you paid looks wrong. Leave it empty if nothing yet.");
@@ -137,6 +138,15 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
             <span>
               Part of my emergency fund
               <span className="block text-xs text-soft">For money you could turn into cash quickly, such as a liquid fund. Its worth counts toward the fund.</span>
+            </span>
+          </label>
+        )}
+        {holding && (
+          <label className="flex min-h-11 items-start gap-3 text-sm">
+            <input type="checkbox" className="mt-1 size-5 accent-brand" checked={forFire} onChange={(e) => setForFire(e.target.checked)} />
+            <span>
+              Count it toward financial independence
+              <span className="block text-xs text-soft">Its worth is part of the corpus on the Freedom page. Untick it for money you do not plan to live on.</span>
             </span>
           </label>
         )}

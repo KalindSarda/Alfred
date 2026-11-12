@@ -6,9 +6,17 @@ import { cycleRange, todayIst } from "../domain/dates";
 import { newId, nowIso } from "../utils/id";
 import { logger } from "../utils/logger";
 import { getEmergencyFund } from "./emergency";
+import { getFire } from "./fire";
 import { getHealth } from "./health";
 import { chatsFor } from "./recurringJob";
 import { getSettings } from "./settings";
+
+import type { FireView } from "./fire";
+
+/** What the review message needs from the FIRE view. */
+export function fireFacts(v: FireView) {
+  return { numberPaise: v.numberPaise, progressPct: v.progressPct, corpusPaise: v.corpus.totalPaise, projection: v.projection };
+}
 
 export interface ReviewJobDeps {
   db: Db;
@@ -37,7 +45,7 @@ export async function runMonthlyReview(deps: ReviewJobDeps): Promise<{ sent: num
       const claimed = await db.insert(checkinLog).values({ id: newId(), userId, kind: "review", day: today, createdAt: nowIso() }).onConflictDoNothing().returning({ id: checkinLog.id });
       if (claimed.length === 0) continue;
       try {
-        await telegram.sendMessage(chat, monthlyReviewLines({ ...view, from: view.period.from, to: view.period.to, emergency: await getEmergencyFund(db, userId, today) }).join("\n"));
+        await telegram.sendMessage(chat, monthlyReviewLines({ ...view, from: view.period.from, to: view.period.to, emergency: await getEmergencyFund(db, userId, today), fire: fireFacts(await getFire(db, userId, today)) }).join("\n"));
         sent += 1;
       } catch (error) {
         logger.error("monthly_review_send_failed", { error: error instanceof Error ? error.message : "unknown" });

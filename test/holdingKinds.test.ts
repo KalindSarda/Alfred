@@ -22,10 +22,10 @@ async function setup() {
 }
 
 describe("investment kinds", () => {
-  it("starts with the five built-in kinds", async () => {
+  it("starts with the six built-in kinds", async () => {
     const s = await setup();
     const list = await s.kinds();
-    expect(list.map((k) => k.name).sort()).toEqual(["Crypto", "Gold", "Mutual fund", "Other", "Stock or IPO"]);
+    expect(list.map((k) => k.name).sort()).toEqual(["Crypto", "Gold", "Mutual fund", "Other", "Retirement (EPF, PPF, NPS)", "Stock or IPO"]);
     expect(list.find((k) => k.key === "gold")).toMatchObject({ unit: "g", unitOne: "g", ratePer: 10, isSystem: false, holdingCount: 0, locked: false });
     expect(list.find((k) => k.key === "stock")).toMatchObject({ unit: "shares", unitOne: "share", ratePer: 1, isSystem: true });
     expect(list.find((k) => k.key === "crypto")).toMatchObject({ unit: null, unitOne: null });

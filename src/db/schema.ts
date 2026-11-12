@@ -571,6 +571,8 @@ export const holdings = sqliteTable(
     closedAt: text("closed_at"),
     /** Part of the emergency fund (a liquid fund, say). */
     isEmergency: integer("is_emergency", { mode: "boolean" }).notNull().default(false),
+    /** Counted in the corpus the FIRE plan measures progress against. */
+    countsForFire: integer("counts_for_fire", { mode: "boolean" }).notNull().default(true),
     createdAt: text("created_at").notNull(),
   },
   (t) => [index("holdings_user_status_idx").on(t.userId, t.status), check("holdings_opening_nonnegative", sql`${t.openingInvestedPaise} >= 0`)],
@@ -665,3 +667,21 @@ export const loans = sqliteTable(
     check("loans_due_day", sql`${t.dueDay} BETWEEN 1 AND 31`),
   ],
 );
+
+/** One person's financial-independence plan: the assumptions the projection runs on. A null amount means "use my recent average". */
+export const firePlan = sqliteTable("fire_plan", {
+  userId: text("user_id").primaryKey().references(() => users.id),
+  ageNow: integer("age_now"),
+  targetAge: integer("target_age"),
+  /** What a month costs once work stops, in today's money. */
+  monthlySpendPaise: integer("monthly_spend_paise"),
+  /** The share of the corpus taken out each year, in basis points: 3.5% is 350. */
+  withdrawalRateBp: integer("withdrawal_rate_bp").notNull().default(350),
+  inflationBp: integer("inflation_bp").notNull().default(600),
+  /** The yearly return assumed before tax, in basis points. */
+  returnBp: integer("return_bp").notNull().default(1000),
+  monthlySavingPaise: integer("monthly_saving_paise"),
+  /** How much the monthly saving rises each year, in basis points. */
+  stepupBp: integer("stepup_bp").notNull().default(0),
+  updatedAt: text("updated_at").notNull(),
+});

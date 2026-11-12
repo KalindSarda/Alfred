@@ -13,5 +13,6 @@ export const DEFAULT_HOLDING_KINDS: readonly DefaultKind[] = [
   { key: "fund", name: "Mutual fund", unit: "units", ratePer: 1, isSystem: false },
   { key: "gold", name: "Gold", unit: "g", ratePer: 10, isSystem: false },
   { key: "crypto", name: "Crypto", unit: null, ratePer: 1, isSystem: false },
+  { key: "retirement", name: "Retirement (EPF, PPF, NPS)", unit: null, ratePer: 1, isSystem: false },
   { key: "other", name: "Other", unit: null, ratePer: 1, isSystem: true },
 ];

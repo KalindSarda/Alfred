@@ -1,11 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
-import { type EmergencyFund, type MoneyHealth, type Settings, api, describeError } from "../api";
+import { type EmergencyFund, type FireView, type MoneyHealth, type Settings, api, describeError } from "../api";
 import { useToast } from "../components/toast";
 import { Button, Card, Empty, ErrorText, Field, Sheet, Spinner, inputClass } from "../components/ui";
 import { rupeesToPaise } from "../filters";
 import { paiseToInput, rupees, shortDate } from "../format";
-import { useEmergencyFund, useMoneyHealth } from "../queries";
+import { useEmergencyFund, useFire, useMoneyHealth } from "../queries";
 import { Link } from "../router";
 
 const BAND: Record<string, { label: string; tone: string }> = {
@@ -177,6 +177,207 @@ function EmergencyCard() {
   );
 }
 
+const pct = (bp: number) => String(bp / 100);
+const inputPct = (text: string): number | null => (/^\d+(\.\d{1,2})?$/.test(text.trim()) ? Math.round(Number.parseFloat(text) * 100) : null);
+const yearsText = (months: number) => {
+  const y = Math.floor(Math.abs(months) / 12);
+  const m = Math.abs(months) % 12;
+  return [y ? `${y} ${y === 1 ? "year" : "years"}` : "", m ? `${m} ${m === 1 ? "month" : "months"}` : ""].filter(Boolean).join(" ") || "no time";
+};
+
+/** Everything the projection runs on, with the recent average standing in for spend and saving when left empty. */
+function FireAssumptions({ fire, onClose }: { fire: FireView; onClose: () => void }) {
+  const client = useQueryClient();
+  const toast = useToast();
+  const a = fire.assumptions;
+  const [age, setAge] = useState(a.ageNow === null ? "" : String(a.ageNow));
+  const [target, setTarget] = useState(a.targetAge === null ? "" : String(a.targetAge));
+  const [spend, setSpend] = useState(a.monthlySpendPaise !== null && !a.spendIsDefault ? paiseToInput(a.monthlySpendPaise) : "");
+  const [saving, setSaving] = useState(a.monthlySavingPaise !== null && !a.savingIsDefault ? paiseToInput(a.monthlySavingPaise) : "");
+  const [withdrawal, setWithdrawal] = useState(pct(a.withdrawalRateBp));
+  const [inflation, setInflation] = useState(pct(a.inflationBp));
+  const [ret, setRet] = useState(pct(a.returnBp));
+  const [stepup, setStepup] = useState(pct(a.stepupBp));
+  const [error, setError] = useState("");
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.put<FireView>("/api/fire", body),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ["fire"] });
+      toast.show("Saved");
+      onClose();
+    },
+  });
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const num = (t: string) => (t.trim() === "" ? null : /^\d+$/.test(t.trim()) ? Number(t) : Number.NaN);
+    const ageNow = num(age);
+    const targetAge = num(target);
+    if (Number.isNaN(ageNow) || Number.isNaN(targetAge)) return setError("Ages are whole numbers, such as 32.");
+    const spendPaise = spend.trim() ? rupeesToPaise(spend) : null;
+    const savingPaise = saving.trim() ? rupeesToPaise(saving) : saving.trim() === "0" ? 0 : null;
+    if (spend.trim() && !spendPaise) return setError("The monthly spend looks wrong. Use a number such as 60000, or leave it empty to use your recent average.");
+    if (saving.trim() && savingPaise === null) return setError("The monthly saving looks wrong. Use a number such as 40000, or leave it empty to use your recent average.");
+    const w = inputPct(withdrawal);
+    const i = inputPct(inflation);
+    const r = inputPct(ret);
+    const s = inputPct(stepup);
+    if (w === null || i === null || r === null || s === null) return setError("Rates are percentages such as 3.5 or 10.");
+    setError("");
+    save.mutate({ ageNow, targetAge, monthlySpendPaise: spendPaise, monthlySavingPaise: savingPaise, withdrawalRateBp: w, inflationBp: i, returnBp: r, stepupBp: s });
+  };
+  return (
+    <Sheet title="Independence assumptions" onClose={onClose}>
+      <form className="space-y-4" onSubmit={submit}>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Your age now">
+            <input className={inputClass} inputMode="numeric" value={age} onChange={(e) => setAge(e.target.value)} />
+          </Field>
+          <Field label="Free by age (optional)">
+            <input className={inputClass} inputMode="numeric" value={target} onChange={(e) => setTarget(e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Spending a month once work stops (₹)" hint={`In today's money. Empty uses your recent average${a.spendIsDefault && a.monthlySpendPaise !== null ? `, ${rupees(a.monthlySpendPaise)}` : ""}.`}>
+          <input className={inputClass} inputMode="decimal" value={spend} onChange={(e) => setSpend(e.target.value)} />
+        </Field>
+        <Field label="Saving a month from now (₹)" hint={`Empty uses your recent average${a.savingIsDefault && a.monthlySavingPaise !== null ? `, ${rupees(a.monthlySavingPaise)}` : ""}.`}>
+          <input className={inputClass} inputMode="decimal" value={saving} onChange={(e) => setSaving(e.target.value)} />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Yearly return (%)" hint="Before tax. Not a promise.">
+            <input className={inputClass} inputMode="decimal" value={ret} onChange={(e) => setRet(e.target.value)} />
+          </Field>
+          <Field label="Yearly inflation (%)">
+            <input className={inputClass} inputMode="decimal" value={inflation} onChange={(e) => setInflation(e.target.value)} />
+          </Field>
+          <Field label="Withdrawal rate (%)" hint="3.5 to 4 is a common rule of thumb.">
+            <input className={inputClass} inputMode="decimal" value={withdrawal} onChange={(e) => setWithdrawal(e.target.value)} />
+          </Field>
+          <Field label="Saving rises each year (%)">
+            <input className={inputClass} inputMode="decimal" value={stepup} onChange={(e) => setStepup(e.target.value)} />
+          </Field>
+        </div>
+        <ErrorText>{error || (save.isError ? describeError(save.error) : "")}</ErrorText>
+        <Button type="submit" className="w-full" disabled={save.isPending}>
+          Save
+        </Button>
+      </form>
+    </Sheet>
+  );
+}
+
+const SENSE: Record<string, string> = { saving: "Saving ₹5,000 more a month", spend: "Spending 10% less", return: "A return 2 points lower" };
+
+/** The corpus that would cover your spending, how far along you are, and when your assumptions reach it. */
+function FireCard() {
+  const query = useFire();
+  const [editing, setEditing] = useState(false);
+  const f = query.data;
+  if (!f) return null;
+  const a = f.assumptions;
+  const p = f.projection;
+  return (
+    <Card id="fire" className="space-y-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="font-medium">Financial independence</h2>
+        <button type="button" className="min-h-11 text-sm text-brand" onClick={() => setEditing(true)}>
+          Assumptions
+        </button>
+      </div>
+
+      {f.numberPaise === null ? (
+        <p className="text-sm text-soft">
+          To work out your number Alfred needs what a month costs once work stops. With about two weeks of entries it uses your recent spending; or type it under Assumptions.
+        </p>
+      ) : (
+        <>
+          <div>
+            <p className="text-xs tracking-wide text-soft uppercase">Your number</p>
+            <p className="font-display text-4xl tabular-nums">{rupees(f.numberPaise)}</p>
+            <p className="text-sm text-soft">
+              {rupees(a.monthlySpendPaise ?? 0)} a month{a.spendIsDefault ? " (your recent average)" : ""} at a {pct(a.withdrawalRateBp)}% yearly withdrawal.
+              {f.early && a.spendIsDefault ? ` An early estimate, from ${f.basedOnDays} days of entries.` : ""}
+            </p>
+          </div>
+          <div className="h-3 overflow-hidden rounded-full bg-sunk" role="img" aria-label={`${f.progressPct}% of the way`}>
+            <span className="block h-full bg-good" style={{ width: `${f.progressPct ?? 0}%` }} />
+          </div>
+          <p className="text-sm">
+            You have <span className="font-medium">{rupees(f.corpus.totalPaise)}</span> counted, {f.progressPct ?? 0}% of the way.
+          </p>
+
+          {p && (
+            <p className="rounded-xl bg-sunk p-3 text-sm">
+              {p.reached
+                ? "On these assumptions you are already there."
+                : p.months === null
+                  ? "At the current saving the number is not reached within 60 years. Saving more, or spending less, changes that."
+                  : `At ${rupees(a.monthlySavingPaise ?? 0)} saved a month${a.savingIsDefault ? " (your recent average)" : ""}, in about ${yearsText(p.months)}: around ${p.year}${p.age === null ? "" : `, at about ${p.age}`}.`}
+            </p>
+          )}
+
+          {a.targetAge !== null && a.ageNow !== null && (
+            <div className="space-y-1 text-sm">
+              <p>
+                To be free by {a.targetAge}:{" "}
+                {f.requiredSavingPaise === null ? "it is out of reach on these assumptions." : f.requiredSavingPaise === 0 ? "what you have already will do." : <span className="font-medium">about {rupees(f.requiredSavingPaise)} a month</span>}
+              </p>
+              {f.coastPaise !== null && (
+                <p className="text-soft">
+                  Coast number: {rupees(f.coastPaise)}. {f.coastReached ? "You have passed it: if you stopped saving now, growth alone would get you there." : "Past that, you could stop saving and let it grow."}
+                </p>
+              )}
+            </div>
+          )}
+
+          {f.sensitivity.length > 0 && p && p.months !== null && (
+            <div>
+              <p className="text-xs tracking-wide text-soft uppercase">What would change it</p>
+              <ul className="divide-y divide-line text-sm">
+                {f.sensitivity.map((s) => (
+                  <li key={s.key} className="flex justify-between gap-3 py-1.5">
+                    <span>{SENSE[s.key]}</span>
+                    <span className={`tabular-nums ${s.deltaMonths !== null && s.deltaMonths < 0 ? "text-good" : "text-soft"}`}>
+                      {s.deltaMonths === null ? "never" : s.deltaMonths === 0 ? "no change" : `${yearsText(s.deltaMonths)} ${s.deltaMonths < 0 ? "sooner" : "later"}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
+
+      <div>
+        <p className="text-xs tracking-wide text-soft uppercase">What counts</p>
+        <ul className="divide-y divide-line text-sm">
+          <li className="flex justify-between gap-3 py-1.5">
+            <span>
+              Bank money
+              <span className="block text-xs text-faint">{f.corpus.emergencyNotMarked ? "All of it, since no emergency fund is marked" : "Beyond your emergency fund"}</span>
+            </span>
+            <span className="tabular-nums">{rupees(f.corpus.bankPaise)}</span>
+          </li>
+          {f.corpus.holdings.map((h) => (
+            <li key={h.id} className={`flex justify-between gap-3 py-1.5 ${h.counts && !h.inEmergencyFund ? "" : "text-faint"}`}>
+              <span>
+                {h.name}
+                <span className="block text-xs text-faint">{h.inEmergencyFund ? "In your emergency fund" : h.counts ? h.kindName : "Not counted"}</span>
+              </span>
+              <span className="tabular-nums">{rupees(h.paise)}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-1 text-xs text-faint">Change what counts in each investment's Edit sheet. EPF, PPF and NPS are counted at their full value, though much of it cannot be touched before retirement age.</p>
+      </div>
+
+      <p className="text-xs text-faint">
+        A projection on assumptions you can change. Returns are not guaranteed, and tax, healthcare costs and the order returns arrive in are not modelled. It is arithmetic, not advice on what to invest in.
+      </p>
+      {editing && <FireAssumptions fire={f} onClose={() => setEditing(false)} />}
+    </Card>
+  );
+}
+
 /** Where you stand: how the month looked, and the ratios behind it. */
 export function Freedom() {
   const [period, setPeriod] = useState<"last" | "current">("last");
@@ -258,6 +459,7 @@ export function Freedom() {
       )}
 
       <EmergencyCard />
+      <FireCard />
     </div>
   );
 }

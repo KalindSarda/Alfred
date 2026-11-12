@@ -464,6 +464,7 @@ export interface Holding {
   kindName: string;
   status: "active" | "closed";
   isEmergency: boolean;
+  countsForFire: boolean;
   openingInvestedPaise: number;
   investedPaise: number;
   soldPaise: number;
@@ -530,6 +531,38 @@ export interface HoldingsOverview {
   totalInvestedPaise: number;
   gainPaise: number;
   holdings: Holding[];
+}
+
+/** Where financial independence stands: the number, the corpus toward it, and when the assumptions reach it. */
+export interface FireView {
+  assumptions: {
+    ageNow: number | null;
+    targetAge: number | null;
+    monthlySpendPaise: number | null;
+    spendIsDefault: boolean;
+    withdrawalRateBp: number;
+    inflationBp: number;
+    returnBp: number;
+    monthlySavingPaise: number | null;
+    savingIsDefault: boolean;
+    stepupBp: number;
+  };
+  early: boolean;
+  basedOnDays: number;
+  corpus: {
+    totalPaise: number;
+    bankPaise: number;
+    holdingsPaise: number;
+    holdings: { id: string; name: string; kindName: string; paise: number; counts: boolean; inEmergencyFund: boolean }[];
+    emergencyNotMarked: boolean;
+  };
+  numberPaise: number | null;
+  progressPct: number | null;
+  projection: { months: number | null; years: number | null; year: number | null; age: number | null; reached: boolean } | null;
+  coastPaise: number | null;
+  coastReached: boolean | null;
+  requiredSavingPaise: number | null;
+  sensitivity: { key: "saving" | "spend" | "return"; months: number | null; deltaMonths: number | null }[];
 }
 
 /** Where the emergency fund stands: the target, what is flagged as the fund, and what is still missing. */
