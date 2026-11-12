@@ -336,6 +336,8 @@ export interface Settings {
   emergencyHorizonMonths: number;
   emergencyBasis: "essentials" | "lifestyle";
   medicalTargetPaise: number | null;
+  costlyDebtBp: number;
+  ladderSkipped: string[];
 }
 
 /** A card ranked for a purchase today: the longest time before the bill first. */
@@ -533,6 +535,37 @@ export interface HoldingsOverview {
   totalInvestedPaise: number;
   gainPaise: number;
   holdings: Holding[];
+}
+
+/** The next-step ladder: a common order for firming up money, and where the person stands on each rung. */
+export interface LadderStep {
+  key: "starter" | "debt" | "protection" | "emergency" | "medical" | "fire";
+  title: string;
+  status: "done" | "next" | "later" | "skipped";
+  amountPaise: number | null;
+  detail: string;
+}
+
+export interface LadderView {
+  steps: LadderStep[];
+  next: LadderStep | null;
+  costlyDebtBp: number;
+  skipped: string[];
+}
+
+/** How much could safely move into the emergency fund today, and from where to where. */
+export interface TransferView {
+  none: "no_target" | "fund_complete" | "no_destination" | "no_source" | "no_history" | "nothing_movable" | null;
+  amountPaise: number;
+  movablePaise: number;
+  cushionPaise: number;
+  remainingPaise: number | null;
+  freeToSpendPaise: number;
+  until: string;
+  daysLeft: number;
+  gapPaise: number | null;
+  from: { id: string; name: string; availablePaise: number } | null;
+  to: { id: string; name: string; countsTowardSafeToSpend: boolean } | null;
 }
 
 /** A health or life cover the person holds, or has through work. */

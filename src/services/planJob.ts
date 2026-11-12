@@ -43,7 +43,7 @@ export async function runSalaryPlans(deps: PlanJobDeps): Promise<{ sent: number 
       if (fresh.length === 0) continue;
       // Claimed before sending, so a retried run never plans twice.
       for (const e of fresh) await db.insert(salaryLog).values({ id: newId(), userId, txnId: e.id, sentAt: nowIso() }).onConflictDoNothing();
-      const plan = await buildSalaryPlan(db, userId, today, fresh[0] ?? null);
+      const plan = await buildSalaryPlan(db, userId, today, fresh[0] ?? null, { chatId: chat, nowMs: deps.now() });
       try {
         await telegram.sendMessage(chat, plan.text, plan.buttons.length > 0 ? plan.buttons : undefined);
         sent += 1;

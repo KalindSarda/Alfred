@@ -1,11 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
-import { type EmergencyFund, type FireView, type MoneyHealth, type Settings, api, describeError } from "../api";
+import { type EmergencyFund, type FireView, type LadderStep, type MoneyHealth, type Settings, type TransferView, api, describeError } from "../api";
 import { useToast } from "../components/toast";
 import { Button, Card, Empty, ErrorText, Field, Sheet, Spinner, inputClass } from "../components/ui";
 import { rupeesToPaise } from "../filters";
 import { paiseToInput, rupees, shortDate } from "../format";
-import { useEmergencyFund, useFire, useMoneyHealth } from "../queries";
+import { useEmergencyFund, useFire, useLadder, useMoneyHealth, useTransferSuggestion } from "../queries";
 import { Link } from "../router";
 
 const BAND: Record<string, { label: string; tone: string }> = {
@@ -223,6 +223,135 @@ function EmergencyCard() {
       )}
       <p className="text-xs text-faint">Money in a flagged account is still spendable; this only says what your fund is made of. Six months is a rule of thumb, not advice.</p>
       {editing && <FundSettings fund={f} onClose={() => setEditing(false)} />}
+    </Card>
+  );
+}
+
+const STATUS: Record<LadderStep["status"], { label: string; tone: string }> = {
+  done: { label: "Done", tone: "bg-good/15 text-good" },
+  next: { label: "Next", tone: "bg-brand text-white" },
+  later: { label: "Later", tone: "bg-sunk text-soft" },
+  skipped: { label: "Skipped", tone: "bg-sunk text-faint" },
+};
+
+const WHY_NOT: Record<NonNullable<TransferView["none"]>, string> = {
+  no_target: "Once there are about two weeks of entries, or a target of your own, Alfred can say how much to move.",
+  fund_complete: "Your emergency fund is full. Nothing to move.",
+  no_destination: "Mark a bank account as your emergency fund (tick it on the account) and Alfred can suggest what to move into it.",
+  no_source: "There is no bank account to move money from.",
+  no_history: "With so little history Alfred cannot tell how much you spend each day, so it cannot say what is safe to move yet.",
+  nothing_movable: "Nothing is safe to move today. What is free is kept for everyday spending until your next salary.",
+};
+
+/** What could move into the emergency fund today, and why that much. */
+function TransferBox({ t }: { t: TransferView }) {
+  if (t.none !== null) return <p className="text-sm text-soft">{WHY_NOT[t.none]}</p>;
+  return (
+    <div className="space-y-1 rounded-xl bg-sunk p-3 text-sm">
+      <p>
+        You could move <span className="font-medium">{rupees(t.amountPaise)}</span> from {t.from?.name} to {t.to?.name} today.
+      </p>
+      <p className="text-soft">
+        Free to spend until {shortDate(t.until)} is {rupees(t.freeToSpendPaise)}. Alfred keeps {rupees(t.cushionPaise)} back for about {t.daysLeft} {t.daysLeft === 1 ? "day" : "days"} of everyday spending, so {rupees(t.movablePaise)} is safe to move.
+        {t.remainingPaise ? ` That closes ${rupees(t.amountPaise)} of the ${rupees(t.gapPaise ?? 0)} still missing; the rest is possible after your next salary.` : " That completes your emergency fund."}
+      </p>
+      <p className="text-soft">Move it at your bank, then send /fund in Telegram and tap Record.</p>
+      {t.to?.countsTowardSafeToSpend && <p className="text-soft">Tip: {t.to.name} still counts toward safe-to-spend. Untick that on the account so this money stays put.</p>}
+    </div>
+  );
+}
+
+/** The costly-debt line, and nothing else to set: skipping is done on each step. */
+function LadderSettings({ costlyDebtBp, onClose }: { costlyDebtBp: number; onClose: () => void }) {
+  const client = useQueryClient();
+  const toast = useToast();
+  const [rate, setRate] = useState(String(costlyDebtBp / 100));
+  const [error, setError] = useState("");
+  const save = useMutation({
+    mutationFn: (bp: number) => api.patch<Settings>("/api/settings", { costlyDebtBp: bp }),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ["ladder"] });
+      toast.show("Saved");
+      onClose();
+    },
+  });
+  return (
+    <Sheet title="Next steps settings" onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const bp = /^\d+(\.\d{1,2})?$/.test(rate.trim()) ? Math.round(Number.parseFloat(rate) * 100) : null;
+          if (bp === null || bp < 100 || bp > 5000) return setError("Use a yearly rate between 1 and 50, such as 12.");
+          setError("");
+          save.mutate(bp);
+        }}
+      >
+        <Field label="A bank loan costs too much from (% a year)" hint="Loans at or above this count as costly debt. 12 is a common line; the part-payment what-if shows what paying one down would save.">
+          <input className={inputClass} inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} />
+        </Field>
+        <ErrorText>{error || (save.isError ? describeError(save.error) : "")}</ErrorText>
+        <Button type="submit" className="w-full" disabled={save.isPending}>
+          Save
+        </Button>
+      </form>
+    </Sheet>
+  );
+}
+
+/** A common order for firming up money, where you stand on each rung, and what to do next and why. */
+function NextStepCard() {
+  const client = useQueryClient();
+  const ladder = useLadder();
+  const transfer = useTransferSuggestion();
+  const [editing, setEditing] = useState(false);
+  const skip = useMutation({
+    mutationFn: (skipped: string[]) => api.patch<Settings>("/api/settings", { ladderSkipped: skipped }),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ["ladder"] });
+    },
+  });
+  const l = ladder.data;
+  if (!l) return null;
+  const toggle = (key: string) => skip.mutate(l.skipped.includes(key) ? l.skipped.filter((k) => k !== key) : [...l.skipped, key]);
+  const showTransfer = transfer.data && (l.next?.key === "emergency" || l.next?.key === "medical" || transfer.data.none === null);
+  return (
+    <Card id="next-step" className="space-y-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="font-medium">Your next step</h2>
+        <button type="button" className="min-h-11 text-sm text-brand" onClick={() => setEditing(true)}>
+          Settings
+        </button>
+      </div>
+      {l.next ? (
+        <div>
+          <p className="font-display text-2xl">{l.next.title}</p>
+          <p className="mt-1 text-sm text-soft">{l.next.detail}</p>
+          {l.next.amountPaise ? <p className="mt-1 text-sm">About {rupees(l.next.amountPaise)} to go.</p> : null}
+        </div>
+      ) : (
+        <p className="text-sm text-good">Every step is done or skipped.</p>
+      )}
+      {showTransfer && transfer.data && <TransferBox t={transfer.data} />}
+      <ol className="divide-y divide-line text-sm">
+        {l.steps.map((s, i) => (
+          <li key={s.key} className="flex items-center justify-between gap-3 py-1.5">
+            <span className={s.status === "skipped" ? "text-faint" : ""}>
+              {i + 1}. {s.title}
+            </span>
+            <span className="flex items-center gap-2">
+              <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS[s.status].tone}`}>{STATUS[s.status].label}</span>
+              {s.status !== "done" && (
+                <button type="button" className="min-h-11 text-xs text-soft underline" disabled={skip.isPending} onClick={() => toggle(s.key)}>
+                  {s.status === "skipped" ? "Include" : "Skip"}
+                </button>
+              )}
+            </span>
+          </li>
+        ))}
+      </ol>
+      <p className="text-xs text-faint">A common order, not advice. Skip a step that does not apply to you. Alfred never says what to buy or invest in.</p>
+      {editing && <LadderSettings costlyDebtBp={l.costlyDebtBp} onClose={() => setEditing(false)} />}
     </Card>
   );
 }
@@ -456,6 +585,8 @@ export function Freedom() {
           </button>
         ))}
       </div>
+
+      <NextStepCard />
 
       {!h && <Spinner />}
       {query.isError && <Empty title="Could not load this">Check your connection and reload.</Empty>}

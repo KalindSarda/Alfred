@@ -40,8 +40,8 @@ export async function getPending(db: Db, userId: string, chatId: string, id: str
     .limit(1);
   if (!row) return null;
   try {
-    const parsed = JSON.parse(row.payload) as PendingEntry & { emiFix?: unknown; loanFix?: unknown; unitsFix?: unknown; balanceFix?: unknown; balanceProposal?: unknown; statementFix?: unknown; statementProposal?: unknown };
-    return parsed.emiFix || parsed.loanFix || parsed.unitsFix || parsed.balanceFix || parsed.balanceProposal || parsed.statementFix || parsed.statementProposal ? null : parsed;
+    const parsed = JSON.parse(row.payload) as PendingEntry & { emiFix?: unknown; loanFix?: unknown; unitsFix?: unknown; balanceFix?: unknown; balanceProposal?: unknown; statementFix?: unknown; statementProposal?: unknown; transferProposal?: unknown };
+    return parsed.emiFix || parsed.loanFix || parsed.unitsFix || parsed.balanceFix || parsed.balanceProposal || parsed.statementFix || parsed.statementProposal || parsed.transferProposal ? null : parsed;
   } catch {
     return null;
   }
@@ -120,6 +120,36 @@ export async function getBalanceProposal(db: Db, userId: string, chatId: string,
   try {
     const p = (JSON.parse(row.payload) as { balanceProposal?: { accountId?: unknown; typedPaise?: unknown } }).balanceProposal;
     return typeof p?.accountId === "string" && typeof p.typedPaise === "number" ? { accountId: p.accountId, typedPaise: p.typedPaise } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A suggested move into the emergency fund, waiting for the person to say they have made it. Returns the id the buttons carry. */
+export async function createTransferProposal(db: Db, userId: string, chatId: string, fromId: string, toId: string, amountPaise: number, nowMs: number): Promise<string> {
+  const id = randomString(10, "abcdefghijkmnpqrstuvwxyz23456789");
+  await db.insert(botPending).values({
+    id,
+    userId,
+    chatId,
+    payload: JSON.stringify({ transferProposal: { fromId, toId, amountPaise } }),
+    expiresAt: iso(nowMs + PENDING_TTL_MS),
+    createdAt: iso(nowMs),
+  });
+  return id;
+}
+
+/** Only the owner, in the same chat, and only while it is fresh. */
+export async function getTransferProposal(db: Db, userId: string, chatId: string, id: string, nowMs: number): Promise<{ fromId: string; toId: string; amountPaise: number } | null> {
+  const [row] = await db
+    .select()
+    .from(botPending)
+    .where(and(eq(botPending.id, id), eq(botPending.userId, userId), eq(botPending.chatId, chatId), gt(botPending.expiresAt, iso(nowMs))))
+    .limit(1);
+  if (!row) return null;
+  try {
+    const p = (JSON.parse(row.payload) as { transferProposal?: { fromId?: unknown; toId?: unknown; amountPaise?: unknown } }).transferProposal;
+    return typeof p?.fromId === "string" && typeof p.toId === "string" && typeof p.amountPaise === "number" ? { fromId: p.fromId, toId: p.toId, amountPaise: p.amountPaise } : null;
   } catch {
     return null;
   }

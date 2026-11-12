@@ -21,6 +21,9 @@ export const UpdateSettings = z
     emergencyHorizonMonths: z.number().int().min(1).max(60),
     emergencyBasis: z.enum(["essentials", "lifestyle"]),
     medicalTargetPaise: z.number().int().positive().max(100_000_000_000_00).nullable(),
+    /** Loans at or above this yearly rate (in basis points) count as costly debt; and the ladder steps to skip. */
+    costlyDebtBp: z.number().int().min(100).max(5000),
+    ladderSkipped: z.array(z.enum(["starter", "debt", "protection", "emergency", "medical", "fire"])).max(6),
     logNudgeUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   })
   .partial()
@@ -42,4 +45,6 @@ export interface SettingsDto {
   emergencyHorizonMonths: number;
   emergencyBasis: "essentials" | "lifestyle";
   medicalTargetPaise: number | null;
+  costlyDebtBp: number;
+  ladderSkipped: string[];
 }

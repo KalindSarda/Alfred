@@ -218,6 +218,13 @@
       "when": 1794480525071,
       "tag": "0030_protection",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1794481700195,
+      "tag": "0031_ladder",
+      "breakpoints": true
     }
   ]
 }

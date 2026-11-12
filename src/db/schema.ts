@@ -488,6 +488,10 @@ export const appSettings = sqliteTable("app_settings", {
   emergencyBasis: text("emergency_basis", { enum: ["essentials", "lifestyle"] }).notNull().default("lifestyle"),
   /** An amount kept on top of the living layer for medical costs. */
   medicalTargetPaise: integer("medical_target_paise"),
+  /** A bank loan at or above this yearly rate (basis points) counts as costly debt in the next-step ladder. */
+  costlyDebtBp: integer("costly_debt_bp").notNull().default(1200),
+  /** Steps of the ladder the person has chosen to skip, comma separated. */
+  ladderSkipped: text("ladder_skipped").notNull().default(""),
 });
 
 /** A salary credit that has been planned for, so each is planned once. */

@@ -381,6 +381,68 @@ export function renewalReminder(p: { insurer: string; kind: "health" | "term" | 
   return `Your ${what} policy with ${p.insurer} is due ${when}.${premium} Paying on time keeps the cover from lapsing.`;
 }
 
+export interface LadderStepText {
+  title: string;
+  status: "done" | "next" | "later" | "skipped";
+  amountPaise: number | null;
+  detail: string;
+}
+
+/** The next-step ladder: each rung with where it stands, and why the next one is next. */
+export function ladderLines(steps: readonly LadderStepText[]): string[] {
+  const lines = ["Where you stand, in a common order (a rule of thumb, not advice):"];
+  steps.forEach((s, i) => {
+    const amount = s.status === "next" || s.status === "later" ? (s.amountPaise ? ` (${rupees(s.amountPaise)} to go)` : "") : "";
+    lines.push(`${i + 1}. ${s.title}: ${s.status}${amount}`);
+  });
+  const next = steps.find((s) => s.status === "next");
+  if (next) lines.push("", `Next: ${next.title}. ${next.detail}`);
+  else lines.push("", "Every step is done or skipped.");
+  return lines;
+}
+
+export interface TransferText {
+  none: "no_target" | "fund_complete" | "no_destination" | "no_source" | "no_history" | "nothing_movable" | null;
+  amountPaise: number;
+  movablePaise: number;
+  cushionPaise: number;
+  remainingPaise: number | null;
+  freeToSpendPaise: number;
+  until: string;
+  daysLeft: number;
+  gapPaise: number | null;
+  from: { name: string } | null;
+  to: { name: string; countsTowardSafeToSpend: boolean } | null;
+}
+
+/** What could move into the emergency fund today, and why that much. */
+export function transferLines(t: TransferText): string[] {
+  switch (t.none) {
+    case "no_target":
+      return ["I cannot size your emergency fund yet. Once there are about two weeks of entries, or you type a target, I can say how much to move."];
+    case "fund_complete":
+      return ["Your emergency fund is full. Nothing to move."];
+    case "no_destination":
+      return ["Mark a bank account as your emergency fund in the app, on the account, and I can suggest what to move into it."];
+    case "no_source":
+      return ["I do not see a bank account to move money from."];
+    case "no_history":
+      return ["With so little history I cannot tell how much you spend each day, so I cannot say what is safe to move yet."];
+    case "nothing_movable":
+      return [`Nothing is safe to move today. Free to spend until ${shortDate(t.until)} is ${rupees(t.freeToSpendPaise)}, and about ${rupees(t.cushionPaise)} of it is kept for everyday spending. Try again after your next salary.`];
+    default: {
+      const lines = [
+        `You could move ${rupees(t.amountPaise)} from ${t.from?.name ?? "your bank"} to ${t.to?.name ?? "your emergency account"} today.`,
+        `Free to spend until ${shortDate(t.until)} is ${rupees(t.freeToSpendPaise)}. I keep ${rupees(t.cushionPaise)} back for about ${t.daysLeft} ${t.daysLeft === 1 ? "day" : "days"} of everyday spending, so ${rupees(t.movablePaise)} is safe to move.`,
+        t.remainingPaise ? `That closes ${rupees(t.amountPaise)} of the ${rupees(t.gapPaise ?? 0)} still missing. The other ${rupees(t.remainingPaise)} is possible after your next salary.` : "That completes your emergency fund.",
+        "Move it at your bank first, then tap Record.",
+      ];
+      if (t.to?.countsTowardSafeToSpend) lines.push(`Tip: ${t.to.name} still counts toward safe-to-spend. Switch that off in the app so this money stays put.`);
+      return lines;
+    }
+  }
+}
+
 export interface EmergencyText {
   months: number;
   basis: "essentials" | "lifestyle";
@@ -453,6 +515,7 @@ export interface ReviewText {
   netWorth: { endPaise: number; changePaise: number } | null;
   emergency?: EmergencyText;
   fire?: FireText;
+  nextStep?: { title: string; detail: string } | null;
 }
 
 /** The monthly review: what came in, what went out, what was saved, and a few ratios with their usual reference lines. */
@@ -471,6 +534,7 @@ export function monthlyReviewLines(v: ReviewText): string[] {
   if (v.runway.months !== null && v.runway.burnPaise !== null) lines.push(`Your bank money would last about ${v.runway.months} months at ${rupees(v.runway.burnPaise)} a month of essential spending${v.runway.solid ? "" : ` (an early estimate, from ${v.runway.basedOnDays} days of entries)`}.`);
   const fund = v.emergency ? emergencyLine(v.emergency) : null;
   if (fund) lines.push(fund);
+  if (v.nextStep) lines.push(`Next step: ${v.nextStep.title}. ${v.nextStep.detail}`);
   const independence = v.fire ? fireLine(v.fire) : null;
   if (independence) lines.push(independence);
   if (v.netWorth) lines.push(`Net worth ${rupees(v.netWorth.endPaise)}, ${v.netWorth.changePaise >= 0 ? "up" : "down"} ${rupees(Math.abs(v.netWorth.changePaise))} over the month.`);
@@ -501,6 +565,8 @@ export function swipeReply(amountPaise: number, cards: SwipeLine[]): string {
 }
 
 export const botVoice = {
+  transferRecorded: (amount: string, from: string, to: string) => `Recorded: ${amount} moved from ${from} to ${to}.`,
+  transferLeft: "All right. Nothing recorded. Ask again any time with /fund.",
   reviewNothing: "There is nothing to review yet: no income or spending in your last full month.",
   whatIfNeedsAmount: "Tell me the amount, for example /whatif 25000 home.",
   whatIfNoLoans: "You have no bank loans recorded.",
@@ -608,6 +674,7 @@ export const botVoice = {
     "/loans  what you owe on bank loans, and the next EMI",
     "/salary  your salary day plan: what is still to leave and what is free",
     "/review  your last month: what came in, what went out, and what was saved",
+    "/fund  your next step, and how much could safely move into your emergency fund",
     "/whatif  what part-paying a loan would do: /whatif 25000 home (add 12% to compare investing)",
     "/swipe  which card to use today for a purchase: /swipe 20000",
     "/menu  buttons for the main things I can show you",

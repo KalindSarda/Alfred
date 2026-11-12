@@ -1,5 +1,5 @@
 import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type CommitmentsView, type EntryHints, type EmergencyFund, type FireView, type MoneyHealth, type ProtectionView, type Runway, type HoldingKind, type HoldingsOverview, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type CommitmentsView, type EntryHints, type EmergencyFund, type FireView, type LadderView, type MoneyHealth, type TransferView, type ProtectionView, type Runway, type HoldingKind, type HoldingsOverview, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -38,6 +38,10 @@ export const useCategories = () =>
 /** How the last full month (or this one so far) looked. */
 export const useMoneyHealth = (period: "last" | "current") =>
   useQuery({ queryKey: ["money-health", period], queryFn: () => api.get<MoneyHealth>(`/api/money-health?period=${period}`) });
+
+/** The next-step ladder, and what could move into the emergency fund. */
+export const useLadder = () => useQuery({ queryKey: ["ladder"], queryFn: () => api.get<LadderView>("/api/ladder") });
+export const useTransferSuggestion = () => useQuery({ queryKey: ["transfer-suggestion"], queryFn: () => api.get<TransferView>("/api/transfer-suggestion") });
 
 /** Where health and life cover stands. */
 export const useProtection = () => useQuery({ queryKey: ["protection"], queryFn: () => api.get<ProtectionView>("/api/protection") });
@@ -171,6 +175,8 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["money-health"] }),
       client.invalidateQueries({ queryKey: ["emergency-fund"] }),
       client.invalidateQueries({ queryKey: ["fire"] }),
+      client.invalidateQueries({ queryKey: ["ladder"] }),
+      client.invalidateQueries({ queryKey: ["transfer-suggestion"] }),
       client.invalidateQueries({ queryKey: ["loans"] }),
       client.invalidateQueries({ queryKey: ["hints"] }),
       client.invalidateQueries({ queryKey: ["networth"] }),

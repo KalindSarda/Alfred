@@ -16,6 +16,7 @@ import { cardToolRoutes } from "./routes/cardTools";
 import { categoryRoutes } from "./routes/categories";
 import { moneyHealthRoutes } from "./routes/moneyHealth";
 import { fireRoutes } from "./routes/fire";
+import { ladderRoutes, transferSuggestionRoutes } from "./routes/ladder";
 import { insuranceRoutes, protectionRoutes } from "./routes/protection";
 import { emergencyRoutes } from "./routes/emergency";
 import { runwayRoutes } from "./routes/runway";
@@ -96,6 +97,8 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/runway", runwayRoutes);
   app.route("/api/emergency-fund", emergencyRoutes);
   app.route("/api/fire", fireRoutes);
+  app.route("/api/ladder", ladderRoutes);
+  app.route("/api/transfer-suggestion", transferSuggestionRoutes);
   app.route("/api/protection", protectionRoutes);
   app.route("/api/insurance", insuranceRoutes);
   app.route("/api/cards", cardToolRoutes);

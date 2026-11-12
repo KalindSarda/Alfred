@@ -22,7 +22,9 @@ import { getCommitments } from "../services/commitments";
 import { buildSalaryPlan, latestSalary } from "../services/salary";
 import { getEmergencyFund } from "../services/emergency";
 import { getFire } from "../services/fire";
-import { fireFacts } from "../services/reviewJob";
+import { fireFacts, nextStepFacts } from "../services/reviewJob";
+import { fundOffer } from "../services/fundTalk";
+import { getLadder } from "../services/ladder";
 import { getRunway } from "../services/runway";
 import { getHealth } from "../services/health";
 import { previewBalance, settleBalance } from "../services/balanceCheck";
@@ -34,7 +36,7 @@ import { newId, nowIso } from "../utils/id";
 import { getLoan, listLoans, loansOutstanding, setInstalmentTotal, simulatePrepay } from "../services/loans";
 import { addContribution, listGoals, removeContribution } from "../services/goals";
 import { parseAmountToken } from "./parser";
-import { createBalanceFix, createBalanceProposal, createEmiFix, createLoanFix, createStatementFix, createStatementProposal, createUnitsFix, deletePending as removePending, getBalanceProposal, getStatementProposal, takeAmountFix } from "./pending";
+import { createBalanceFix, createBalanceProposal, createEmiFix, createLoanFix, createStatementFix, createStatementProposal, createUnitsFix, deletePending as removePending, getBalanceProposal, getStatementProposal, getTransferProposal, takeAmountFix } from "./pending";
 import { balanceOverview, setArchived, toAccountDto } from "../services/accounts";
 import { getCashflow } from "../services/cashflow";
 import { createCategory } from "../services/categories";
@@ -368,7 +370,7 @@ async function runMenuItem(deps: BotDeps, who: Actor, id: string, today: IstDate
 async function cmdReview(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
   const view = await getHealth(deps.db, who.userId, today, "last");
   if (view.empty) return void (await deps.telegram.sendMessage(who.chatId, botVoice.reviewNothing));
-  await deps.telegram.sendMessage(who.chatId, monthlyReviewLines({ ...view, from: view.period.from, to: view.period.to, emergency: await getEmergencyFund(deps.db, who.userId, today), fire: fireFacts(await getFire(deps.db, who.userId, today)) }).join("\n"));
+  await deps.telegram.sendMessage(who.chatId, monthlyReviewLines({ ...view, from: view.period.from, to: view.period.to, emergency: await getEmergencyFund(deps.db, who.userId, today), fire: fireFacts(await getFire(deps.db, who.userId, today)), nextStep: nextStepFacts(await getLadder(deps.db, who.userId, today)) }).join("\n"));
 }
 
 /** What part-paying a loan would do: "/whatif 25000 home" (add "12%" to compare the same money invested). */
@@ -411,8 +413,14 @@ async function cmdWhatIf(deps: BotDeps, who: Actor, arg: string, today: IstDate)
 
 /** The salary day plan on request: for the latest salary credit, or where things stand when there is none. */
 async function cmdSalary(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
-  const plan = await buildSalaryPlan(deps.db, who.userId, today, await latestSalary(deps.db, who.userId, today));
+  const plan = await buildSalaryPlan(deps.db, who.userId, today, await latestSalary(deps.db, who.userId, today), { chatId: who.chatId, nowMs: deps.now() });
   await deps.telegram.sendMessage(who.chatId, plan.text, plan.buttons.length > 0 ? plan.buttons : undefined);
+}
+
+/** The next step on the ladder, and how much could safely move into the emergency fund. */
+async function cmdFund(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
+  const offer = await fundOffer(deps.db, who.userId, today, { chatId: who.chatId, nowMs: deps.now() });
+  await deps.telegram.sendMessage(who.chatId, offer.text, offer.buttons.length > 0 ? offer.buttons : undefined);
 }
 
 /** Which card to use today for an amount: the longest interest-free time first. */
@@ -955,6 +963,8 @@ async function handleMessage(deps: BotDeps, message: NonNullable<TelegramUpdateD
         return await cmdWhatIf(deps, who, arg, today);
       case "review":
         return await cmdReview(deps, who, today);
+      case "fund":
+        return await cmdFund(deps, who, today);
       case "invest":
       case "investments":
         return await cmdInvest(deps, who, today);
@@ -1166,6 +1176,27 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
         } else {
           const done = await settleBalance(deps.db, userId, proposal.accountId, proposal.typedPaise, todayIst(new Date(deps.now())));
           await reply(deps, to, done.kind === "none" ? botVoice.balanceMatches : botVoice.balanceBooked(done.kind, done.bookedPaise, done.accountName, done.balancePaise));
+        }
+      }
+    } else if (kind === "t" && id && (action === "y" || action === "n")) {
+      // A suggested move into the emergency fund: "Record" once the money has moved at the bank, or "Not now".
+      const proposal = await getTransferProposal(deps.db, userId, chatId, id, deps.now());
+      if (!proposal) {
+        await reply(deps, to, botVoice.expired);
+      } else {
+        await removePending(deps.db, id);
+        if (action === "n") {
+          await reply(deps, to, botVoice.transferLeft);
+        } else {
+          const [from, dest] = await Promise.all([getAccount(deps.db, userId, proposal.fromId), getAccount(deps.db, userId, proposal.toId)]);
+          if (!from || !dest || from.kind !== "bank" || dest.kind !== "bank" || from.archivedAt || dest.archivedAt) {
+            await reply(deps, to, botVoice.balanceGone);
+          } else {
+            const today = todayIst(new Date(deps.now()));
+            const txn = await createTransaction(deps.db, userId, { type: "transfer", amountPaise: proposal.amountPaise, txnDate: today, accountId: from.id, toAccountId: dest.id }, { source: "telegram" });
+            const fund = emergencyLine(await getEmergencyFund(deps.db, userId, today));
+            await reply(deps, to, [botVoice.transferRecorded(rupees(proposal.amountPaise), from.name, dest.name), fund].filter(Boolean).join("\n"), [[{ text: "Undo", data: `u:${txn.id}` }]]);
+          }
         }
       }
     } else if (kind === "s" && id && (action === "y" || action === "d") && argument) {

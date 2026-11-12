@@ -6,6 +6,7 @@ import { addDays, type IstDate } from "../domain/dates";
 import { formatRupees } from "../domain/money";
 import { goalAsks, perDayPaise } from "../domain/salaryPlan";
 import { getCommitments } from "./commitments";
+import { transferOffer } from "./fundTalk";
 import { listGoals } from "./goals";
 
 export interface SalaryEntry {
@@ -41,8 +42,8 @@ export async function latestSalary(db: Db, userId: string, today: IstDate): Prom
  * it and about how much a day, and the goals that want money this month with a button to set it aside. Money set aside
  * stays in the bank, as goals work everywhere else.
  */
-export async function buildSalaryPlan(db: Db, userId: string, today: IstDate, salary: SalaryEntry | null): Promise<Plan> {
-  const [view, goals] = await Promise.all([getCommitments(db, userId, today), listGoals(db, userId, today, "active")]);
+export async function buildSalaryPlan(db: Db, userId: string, today: IstDate, salary: SalaryEntry | null, chat?: { chatId: string; nowMs: number }): Promise<Plan> {
+  const [view, goals, offer] = await Promise.all([getCommitments(db, userId, today), listGoals(db, userId, today, "active"), transferOffer(db, userId, today, chat)]);
   const coming = view.items.filter((i) => !i.counted);
   const asks = goalAsks(goals.goals);
   const text = salaryPlanLines({
@@ -51,5 +52,7 @@ export async function buildSalaryPlan(db: Db, userId: string, today: IstDate, sa
     perDay: perDayPaise(view.freeToSpendPaise, today, view.until),
     goals: asks.map((a) => ({ name: a.name, paise: a.paise })),
   }).join("\n");
-  return { text, buttons: asks.map((a) => [{ text: `Set aside ${formatRupees(a.paise)} for ${a.name}`, data: `g:${a.id}:s:${a.paise}` }]) };
+  // Paying yourself first: when part of the emergency fund is missing and some money is safe to move, say so.
+  const goalButtons = asks.map((a) => [{ text: `Set aside ${formatRupees(a.paise)} for ${a.name}`, data: `g:${a.id}:s:${a.paise}` }]);
+  return offer.suggested ? { text: `${text}\n\n${offer.text}`, buttons: [...goalButtons, ...offer.buttons] } : { text, buttons: goalButtons };
 }
