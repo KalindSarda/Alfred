@@ -27,12 +27,18 @@ export function Button({
   );
 }
 
-export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+export function Field({ label, children, hint, error }: { label: string; children: ReactNode; hint?: string; /** What is wrong with this box, shown under it in place of the hint. */ error?: string }) {
   return (
     <label className="block">
       <span className="mb-1 block text-sm font-medium text-ink">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-soft">{hint}</span>}
+      {error ? (
+        <span role="alert" className="mt-1 block text-xs font-medium text-bad">
+          {error}
+        </span>
+      ) : (
+        hint && <span className="mt-1 block text-xs text-soft">{hint}</span>
+      )}
     </label>
   );
 }

@@ -3,7 +3,7 @@ import { type FormEvent, useState } from "react";
 import { type EmergencyFund, type FireView, type FundTarget, type LadderStep, type MoneyHealth, type Settings, type TransferView, api, describeError } from "../api";
 import { useToast } from "../components/toast";
 import { Amount, AmountInput, Button, Card, Empty, ErrorText, Field, Sheet, Spinner, inputClass } from "../components/ui";
-import { rupeesToPaise } from "../filters";
+import { readFireAssumptions, readFundSettings, readPercent } from "../../../src/domain/planInput";
 import { paiseToInput, rupeesCompact as rupees, shortDate } from "../format";
 import { useEmergencyFund, useFire, useLadder, useMoneyHealth, useTransferSuggestion } from "../queries";
 import { Link } from "../router";
@@ -53,7 +53,10 @@ function SplitBar({ h }: { h: MoneyHealth }) {
   );
 }
 
-/** The months to cover, an optional target of your own, a medical amount, and how fast to close a gap when no pace is known. */
+/** Keeps only digits, for a whole-number box. */
+const digits = (text: string) => text.replace(/\D/g, "").slice(0, 3);
+
+/** Months to cover (or a living-costs target of your own), a medical amount, and how fast to close a gap when no pace is known. Nothing here is required. */
 function FundSettings({ fund, onClose }: { fund: EmergencyFund; onClose: () => void }) {
   const client = useQueryClient();
   const toast = useToast();
@@ -61,7 +64,7 @@ function FundSettings({ fund, onClose }: { fund: EmergencyFund; onClose: () => v
   const [target, setTarget] = useState(fund.targetBasis === "manual" && fund.living ? paiseToInput(fund.living.targetPaise) : "");
   const [medical, setMedical] = useState(fund.targets.lifestyle.medicalPaise > 0 ? paiseToInput(fund.targets.lifestyle.medicalPaise) : "");
   const [horizon, setHorizon] = useState(String(fund.horizonMonths));
-  const [error, setError] = useState("");
+  const [errors, setErrors] = useState<Partial<Record<"months" | "target" | "medical" | "horizon", string>>>({});
   const save = useMutation({
     mutationFn: (patch: Partial<Settings>) => api.patch<Settings>("/api/settings", patch),
     onSuccess: async () => {
@@ -75,34 +78,62 @@ function FundSettings({ fund, onClose }: { fund: EmergencyFund; onClose: () => v
   });
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    const m = Number(months);
-    const h = Number(horizon);
-    if (!Number.isInteger(m) || m < 1 || m > 24) return setError("Months to cover: a whole number from 1 to 24.");
-    if (!Number.isInteger(h) || h < 1 || h > 60) return setError("Months to build it in: a whole number from 1 to 60.");
-    const typed = target.trim() ? rupeesToPaise(target) : null;
-    if (target.trim() && !typed) return setError("The target looks wrong. Use a number such as 300000, or leave it empty.");
-    const med = medical.trim() ? rupeesToPaise(medical) : null;
-    if (medical.trim() && !med) return setError("The medical amount looks wrong. Use a number such as 400000, or leave it empty.");
-    setError("");
-    save.mutate({ emergencyMonths: m, emergencyHorizonMonths: h, emergencyTargetPaise: typed, medicalTargetPaise: med });
+    const read = readFundSettings({ months, target, medical, horizon });
+    setErrors(read.errors);
+    if (read.values) save.mutate(read.values);
   };
+  const clear = (key: keyof typeof errors) => setErrors((prev) => ({ ...prev, [key]: undefined }));
   return (
     <Sheet title="Emergency fund settings" onClose={onClose}>
-      <form className="space-y-4" onSubmit={submit}>
-        <p className="text-sm text-soft">You do not need to change any of this. Alfred shows how long it takes at your own pace.</p>
-        <Field label="Months of spending to cover" hint="Six is a common rule of thumb; some people keep more when income is uneven. Used for both targets.">
-          <input className={inputClass} inputMode="numeric" value={months} onChange={(e) => setMonths(e.target.value)} />
+      <form className="space-y-4" onSubmit={submit} noValidate>
+        <p className="text-sm text-soft">Every box is optional. Leave one empty and Alfred uses its usual figure, and shows how long it takes at your own pace.</p>
+        <Field label="Months of spending to cover" hint="Empty means 6, a common rule of thumb; some people keep more when income is uneven. Used for both targets." error={errors.months}>
+          <input
+            className={inputClass}
+            inputMode="numeric"
+            placeholder="6"
+            value={months}
+            onChange={(e) => {
+              setMonths(digits(e.target.value));
+              clear("months");
+            }}
+          />
         </Field>
-        <Field label="Medical reserve on top (₹)" hint="Optional. Added to both targets, in the same pool. It helps with what insurance does not pay.">
-          <AmountInput className={inputClass} placeholder="For example 400000" value={medical} onChange={(e) => setMedical(e.target.value)} />
+        <Field label="Or a living-costs target of your own (₹)" hint="Optional. Replaces months times your spending for the lifestyle target only; the essentials target keeps using the months." error={errors.target}>
+          <AmountInput
+            className={inputClass}
+            placeholder="Leave empty to use the months"
+            value={target}
+            onChange={(e) => {
+              setTarget(e.target.value);
+              clear("target");
+            }}
+          />
         </Field>
-        <Field label="Or a living-costs target of your own (₹)" hint="Optional. Replaces months times your spending for the lifestyle target only.">
-          <AmountInput className={inputClass} placeholder="Leave empty to use the months" value={target} onChange={(e) => setTarget(e.target.value)} />
+        <Field label="Medical reserve on top (₹)" hint="Optional. Added to both targets, in the same pool. It helps with what insurance does not pay." error={errors.medical}>
+          <AmountInput
+            className={inputClass}
+            placeholder="For example 400000"
+            value={medical}
+            onChange={(e) => {
+              setMedical(e.target.value);
+              clear("medical");
+            }}
+          />
         </Field>
-        <Field label="Months to close the gap in" hint="Only used when Alfred cannot tell your pace yet.">
-          <input className={inputClass} inputMode="numeric" value={horizon} onChange={(e) => setHorizon(e.target.value)} />
+        <Field label="Months to close the gap in" hint="Empty means 12. Only used while Alfred cannot tell your pace yet." error={errors.horizon}>
+          <input
+            className={inputClass}
+            inputMode="numeric"
+            placeholder="12"
+            value={horizon}
+            onChange={(e) => {
+              setHorizon(digits(e.target.value));
+              clear("horizon");
+            }}
+          />
         </Field>
-        <ErrorText>{error || (save.isError ? describeError(save.error) : "")}</ErrorText>
+        <ErrorText>{save.isError ? describeError(save.error) : ""}</ErrorText>
         <Button type="submit" className="w-full" disabled={save.isPending}>
           Save
         </Button>
@@ -113,13 +144,13 @@ function FundSettings({ fund, onClose }: { fund: EmergencyFund; onClose: () => v
 
 const monthsText = (n: number) => `${n} ${n === 1 ? "month" : "months"}`;
 
-/** How long closing a gap takes at a typical month's surplus, and at a lean one. */
-function timeText(t: FundTarget): string | null {
+/** How long closing a gap takes: the headline, and the detail beside it. */
+function timeText(t: FundTarget): { main: string; sub: string } | null {
   if (t.gapPaise === null) return null;
-  if (t.gapPaise === 0) return "Complete";
-  if (t.monthsAtTypical === null) return "No time can be given yet";
-  const lean = t.monthsAtCautious !== null && t.monthsAtCautious !== t.monthsAtTypical ? `, ${t.monthsAtCautious} if a month is lean` : "";
-  return `About ${monthsText(t.monthsAtTypical)} at your usual pace${lean}`;
+  if (t.gapPaise === 0) return { main: "Complete", sub: "" };
+  if (t.monthsAtTypical === null) return { main: "No time can be given yet", sub: "nothing is left over each month" };
+  const lean = t.monthsAtCautious !== null && t.monthsAtCautious !== t.monthsAtTypical ? `, ${monthsText(t.monthsAtCautious)} if a month is lean` : "";
+  return { main: `About ${monthsText(t.monthsAtTypical)}`, sub: `at your usual pace${lean}` };
 }
 
 /** One way of judging the fund, with its total, how far along it is, and how long the rest takes. */
@@ -132,8 +163,9 @@ function TargetBar({ title, hint, t }: { title: string; hint: string; t: FundTar
       </div>
     );
   }
+  const time = timeText(t);
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       <div className="flex items-baseline justify-between gap-3">
         <p className="text-sm font-medium">{title}</p>
         <p className="tabular-nums">
@@ -143,11 +175,16 @@ function TargetBar({ title, hint, t }: { title: string; hint: string; t: FundTar
       <div className="h-3 overflow-hidden rounded-full bg-sunk" role="img" aria-label={`${title}: ${t.pct}% done`}>
         <span className="block h-full bg-good" style={{ width: `${t.pct}%` }} />
       </div>
+      {time && (
+        <p className="text-base leading-snug">
+          <span className="font-semibold">{time.main}</span>
+          {time.sub && <span className="text-soft"> {time.sub}</span>}
+        </p>
+      )}
       <p className="text-xs text-soft">
         {hint}
         {t.gapPaise ? ` · ${rupees(t.gapPaise)} to go` : ""}
       </p>
-      <p className="text-xs">{timeText(t)}</p>
     </div>
   );
 }
@@ -199,7 +236,7 @@ function EmergencyCard() {
             <p className="font-display text-4xl tabular-nums">
               <Amount paise={f.fundedPaise} />
             </p>
-            <p className="text-sm text-soft">set apart as your emergency fund{early}</p>
+            <p className="text-sm text-soft">set apart as your emergency fund.{early}</p>
           </div>
           <TargetBar title="Live as you do now" hint={split(life, "spending")} t={life} />
           <TargetBar title="Essentials only" hint={split(ess, "essentials")} t={ess} />
@@ -215,7 +252,7 @@ function EmergencyCard() {
               </p>
             ) : (
               <p className="text-sm text-soft">
-                Your usual surplus is {rupees(f.pace.typicalPaise)} a month after spending, and after {rupees(f.pace.investingPaise)} that already goes into investments and loan principal.
+                Your usual surplus is {rupees(f.pace.typicalPaise)} a month after spending{f.pace.investingPaise > 0 ? `, and after ${rupees(f.pace.investingPaise)} that already goes into investments and loan principal` : ""}.
                 {f.pace.early ? (f.pace.cycles === 0 ? " An early estimate, from your recent weeks." : ` An early estimate, from ${monthsText(f.pace.cycles)}.`) : ""}
               </p>
             )
@@ -297,13 +334,13 @@ function LadderSettings({ costlyDebtBp, onClose }: { costlyDebtBp: number; onClo
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
-          const bp = /^\d+(\.\d{1,2})?$/.test(rate.trim()) ? Math.round(Number.parseFloat(rate) * 100) : null;
-          if (bp === null || bp < 100 || bp > 5000) return setError("Use a yearly rate between 1 and 50, such as 12.");
+          const read = readPercent(rate, { minBp: 100, maxBp: 5000 }, 1200);
+          if (!read.ok) return setError(read.error);
           setError("");
-          save.mutate(bp);
+          save.mutate(read.value);
         }}
       >
-        <Field label="A bank loan costs too much from (% a year)" hint="Loans at or above this count as costly debt. 12 is a common line; the part-payment what-if shows what paying one down would save.">
+        <Field label="A bank loan costs too much from (% a year)" hint="Empty means 12. Loans at or above this count as costly debt; the part-payment what-if shows what paying one down would save.">
           <input className={inputClass} inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} />
         </Field>
         <ErrorText>{error || (save.isError ? describeError(save.error) : "")}</ErrorText>
@@ -380,7 +417,7 @@ const yearsText = (months: number) => {
   return [y ? `${y} ${y === 1 ? "year" : "years"}` : "", m ? `${m} ${m === 1 ? "month" : "months"}` : ""].filter(Boolean).join(" ") || "no time";
 };
 
-/** Everything the projection runs on, with the recent average standing in for spend and saving when left empty. */
+/** Everything the projection runs on. Nothing is required: empty ages are not set, an empty spend or saving uses your recent average, and an empty rate takes its usual value. */
 function FireAssumptions({ fire, onClose }: { fire: FireView; onClose: () => void }) {
   const client = useQueryClient();
   const toast = useToast();
@@ -393,65 +430,82 @@ function FireAssumptions({ fire, onClose }: { fire: FireView; onClose: () => voi
   const [inflation, setInflation] = useState(pct(a.inflationBp));
   const [ret, setRet] = useState(pct(a.returnBp));
   const [stepup, setStepup] = useState(pct(a.stepupBp));
-  const [error, setError] = useState("");
+  const [errors, setErrors] = useState<Partial<Record<"age" | "target" | "spend" | "saving" | "ret" | "inflation" | "withdrawal" | "stepup", string>>>({});
   const save = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api.put<FireView>("/api/fire", body),
+    mutationFn: (body: object) => api.put<FireView>("/api/fire", body),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["fire"] });
+      await client.invalidateQueries({ queryKey: ["ladder"] });
       toast.show("Saved");
       onClose();
     },
   });
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    const num = (t: string) => (t.trim() === "" ? null : /^\d+$/.test(t.trim()) ? Number(t) : Number.NaN);
-    const ageNow = num(age);
-    const targetAge = num(target);
-    if (Number.isNaN(ageNow) || Number.isNaN(targetAge)) return setError("Ages are whole numbers, such as 32.");
-    const spendPaise = spend.trim() ? rupeesToPaise(spend) : null;
-    const savingPaise = saving.trim() ? rupeesToPaise(saving) : saving.trim() === "0" ? 0 : null;
-    if (spend.trim() && !spendPaise) return setError("The monthly spend looks wrong. Use a number such as 60000, or leave it empty to use your recent average.");
-    if (saving.trim() && savingPaise === null) return setError("The monthly saving looks wrong. Use a number such as 40000, or leave it empty to use your recent average.");
-    const w = inputPct(withdrawal);
-    const i = inputPct(inflation);
-    const r = inputPct(ret);
-    const s = inputPct(stepup);
-    if (w === null || i === null || r === null || s === null) return setError("Rates are percentages such as 3.5 or 10.");
-    setError("");
-    save.mutate({ ageNow, targetAge, monthlySpendPaise: spendPaise, monthlySavingPaise: savingPaise, withdrawalRateBp: w, inflationBp: i, returnBp: r, stepupBp: s });
+    const read = readFireAssumptions({ age, target, spend, saving, ret, inflation, withdrawal, stepup });
+    setErrors(read.errors);
+    if (read.values) save.mutate(read.values);
   };
+  const clear = (key: keyof typeof errors) => setErrors((prev) => ({ ...prev, [key]: undefined }));
+  const text = (value: string, set: (v: string) => void, key: keyof typeof errors, mode: "numeric" | "decimal", placeholder?: string) => (
+    <input
+      className={inputClass}
+      inputMode={mode}
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => {
+        set(mode === "numeric" ? digits(e.target.value) : e.target.value);
+        clear(key);
+      }}
+    />
+  );
   return (
     <Sheet title="Independence assumptions" onClose={onClose}>
-      <form className="space-y-4" onSubmit={submit}>
+      <form className="space-y-4" onSubmit={submit} noValidate>
+        <p className="text-sm text-soft">Every box is optional. Leave one empty and Alfred uses your recent average or the usual figure.</p>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Your age now">
-            <input className={inputClass} inputMode="numeric" value={age} onChange={(e) => setAge(e.target.value)} />
+          <Field label="Your age now" error={errors.age}>
+            {text(age, setAge, "age", "numeric")}
           </Field>
-          <Field label="Free by age (optional)">
-            <input className={inputClass} inputMode="numeric" value={target} onChange={(e) => setTarget(e.target.value)} />
+          <Field label="Free by age" hint="Optional." error={errors.target}>
+            {text(target, setTarget, "target", "numeric")}
           </Field>
         </div>
-        <Field label="Spending a month once work stops (₹)" hint={`In today's money. Empty uses your recent average${a.spendIsDefault && a.monthlySpendPaise !== null ? `, ${rupees(a.monthlySpendPaise)}` : ""}.`}>
-          <AmountInput className={inputClass} value={spend} onChange={(e) => setSpend(e.target.value)} />
+        <Field label="Spending a month once work stops (₹)" hint={`In today's money. Empty uses your recent average${a.spendIsDefault && a.monthlySpendPaise !== null ? `, ${rupees(a.monthlySpendPaise)}` : ""}.`} error={errors.spend}>
+          <AmountInput
+            className={inputClass}
+            value={spend}
+            onChange={(e) => {
+              setSpend(e.target.value);
+              clear("spend");
+            }}
+          />
         </Field>
-        <Field label="Saving a month from now (₹)" hint={`Empty uses your recent average${a.savingIsDefault && a.monthlySavingPaise !== null ? `, ${rupees(a.monthlySavingPaise)}` : ""}.`}>
-          <AmountInput className={inputClass} value={saving} onChange={(e) => setSaving(e.target.value)} />
+        <Field label="Saving a month from now (₹)" hint={`Empty uses your recent average${a.savingIsDefault && a.monthlySavingPaise !== null ? `, ${rupees(a.monthlySavingPaise)}` : ""}. Type 0 if you are saving nothing.`} error={errors.saving}>
+          <AmountInput
+            className={inputClass}
+            value={saving}
+            onChange={(e) => {
+              setSaving(e.target.value);
+              clear("saving");
+            }}
+          />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Yearly return (%)" hint="Before tax. Not a promise.">
-            <input className={inputClass} inputMode="decimal" value={ret} onChange={(e) => setRet(e.target.value)} />
+          <Field label="Yearly return (%)" hint="Empty means 10. Before tax; not a promise." error={errors.ret}>
+            {text(ret, setRet, "ret", "decimal", "10")}
           </Field>
-          <Field label="Yearly inflation (%)">
-            <input className={inputClass} inputMode="decimal" value={inflation} onChange={(e) => setInflation(e.target.value)} />
+          <Field label="Yearly inflation (%)" hint="Empty means 6." error={errors.inflation}>
+            {text(inflation, setInflation, "inflation", "decimal", "6")}
           </Field>
-          <Field label="Withdrawal rate (%)" hint="3.5 to 4 is a common rule of thumb.">
-            <input className={inputClass} inputMode="decimal" value={withdrawal} onChange={(e) => setWithdrawal(e.target.value)} />
+          <Field label="Withdrawal rate (%)" hint="Empty means 3.5. 3.5 to 4 is a common rule of thumb." error={errors.withdrawal}>
+            {text(withdrawal, setWithdrawal, "withdrawal", "decimal", "3.5")}
           </Field>
-          <Field label="Saving rises each year (%)">
-            <input className={inputClass} inputMode="decimal" value={stepup} onChange={(e) => setStepup(e.target.value)} />
+          <Field label="Saving rises each year (%)" hint="Empty means 0." error={errors.stepup}>
+            {text(stepup, setStepup, "stepup", "decimal", "0")}
           </Field>
         </div>
-        <ErrorText>{error || (save.isError ? describeError(save.error) : "")}</ErrorText>
+        <ErrorText>{save.isError ? describeError(save.error) : ""}</ErrorText>
         <Button type="submit" className="w-full" disabled={save.isPending}>
           Save
         </Button>
