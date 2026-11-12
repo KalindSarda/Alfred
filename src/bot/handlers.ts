@@ -22,7 +22,7 @@ import { getCommitments } from "../services/commitments";
 import { buildSalaryPlan, latestSalary } from "../services/salary";
 import { getEmergencyFund } from "../services/emergency";
 import { getFire } from "../services/fire";
-import { fireFacts, nextStepFacts } from "../services/reviewJob";
+import { fireFacts, focusFacts } from "../services/reviewJob";
 import { fundOffer } from "../services/fundTalk";
 import { getLadder } from "../services/ladder";
 import { getRunway } from "../services/runway";
@@ -370,7 +370,7 @@ async function runMenuItem(deps: BotDeps, who: Actor, id: string, today: IstDate
 async function cmdReview(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
   const view = await getHealth(deps.db, who.userId, today, "last");
   if (view.empty) return void (await deps.telegram.sendMessage(who.chatId, botVoice.reviewNothing));
-  await deps.telegram.sendMessage(who.chatId, monthlyReviewLines({ ...view, from: view.period.from, to: view.period.to, emergency: await getEmergencyFund(deps.db, who.userId, today), fire: fireFacts(await getFire(deps.db, who.userId, today)), nextStep: nextStepFacts(await getLadder(deps.db, who.userId, today)) }).join("\n"));
+  await deps.telegram.sendMessage(who.chatId, monthlyReviewLines({ ...view, from: view.period.from, to: view.period.to, emergency: await getEmergencyFund(deps.db, who.userId, today), fire: fireFacts(await getFire(deps.db, who.userId, today)), focus: focusFacts(await getLadder(deps.db, who.userId, today)) }).join("\n"));
 }
 
 /** What part-paying a loan would do: "/whatif 25000 home" (add "12%" to compare the same money invested). */

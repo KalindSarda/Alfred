@@ -336,7 +336,6 @@ export interface Settings {
   emergencyHorizonMonths: number;
   medicalTargetPaise: number | null;
   costlyDebtBp: number;
-  ladderSkipped: string[];
 }
 
 /** A card ranked for a purchase today: the longest time before the bill first. */
@@ -536,20 +535,32 @@ export interface HoldingsOverview {
   holdings: Holding[];
 }
 
-/** The next-step ladder: a common order for firming up money, and where the person stands on each rung. */
-export interface LadderStep {
-  key: "starter" | "debt" | "protection" | "emergency" | "medical" | "fire";
+/** One foundation: its ideal, how far along the person is, and where they stand. */
+export interface FoundationRow {
+  key: "starter" | "debt" | "cover" | "lifestyle" | "essentials" | "medical" | "fire";
   title: string;
-  status: "done" | "next" | "later" | "skipped";
-  amountPaise: number | null;
+  ideal: string;
+  pct: number | null;
+  status: "ok" | "building" | "attention";
   detail: string;
+  amountPaise: number | null;
+}
+
+/** What runs alongside in a month. */
+export interface Flows {
+  investingPaise: number;
+  premiumsPaise: number;
+  leftOverPaise: number | null;
+  leftOverLeanPaise: number | null;
+  early: boolean;
 }
 
 export interface LadderView {
-  steps: LadderStep[];
-  next: LadderStep | null;
+  rows: FoundationRow[];
+  /** The one row to look at first, by rule; null when nothing needs attention. */
+  attention: FoundationRow | null;
   costlyDebtBp: number;
-  skipped: string[];
+  flows: Flows;
 }
 
 /** How much could safely move into the emergency fund today, and from where to where. */

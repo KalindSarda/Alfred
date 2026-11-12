@@ -19,9 +19,9 @@ export function fireFacts(v: FireView) {
   return { numberPaise: v.numberPaise, progressPct: v.progressPct, corpusPaise: v.corpus.totalPaise, projection: v.projection };
 }
 
-/** The next step on the ladder, for the review message. */
-export function nextStepFacts(l: LadderView): { title: string; detail: string } | null {
-  return l.next ? { title: l.next.title, detail: l.next.detail } : null;
+/** The foundation that needs attention, for the review message. */
+export function focusFacts(l: LadderView): { title: string; detail: string } | null {
+  return l.attention ? { title: l.attention.title, detail: l.attention.detail } : null;
 }
 
 export interface ReviewJobDeps {
@@ -51,7 +51,7 @@ export async function runMonthlyReview(deps: ReviewJobDeps): Promise<{ sent: num
       const claimed = await db.insert(checkinLog).values({ id: newId(), userId, kind: "review", day: today, createdAt: nowIso() }).onConflictDoNothing().returning({ id: checkinLog.id });
       if (claimed.length === 0) continue;
       try {
-        await telegram.sendMessage(chat, monthlyReviewLines({ ...view, from: view.period.from, to: view.period.to, emergency: await getEmergencyFund(db, userId, today), fire: fireFacts(await getFire(db, userId, today)), nextStep: nextStepFacts(await getLadder(db, userId, today)) }).join("\n"));
+        await telegram.sendMessage(chat, monthlyReviewLines({ ...view, from: view.period.from, to: view.period.to, emergency: await getEmergencyFund(db, userId, today), fire: fireFacts(await getFire(db, userId, today)), focus: focusFacts(await getLadder(db, userId, today)) }).join("\n"));
         sent += 1;
       } catch (error) {
         logger.error("monthly_review_send_failed", { error: error instanceof Error ? error.message : "unknown" });

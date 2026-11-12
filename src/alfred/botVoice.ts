@@ -381,23 +381,32 @@ export function renewalReminder(p: { insurer: string; kind: "health" | "term" | 
   return `Your ${what} policy with ${p.insurer} is due ${when}.${premium} Paying on time keeps the cover from lapsing.`;
 }
 
-export interface LadderStepText {
+export interface FoundationText {
   title: string;
-  status: "done" | "next" | "later" | "skipped";
-  amountPaise: number | null;
+  pct: number | null;
+  status: "ok" | "building" | "attention";
   detail: string;
 }
 
-/** The next-step ladder: each rung with where it stands, and why the next one is next. */
-export function ladderLines(steps: readonly LadderStepText[]): string[] {
-  const lines = ["Where you stand, in a common order (a rule of thumb, not advice):"];
-  steps.forEach((s, i) => {
-    const amount = s.status === "next" || s.status === "later" ? (s.amountPaise ? ` (${rupees(s.amountPaise)} to go)` : "") : "";
-    lines.push(`${i + 1}. ${s.title}: ${s.status}${amount}`);
-  });
-  const next = steps.find((s) => s.status === "next");
-  if (next) lines.push("", `Next: ${next.title}. ${next.detail}`);
-  else lines.push("", "Every step is done or skipped.");
+export interface FlowsText {
+  investingPaise: number;
+  premiumsPaise: number;
+  leftOverPaise: number | null;
+}
+
+/** The foundations: each with how far along it is, the one that needs attention and why, and what runs alongside. */
+export function foundationLines(rows: readonly FoundationText[], flows?: FlowsText): string[] {
+  const lines = ["Where you stand on the foundations (common ideals, not advice):"];
+  for (const r of rows) {
+    const label = r.pct !== null ? `${r.pct}%` : r.status === "ok" ? "in place" : "to look at";
+    lines.push(`${r.title}: ${label}${r.status === "attention" ? " (needs attention)" : ""}`);
+  }
+  const focus = rows.find((r) => r.status === "attention");
+  lines.push("", focus ? `Focus: ${focus.title}. ${focus.detail}` : "Nothing needs attention right now.");
+  if (flows) {
+    const parts = [flows.investingPaise > 0 ? `${rupees(flows.investingPaise)} going into investments` : "", flows.premiumsPaise > 0 ? `${rupees(flows.premiumsPaise)} on insurance premiums` : "", flows.leftOverPaise !== null && flows.leftOverPaise > 0 ? `about ${rupees(flows.leftOverPaise)} left over to build the emergency fund` : ""].filter(Boolean);
+    if (parts.length > 0) lines.push(`Running alongside, a month: ${parts.join("; ")}.`);
+  }
   return lines;
 }
 
@@ -528,7 +537,7 @@ export interface ReviewText {
   netWorth: { endPaise: number; changePaise: number } | null;
   emergency?: EmergencyText;
   fire?: FireText;
-  nextStep?: { title: string; detail: string } | null;
+  focus?: { title: string; detail: string } | null;
 }
 
 /** The monthly review: what came in, what went out, what was saved, and a few ratios with their usual reference lines. */
@@ -547,7 +556,7 @@ export function monthlyReviewLines(v: ReviewText): string[] {
   if (v.runway.months !== null && v.runway.burnPaise !== null) lines.push(`Your bank money would last about ${v.runway.months} months at ${rupees(v.runway.burnPaise)} a month of essential spending${v.runway.solid ? "" : ` (an early estimate, from ${v.runway.basedOnDays} days of entries)`}.`);
   const fund = v.emergency ? emergencyLine(v.emergency) : null;
   if (fund) lines.push(fund);
-  if (v.nextStep) lines.push(`Next step: ${v.nextStep.title}. ${v.nextStep.detail}`);
+  if (v.focus) lines.push(`Focus: ${v.focus.title}. ${v.focus.detail}`);
   const independence = v.fire ? fireLine(v.fire) : null;
   if (independence) lines.push(independence);
   if (v.netWorth) lines.push(`Net worth ${rupees(v.netWorth.endPaise)}, ${v.netWorth.changePaise >= 0 ? "up" : "down"} ${rupees(Math.abs(v.netWorth.changePaise))} over the month.`);

@@ -1,67 +1,108 @@
 import { describe, expect, it } from "vitest";
-import { buildLadder, type LadderFacts } from "../../src/domain/ladder";
+import { buildFoundations, type FoundationFacts, monthlyEquivalent } from "../../src/domain/ladder";
 import { suggestTransfer } from "../../src/domain/transfer";
 
-const settled: LadderFacts = {
+const settled: FoundationFacts = {
   essentialsBurnPaise: 40_000_00,
   liquidPaise: 5_00_000_00,
   costlyLoans: [],
   costlyDebtBp: 1200,
-  protectionGaps: [],
-  living: { gapPaise: 0 },
-  medical: { gapPaise: 0 },
-  nothingFlagged: false,
+  cover: { needed: 2, inPlace: 2, missing: [], urgent: false },
+  fund: {
+    nothingFlagged: false,
+    fundedPaise: 10_00_000_00,
+    lifestyle: { pct: 100, gapPaise: 0, monthsAtTypical: 0 },
+    essentials: { pct: 100, gapPaise: 0, monthsAtTypical: 0 },
+    medical: { fundedPaise: 4_00_000_00, targetPaise: 4_00_000_00 },
+  },
   firePct: 20,
-  skipped: [],
 };
-const statuses = (f: LadderFacts) => Object.fromEntries(buildLadder(f).steps.map((s) => [s.key, s.status]));
+const row = (f: FoundationFacts, key: string) => buildFoundations(f).rows.find((r) => r.key === key)!;
+const statuses = (f: FoundationFacts) => Object.fromEntries(buildFoundations(f).rows.map((r) => [r.key, r.status]));
 
-describe("buildLadder", () => {
-  it("puts the first step that is not done as the next one, and the rest later", () => {
-    const l = buildLadder({ ...settled, liquidPaise: 10_000_00, protectionGaps: ["No personal health cover recorded"], living: { gapPaise: 2_00_000_00 }, medical: { gapPaise: 4_00_000_00 } });
-    expect(statuses({ ...settled, liquidPaise: 10_000_00, protectionGaps: ["x"], living: { gapPaise: 1 }, medical: { gapPaise: 1 } })).toEqual({ starter: "next", debt: "done", protection: "later", emergency: "later", medical: "later", fire: "later" });
-    expect(l.next).toMatchObject({ key: "starter", amountPaise: 30_000_00 });
+describe("buildFoundations", () => {
+  it("shows every foundation with a percent, in a fixed order", () => {
+    const g = buildFoundations(settled);
+    expect(g.rows.map((r) => r.key)).toEqual(["starter", "debt", "cover", "lifestyle", "essentials", "medical", "fire"]);
+    expect(g.rows.map((r) => r.pct)).toEqual([100, 100, 100, 100, 100, 100, 20]);
+    expect(g.attention).toBeNull();
+    expect(statuses(settled)).toMatchObject({ starter: "ok", debt: "ok", cover: "ok", lifestyle: "ok", fire: "building" });
   });
 
-  it("puts protection ahead of the emergency fund when there is no cover", () => {
-    const l = buildLadder({ ...settled, protectionGaps: ["No personal health cover recorded", "No term life cover recorded"], living: { gapPaise: 2_00_000_00 } });
-    expect(l.next).toMatchObject({ key: "protection", amountPaise: null });
-    expect(l.next?.detail).toContain("No personal health cover recorded; No term life cover recorded");
-    expect(statuses({ ...settled, protectionGaps: ["x"], living: { gapPaise: 1 } })).toMatchObject({ starter: "done", debt: "done", protection: "next", emergency: "later" });
+  it("measures the starter buffer as a share of one month of essentials", () => {
+    const r = row({ ...settled, liquidPaise: 10_000_00 }, "starter");
+    // Under half is the one tagged for attention; above it is just building.
+    expect(r).toMatchObject({ pct: 25, amountPaise: 30_000_00, status: "attention" });
+    expect(row({ ...settled, liquidPaise: 24_000_00 }, "starter")).toMatchObject({ pct: 60, status: "building" });
+    expect(row({ ...settled, essentialsBurnPaise: null }, "starter")).toMatchObject({ pct: null, status: "building" });
   });
 
-  it("makes costly loans a step with the worst one named", () => {
-    const l = buildLadder({ ...settled, costlyLoans: [{ name: "Personal loan", ratePct: 14.5, outstandingPaise: 3_00_000_00 }, { name: "Car loan", ratePct: 12, outstandingPaise: 5_00_000_00 }] });
-    expect(l.next).toMatchObject({ key: "debt", amountPaise: 8_00_000_00 });
-    expect(l.next?.detail).toContain("Personal loan costs 14.5% a year");
+  it("counts the covers in place against the covers needed", () => {
+    const half = row({ ...settled, cover: { needed: 2, inPlace: 1, missing: ["No term life cover recorded"], urgent: false } }, "cover");
+    expect(half).toMatchObject({ pct: 50, status: "building", ideal: "Personal health cover and term life cover" });
+    expect(half.detail).toContain("No term life cover recorded");
+    expect(row({ ...settled, cover: { needed: 1, inPlace: 0, missing: ["x"], urgent: true } }, "cover").ideal).toBe("Personal health cover");
   });
 
-  it("fills the emergency layers in order, and treats no medical amount as nothing to do", () => {
-    expect(statuses({ ...settled, living: { gapPaise: 1_00_000_00 }, medical: { gapPaise: 4_00_000_00 } })).toMatchObject({ emergency: "next", medical: "later" });
-    expect(statuses({ ...settled, living: { gapPaise: 0 }, medical: { gapPaise: 4_00_000_00 } })).toMatchObject({ emergency: "done", medical: "next" });
-    expect(statuses({ ...settled, medical: null })).toMatchObject({ medical: "done" });
+  it("names the costliest loan, with no percent", () => {
+    const r = row({ ...settled, costlyLoans: [{ name: "Personal loan", ratePct: 14.5, outstandingPaise: 3_00_000_00 }, { name: "Car loan", ratePct: 12, outstandingPaise: 5_00_000_00 }] }, "debt");
+    expect(r).toMatchObject({ pct: null, amountPaise: 8_00_000_00 });
+    expect(r.detail).toContain("Personal loan costs 14.5% a year");
   });
 
-  it("asks for the fund to be marked before calling it done", () => {
-    const l = buildLadder({ ...settled, nothingFlagged: true, living: { gapPaise: 0 } });
-    expect(l.next?.key).toBe("emergency");
-    expect(l.next?.detail).toContain("Nothing is marked");
+  it("tags one row for attention, by rule: a high cover gap first", () => {
+    const f: FoundationFacts = { ...settled, liquidPaise: 5_000_00, cover: { needed: 2, inPlace: 0, missing: ["a", "b"], urgent: true }, costlyLoans: [{ name: "L", ratePct: 14, outstandingPaise: 1_00 }], fund: { ...settled.fund, lifestyle: { pct: 10, gapPaise: 1, monthsAtTypical: 9 }, essentials: { pct: 20, gapPaise: 1, monthsAtTypical: 5 } } };
+    expect(buildFoundations(f).attention?.key).toBe("cover");
+    expect(statuses(f)).toMatchObject({ cover: "attention", debt: "building", starter: "building", lifestyle: "building" });
   });
 
-  it("passes over a skipped step, and says so", () => {
-    const l = buildLadder({ ...settled, protectionGaps: ["x"], skipped: ["protection"], living: { gapPaise: 1_00_000_00 } });
-    expect(statuses({ ...settled, protectionGaps: ["x"], skipped: ["protection"], living: { gapPaise: 1 } })).toMatchObject({ protection: "skipped", emergency: "next" });
-    expect(l.next?.key).toBe("emergency");
+  it("then costly debt, then a starter buffer under half, then the emergency fund", () => {
+    const debt: FoundationFacts = { ...settled, costlyLoans: [{ name: "L", ratePct: 14, outstandingPaise: 1_00 }], cover: { needed: 2, inPlace: 1, missing: ["x"], urgent: false } };
+    expect(buildFoundations(debt).attention?.key).toBe("debt");
+    const thin: FoundationFacts = { ...settled, liquidPaise: 10_000_00 };
+    expect(buildFoundations(thin).attention?.key).toBe("starter");
+    const fund: FoundationFacts = { ...settled, liquidPaise: 30_000_00, fund: { ...settled.fund, lifestyle: { pct: 40, gapPaise: 1, monthsAtTypical: 9 }, essentials: { pct: 60, gapPaise: 1, monthsAtTypical: 5 } } };
+    expect(buildFoundations(fund).attention?.key).toBe("lifestyle");
   });
 
-  it("ends at investing for independence, and has no next step once that is reached", () => {
-    expect(buildLadder(settled).next).toMatchObject({ key: "fire" });
-    expect(buildLadder({ ...settled, firePct: 100 }).next).toBeNull();
+  it("does not tag a cover gap that is not urgent ahead of the others", () => {
+    const f: FoundationFacts = { ...settled, cover: { needed: 2, inPlace: 1, missing: ["x"], urgent: false }, fund: { ...settled.fund, lifestyle: { pct: 40, gapPaise: 1, monthsAtTypical: 9 }, essentials: { pct: 60, gapPaise: 1, monthsAtTypical: 5 } } };
+    expect(buildFoundations(f).attention?.key).toBe("lifestyle");
   });
 
-  it("explains the starter buffer when history is too short", () => {
-    const l = buildLadder({ ...settled, essentialsBurnPaise: null });
-    expect(l.next).toMatchObject({ key: "starter", amountPaise: null });
+  it("asks for the fund to be marked before calling it done, and tags it", () => {
+    const f: FoundationFacts = { ...settled, fund: { ...settled.fund, nothingFlagged: true, fundedPaise: 0, lifestyle: { pct: 0, gapPaise: 9, monthsAtTypical: null }, essentials: { pct: 0, gapPaise: 9, monthsAtTypical: null } } };
+    const g = buildFoundations(f);
+    expect(g.attention?.key).toBe("lifestyle");
+    expect(g.attention?.detail).toContain("Nothing is marked");
+    expect(buildFoundations({ ...settled, fund: { ...settled.fund, nothingFlagged: true } }).rows.find((r) => r.key === "lifestyle")?.status).toBe("attention");
+  });
+
+  it("gives the months to go at the usual pace, or says none can be given", () => {
+    const f: FoundationFacts = { ...settled, fund: { ...settled.fund, lifestyle: { pct: 40, gapPaise: 1, monthsAtTypical: 9 }, essentials: { pct: 60, gapPaise: 1, monthsAtTypical: null } } };
+    expect(row(f, "lifestyle").detail).toBe("About 9 months to go at your usual pace.");
+    expect(row(f, "essentials").detail).toContain("no time can be given");
+  });
+
+  it("treats the medical layer as a row that is never tagged on its own, and as done when none is set", () => {
+    const empty: FoundationFacts = { ...settled, fund: { ...settled.fund, medical: { fundedPaise: 0, targetPaise: 4_00_000_00 } } };
+    expect(row(empty, "medical")).toMatchObject({ pct: 0, status: "building", amountPaise: 4_00_000_00 });
+    expect(buildFoundations(empty).attention).toBeNull();
+    expect(row({ ...settled, fund: { ...settled.fund, medical: null } }, "medical")).toMatchObject({ pct: null, status: "ok" });
+  });
+
+  it("never tags independence, however far it is", () => {
+    expect(buildFoundations({ ...settled, firePct: 1 }).attention).toBeNull();
+    expect(row({ ...settled, firePct: null }, "fire")).toMatchObject({ pct: null, status: "building" });
+    expect(row({ ...settled, firePct: 100 }, "fire").status).toBe("ok");
+  });
+});
+
+describe("monthlyEquivalent", () => {
+  it("turns a repeating amount into a month's worth", () => {
+    expect(monthlyEquivalent(10_000_00, "monthly")).toBe(10_000_00);
+    expect(monthlyEquivalent(1_200_00, "yearly")).toBe(100_00);
+    expect(monthlyEquivalent(1_000_00, "weekly")).toBe(Math.round((1_000_00 * 52) / 12));
   });
 });
 

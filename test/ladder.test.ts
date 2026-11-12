@@ -12,69 +12,92 @@ type Json = Record<string, any>;
 const BURN = 3_461_538;
 const ladder = async (w: W) => (await w.api("GET", "/api/ladder")).json as Json;
 const suggestion = async (w: W) => (await w.api("GET", "/api/transfer-suggestion")).json as Json;
-const stepOf = (l: Json, key: string) => l.steps.find((s: Json) => s.key === key);
+const rowOf = (l: Json, key: string) => l.rows.find((r: Json) => r.key === key);
 const rent = (w: W) => w.api("POST", "/api/transactions", { type: "expense", amountPaise: 30_000_00, txnDate: "2026-10-02", accountId: w.sbi.id, categoryId: w.category("Rent") });
 const reserve = async (w: W, countsTowardSafeToSpend = false) => (await w.api("POST", "/api/accounts", { kind: "bank", name: "Reserve", openingBalancePaise: 0, countsTowardSafeToSpend, isEmergency: true })).json as Json;
 const loan = (w: W, ratePct: number) => w.api("POST", "/api/loans", { name: "Personal loan", kind: "personal", accountId: w.hdfc.id, principalPaise: 3_00_000_00, ratePct, months: 24, dueDay: 5, asOf: "2026-09-01" });
 const mine = (w: W) => w.tg.messages.filter((m) => m.chatId === String(w.chat));
 
-describe("the next-step ladder", () => {
-  it("starts with the starter buffer until there is history, then moves to protection when there is no cover", async () => {
+describe("the foundations", () => {
+  it("shows every foundation with its ideal, in a fixed order, and says when history is too short", async () => {
     const w = await world();
     const early = await ladder(w);
-    expect(early.next).toMatchObject({ key: "starter", amountPaise: null });
-    expect(early.steps.map((s: Json) => s.key)).toEqual(["starter", "debt", "protection", "emergency", "medical", "fire"]);
-
-    await rent(w);
-    const l = await ladder(w);
-    expect(stepOf(l, "starter").status).toBe("done");
-    expect(stepOf(l, "debt").status).toBe("done");
-    expect(l.next.key).toBe("protection");
-    expect(l.next.detail).toContain("No personal health cover recorded");
+    expect(early.rows.map((r: Json) => r.key)).toEqual(["starter", "debt", "cover", "lifestyle", "essentials", "medical", "fire"]);
+    expect(rowOf(early, "starter")).toMatchObject({ pct: null, status: "building" });
+    expect(rowOf(early, "cover").ideal).toBe("Personal health cover");
+    expect(early.flows).toMatchObject({ investingPaise: 0, premiumsPaise: 0, leftOverPaise: null });
   });
 
-  it("puts a costly loan first, and the rate that counts as costly is the person's to set", async () => {
+  it("measures the starter buffer, and tags the missing cover first when there is none", async () => {
     const w = await world();
     await rent(w);
-    expect((await loan(w, 14)).status).toBe(201);
     const l = await ladder(w);
-    expect(l.next).toMatchObject({ key: "debt" });
-    expect(l.next.detail).toContain("Personal loan costs 14% a year");
-    expect(l.next.amountPaise).toBeGreaterThan(0);
-
-    await w.api("PATCH", "/api/settings", { costlyDebtBp: 1500 });
-    expect(stepOf(await ladder(w), "debt").status).toBe("done");
-    expect((await w.api("PATCH", "/api/settings", { costlyDebtBp: 50 })).status).toBe(422);
+    expect(rowOf(l, "starter")).toMatchObject({ pct: 100, status: "ok" });
+    expect(rowOf(l, "debt")).toMatchObject({ pct: 100, status: "ok" });
+    expect(rowOf(l, "cover")).toMatchObject({ pct: 0, status: "attention" });
+    expect(l.attention.key).toBe("cover");
+    expect(l.attention.detail).toContain("No personal health cover recorded");
+    // Only one row is tagged.
+    expect(l.rows.filter((r: Json) => r.status === "attention")).toHaveLength(1);
   });
 
-  it("moves on to the emergency fund once protection is in place, then the medical layer", async () => {
+  it("counts the covers in place against those needed, and tags the emergency fund once cover is not urgent", async () => {
+    const w = await world();
+    await rent(w);
+    await w.api("PUT", "/api/protection/profile", { dependants: "yes", employerHealth: "yes" });
+    await w.api("POST", "/api/insurance", { kind: "health", insurer: "Acme", coverPaise: 10_00_000_00, premiumPaise: 20_000_00, renewalDate: "2027-03-01" });
+    const half = await ladder(w);
+    expect(rowOf(half, "cover")).toMatchObject({ pct: 50, ideal: "Personal health cover and term life cover" });
+    // Term cover is still missing and urgent for someone with dependants, so it stays the focus.
+    expect(half.attention.key).toBe("cover");
+
+    await w.api("POST", "/api/insurance", { kind: "term", insurer: "Beta", coverPaise: 2_00_00_000_00, premiumPaise: 12_000_00, renewalDate: "2027-04-01" });
+    const full = await ladder(w);
+    expect(rowOf(full, "cover")).toMatchObject({ pct: 100, status: "ok" });
+    expect(full.attention.key).toBe("lifestyle");
+    expect(full.attention.detail).toContain("Nothing is marked");
+  });
+
+  it("puts a costly loan ahead of the fund, and the rate that counts as costly is the person's to set", async () => {
     const w = await world();
     await rent(w);
     await w.api("PUT", "/api/protection/profile", { dependants: "no", employerHealth: "yes" });
-    await w.api("POST", "/api/insurance", { kind: "health", insurer: "Acme", coverPaise: 10_00_000_00, premiumPaise: 20_000_00, renewalDate: "2027-03-01" });
-    let l = await ladder(w);
-    expect(l.next.key).toBe("emergency");
-    expect(l.next.detail).toContain("Nothing is marked");
+    await w.api("POST", "/api/insurance", { kind: "health", insurer: "Acme", coverPaise: 10_00_000_00, renewalDate: "2027-03-01" });
+    expect((await loan(w, 14)).status).toBe(201);
+    const l = await ladder(w);
+    expect(l.attention).toMatchObject({ key: "debt" });
+    expect(l.attention.detail).toContain("Personal loan costs 14% a year");
+    expect(l.attention.amountPaise).toBeGreaterThan(0);
 
-    await w.api("PATCH", `/api/accounts/${w.hdfc.id}`, { isEmergency: true });
-    await w.api("PATCH", "/api/settings", { emergencyTargetPaise: 50_000_00, medicalTargetPaise: 4_00_000_00 });
-    l = await ladder(w);
-    expect(stepOf(l, "emergency").status).toBe("done");
-    expect(l.next.key).toBe("medical");
+    await w.api("PATCH", "/api/settings", { costlyDebtBp: 1500 });
+    expect(rowOf(await ladder(w), "debt").status).toBe("ok");
+    expect((await w.api("PATCH", "/api/settings", { costlyDebtBp: 50 })).status).toBe(422);
+    // The old skip setting is gone.
+    expect((await w.api("PATCH", "/api/settings", { ladderSkipped: ["cover"] })).status).toBe(422);
   });
 
-  it("passes over a skipped step, and keeps the choice", async () => {
+  it("shows the emergency fund both ways with percents, and the medical layer on its own", async () => {
     const w = await world();
     await rent(w);
-    const res = await w.api("PATCH", "/api/settings", { ladderSkipped: ["protection"] });
-    expect(res.json.ladderSkipped).toEqual(["protection"]);
+    await w.api("PATCH", `/api/accounts/${w.hdfc.id}`, { isEmergency: true });
+    await w.api("PATCH", "/api/settings", { medicalTargetPaise: 4_00_000_00 });
     const l = await ladder(w);
-    expect(stepOf(l, "protection").status).toBe("skipped");
-    expect(l.next.key).toBe("emergency");
-    expect(l.skipped).toEqual(["protection"]);
-    expect((await w.api("PATCH", "/api/settings", { ladderSkipped: ["everything"] })).status).toBe(422);
-    await w.api("PATCH", "/api/settings", { ladderSkipped: [] });
-    expect(stepOf(await ladder(w), "protection").status).toBe("next");
+    const life = rowOf(l, "lifestyle");
+    const ess = rowOf(l, "essentials");
+    expect(life.pct).toBeGreaterThan(0);
+    expect(ess.pct).toBeGreaterThanOrEqual(life.pct);
+    expect(rowOf(l, "medical")).toMatchObject({ pct: 0, amountPaise: 4_00_000_00 });
+  });
+
+  it("shows what runs alongside: SIPs and premiums a month, and what is left over", async () => {
+    const w = await world();
+    await w.api("PUT", "/api/protection/profile", { dependants: "no", employerHealth: "yes" });
+    await w.api("POST", "/api/insurance", { kind: "health", insurer: "Acme", coverPaise: 10_00_000_00, premiumPaise: 24_000_00, frequency: "yearly", renewalDate: "2027-03-01" });
+    await w.api("POST", "/api/recurring", { title: "SIP", type: "investment", amountPaise: 5_000_00, accountId: w.hdfc.id, frequency: "monthly", day: 5, startDate: "2026-11-05" });
+    await w.api("POST", "/api/recurring", { title: "Weekly SIP", type: "investment", amountPaise: 1_000_00, accountId: w.hdfc.id, frequency: "weekly", day: 1, startDate: "2026-11-02" });
+    const { flows } = await ladder(w);
+    expect(flows.investingPaise).toBe(5_000_00 + Math.round((1_000_00 * 52) / 12));
+    expect(flows.premiumsPaise).toBe(2_000_00);
   });
 });
 
@@ -134,9 +157,10 @@ describe("the ladder in Telegram", () => {
     const dest = await reserve(w);
     await w.say("/fund");
     const m = w.tg.last;
-    expect(m.text).toContain("Where you stand, in a common order (a rule of thumb, not advice):");
-    expect(m.text).toContain("1. A starter buffer: done");
-    expect(m.text).toContain("Next: Health and life cover.");
+    expect(m.text).toContain("Where you stand on the foundations (common ideals, not advice):");
+    expect(m.text).toContain("Starter buffer: 100%");
+    expect(m.text).toContain("Health and life cover: 0% (needs attention)");
+    expect(m.text).toContain("Focus: Health and life cover.");
     expect(m.text).toContain("You could move ₹");
     expect(m.text).toContain("from HDFC Bank to Reserve today");
     expect(m.text).toContain("Move it at your bank first, then tap Record.");
@@ -201,6 +225,6 @@ describe("the ladder in Telegram", () => {
     await w.api("POST", "/api/transactions", { type: "income", amountPaise: 1_00_000_00, txnDate: "2026-09-05", accountId: w.hdfc.id, categoryId: w.category("Salary") });
     await w.api("POST", "/api/transactions", { type: "expense", amountPaise: 20_000_00, txnDate: "2026-09-07", accountId: w.sbi.id, categoryId: w.category("Rent") });
     await runMonthlyReview({ db, telegram: w.tg, now: () => Date.parse("2026-10-01T05:00:00Z") });
-    expect(mine(w).at(-1)!.text).toContain("Next step: Health and life cover.");
+    expect(mine(w).at(-1)!.text).toContain("Focus: Health and life cover.");
   });
 });

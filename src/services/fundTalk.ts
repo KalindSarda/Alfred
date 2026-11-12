@@ -1,4 +1,4 @@
-import { ladderLines, transferLines } from "../alfred/botVoice";
+import { foundationLines, transferLines } from "../alfred/botVoice";
 import { createTransferProposal } from "../bot/pending";
 import type { Db } from "../db/client";
 import type { IstDate } from "../domain/dates";
@@ -27,5 +27,5 @@ export async function transferOffer(db: Db, userId: string, today: IstDate, chat
 /** The ladder, then the transfer suggestion, as the /fund command shows them. */
 export async function fundOffer(db: Db, userId: string, today: IstDate, chat: { chatId: string; nowMs: number }): Promise<Offer> {
   const [ladder, offer] = await Promise.all([getLadder(db, userId, today), transferOffer(db, userId, today, chat)]);
-  return { text: [...ladderLines(ladder.steps), "", ...offer.text.split("\n")].join("\n"), buttons: offer.buttons };
+  return { text: [...foundationLines(ladder.rows, ladder.flows), "", ...offer.text.split("\n")].join("\n"), buttons: offer.buttons };
 }

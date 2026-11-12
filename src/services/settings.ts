@@ -3,7 +3,7 @@ import type { Db } from "../db/client";
 import { appSettings } from "../db/schema";
 import type { SettingsDto } from "../schemas/settings";
 
-export const DEFAULT_SETTINGS: SettingsDto = { nudgeLeadDays: 3, nudgeTimeIst: "10:00", sessionDays: 30, displayName: null, periodStartDay: 1, logNudge: true, balanceCheck: true, logNudgeUntil: null, morningPush: false, monthlyReview: true, emergencyMonths: 6, emergencyTargetPaise: null, emergencyHorizonMonths: 12, medicalTargetPaise: null, costlyDebtBp: 1200, ladderSkipped: [] };
+export const DEFAULT_SETTINGS: SettingsDto = { nudgeLeadDays: 3, nudgeTimeIst: "10:00", sessionDays: 30, displayName: null, periodStartDay: 1, logNudge: true, balanceCheck: true, logNudgeUntil: null, morningPush: false, monthlyReview: true, emergencyMonths: 6, emergencyTargetPaise: null, emergencyHorizonMonths: 12, medicalTargetPaise: null, costlyDebtBp: 1200 };
 
 export async function getSettings(db: Db, userId: string): Promise<SettingsDto> {
   const [row] = await db.select().from(appSettings).where(eq(appSettings.userId, userId)).limit(1);
@@ -24,18 +24,16 @@ export async function getSettings(db: Db, userId: string): Promise<SettingsDto> 
         emergencyHorizonMonths: row.emergencyHorizonMonths,
         medicalTargetPaise: row.medicalTargetPaise,
         costlyDebtBp: row.costlyDebtBp,
-        ladderSkipped: row.ladderSkipped === "" ? [] : row.ladderSkipped.split(","),
       }
     : { ...DEFAULT_SETTINGS };
 }
 
 export async function updateSettings(db: Db, userId: string, patch: Partial<SettingsDto>): Promise<SettingsDto> {
   const merged = { ...(await getSettings(db, userId)), ...patch };
-  const row = { ...merged, ladderSkipped: [...new Set(merged.ladderSkipped)].join(",") };
   await db
     .insert(appSettings)
-    .values({ userId, ...row })
-    .onConflictDoUpdate({ target: appSettings.userId, set: row });
+    .values({ userId, ...merged })
+    .onConflictDoUpdate({ target: appSettings.userId, set: merged });
   return merged;
 }
 

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
-import { type EmergencyFund, type FireView, type FundTarget, type LadderStep, type MoneyHealth, type Settings, type TransferView, api, describeError } from "../api";
+import { type EmergencyFund, type FireView, type FoundationRow, type Flows, type FundTarget, type MoneyHealth, type Settings, type TransferView, api, describeError } from "../api";
 import { useToast } from "../components/toast";
 import { Amount, AmountInput, Button, Card, Empty, ErrorText, Field, Sheet, Spinner, inputClass } from "../components/ui";
 import { readFireAssumptions, readFundSettings, readPercent } from "../../../src/domain/planInput";
@@ -280,12 +280,8 @@ function EmergencyCard() {
   );
 }
 
-const STATUS: Record<LadderStep["status"], { label: string; tone: string }> = {
-  done: { label: "Done", tone: "bg-good/15 text-good" },
-  next: { label: "Next", tone: "bg-brand text-white" },
-  later: { label: "Later", tone: "bg-sunk text-soft" },
-  skipped: { label: "Skipped", tone: "bg-sunk text-faint" },
-};
+/** The bar colour for a row: tagged rows stand out, finished ones are green. */
+const BAR: Record<FoundationRow["status"], string> = { ok: "bg-good", building: "bg-brand", attention: "bg-warn-ink" };
 
 const WHY_NOT: Record<NonNullable<TransferView["none"]>, string> = {
   no_target: "Once there are about two weeks of entries, or a target of your own, Alfred can say how much to move.",
@@ -352,58 +348,84 @@ function LadderSettings({ costlyDebtBp, onClose }: { costlyDebtBp: number; onClo
   );
 }
 
-/** A common order for firming up money, where you stand on each rung, and what to do next and why. */
-function NextStepCard() {
-  const client = useQueryClient();
+/** One foundation: the ideal, how far along, and where you stand. */
+function FoundationRowView({ r }: { r: FoundationRow }) {
+  return (
+    <li className="space-y-1 py-2.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="font-medium">
+          {r.title}
+          {r.status === "attention" && <span className="ml-2 rounded-full bg-warn-bg px-2 py-0.5 text-xs font-medium text-warn-ink">Needs attention</span>}
+        </p>
+        <p className="shrink-0 text-sm tabular-nums">{r.pct !== null ? <span className={r.status === "ok" ? "font-medium text-good" : "font-medium"}>{r.pct}%</span> : <span className={r.status === "ok" ? "font-medium text-good" : "text-soft"}>{r.status === "ok" ? "In place" : "See below"}</span>}</p>
+      </div>
+      {r.pct !== null && (
+        <div className="h-2 overflow-hidden rounded-full bg-sunk" role="img" aria-label={`${r.title}: ${r.pct}% done`}>
+          <span className={`block h-full ${BAR[r.status]}`} style={{ width: `${r.pct}%` }} />
+        </div>
+      )}
+      <p className="text-xs text-faint">{r.ideal}</p>
+      <p className="text-sm text-soft">
+        {r.detail}
+        {r.amountPaise ? ` ${rupees(r.amountPaise)} to go.` : ""}
+      </p>
+    </li>
+  );
+}
+
+/** What runs alongside, in a month: investing, premiums, and what is left over to build the emergency fund. */
+function FlowsBox({ f }: { f: Flows }) {
+  const items: [string, string][] = [];
+  if (f.investingPaise > 0) items.push(["Going into investments", rupees(f.investingPaise)]);
+  if (f.premiumsPaise > 0) items.push(["On insurance premiums", rupees(f.premiumsPaise)]);
+  if (f.leftOverPaise !== null) items.push(["Left over for the emergency fund", f.leftOverPaise > 0 ? `${rupees(f.leftOverPaise)}${f.early ? " (early)" : ""}` : "Nothing yet"]);
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <p className="text-xs tracking-wide text-soft uppercase">Running alongside, a month</p>
+      <ul className="divide-y divide-line text-sm">
+        {items.map(([label, value]) => (
+          <li key={label} className="flex justify-between gap-3 py-1.5">
+            <span>{label}</span>
+            <span className="tabular-nums">{value}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** The usual foundations side by side: each with its ideal and how far along you are, the one to look at first, and what runs alongside. */
+function FoundationsCard() {
   const ladder = useLadder();
   const transfer = useTransferSuggestion();
   const [editing, setEditing] = useState(false);
-  const skip = useMutation({
-    mutationFn: (skipped: string[]) => api.patch<Settings>("/api/settings", { ladderSkipped: skipped }),
-    onSuccess: async () => {
-      await client.invalidateQueries({ queryKey: ["ladder"] });
-    },
-  });
   const l = ladder.data;
   if (!l) return null;
-  const toggle = (key: string) => skip.mutate(l.skipped.includes(key) ? l.skipped.filter((k) => k !== key) : [...l.skipped, key]);
-  const showTransfer = transfer.data && (l.next?.key === "emergency" || l.next?.key === "medical" || transfer.data.none === null);
+  const showTransfer = transfer.data && (l.attention?.key === "lifestyle" || l.attention?.key === "essentials" || transfer.data.none === null);
   return (
-    <Card id="next-step" className="space-y-3">
+    <Card id="foundations" className="space-y-3">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="font-medium">Your next step</h2>
+        <h2 className="font-medium">Your foundations</h2>
         <button type="button" className="min-h-11 text-sm text-brand" onClick={() => setEditing(true)}>
           Settings
         </button>
       </div>
-      {l.next ? (
-        <div>
-          <p className="font-display text-2xl">{l.next.title}</p>
-          <p className="mt-1 text-sm text-soft">{l.next.detail}</p>
-          {l.next.amountPaise ? <p className="mt-1 text-sm">About {rupees(l.next.amountPaise)} to go.</p> : null}
-        </div>
+      {l.attention ? (
+        <p className="rounded-xl bg-sunk p-3 text-sm">
+          <span className="font-medium">Look at first: {l.attention.title}.</span> {l.attention.detail}
+        </p>
       ) : (
-        <p className="text-sm text-good">Every step is done or skipped.</p>
+        <p className="text-sm text-good">Nothing needs attention right now.</p>
       )}
       {showTransfer && transfer.data && <TransferBox t={transfer.data} />}
-      <ol className="divide-y divide-line text-sm">
-        {l.steps.map((s, i) => (
-          <li key={s.key} className="flex items-center justify-between gap-3 py-1.5">
-            <span className={s.status === "skipped" ? "text-faint" : ""}>
-              {i + 1}. {s.title}
-            </span>
-            <span className="flex items-center gap-2">
-              <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS[s.status].tone}`}>{STATUS[s.status].label}</span>
-              {s.status !== "done" && (
-                <button type="button" className="min-h-11 text-xs text-soft underline" disabled={skip.isPending} onClick={() => toggle(s.key)}>
-                  {s.status === "skipped" ? "Include" : "Skip"}
-                </button>
-              )}
-            </span>
-          </li>
+      <ul className="divide-y divide-line">
+        {l.rows.map((r) => (
+          <FoundationRowView key={r.key} r={r} />
         ))}
-      </ol>
-      <p className="text-xs text-faint">A common order, not advice. Skip a step that does not apply to you. Alfred never says what to buy or invest in.</p>
+      </ul>
+      <FlowsBox f={l.flows} />
+      <p className="text-xs text-faint">Common ideals, not advice. These run in parallel: money can go to the emergency fund while a SIP builds toward independence. Alfred never says what to buy or invest in.</p>
       {editing && <LadderSettings costlyDebtBp={l.costlyDebtBp} onClose={() => setEditing(false)} />}
     </Card>
   );
@@ -656,7 +678,7 @@ export function Freedom() {
         ))}
       </div>
 
-      <NextStepCard />
+      <FoundationsCard />
 
       {!h && <Spinner />}
       {query.isError && <Empty title="Could not load this">Check your connection and reload.</Empty>}
