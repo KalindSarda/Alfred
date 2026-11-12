@@ -5,7 +5,7 @@ import { e4ToQty, paiseToInput, qtyToE4, rupees, shortDate, today } from "../for
 import { useAccounts, useHoldingKinds, useHoldings, useRefreshMoney } from "../queries";
 import { NewKindSheet } from "./InvestmentKinds";
 import { useToast } from "./toast";
-import { Button, Card, Empty, ErrorText, Field, Sheet, inputClass } from "./ui";
+import { Amount, AmountInput, Button, Card, Empty, ErrorText, Field, Sheet, inputClass } from "./ui";
 
 /** What a kind is held in, and the quantity its rate is quoted for (gold for 10 g, silver for 1,000 g). */
 interface UnitInfo {
@@ -164,10 +164,10 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
               <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder={kind === "gold" ? "15.2" : "120.5"} value={qty} onChange={(e) => setQty(e.target.value)} />
             </Field>
             <Field label="Total paid for it (₹)" hint="Everything you paid, including making charges and GST, so the gain shown is the real one.">
-              <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="190000" value={invested} onChange={(e) => setInvested(e.target.value)} />
+              <AmountInput className={inputClass} autoComplete="off" placeholder="190000" value={invested} onChange={(e) => setInvested(e.target.value)} />
             </Field>
             <Field label={`Rate today (₹ ${rateWord(unit)})`} hint="You update this one number whenever you like. Alfred asks on the 1st of each month.">
-              <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder={kind === "gold" ? "130000" : "52.34"} value={rate} onChange={(e) => setRate(e.target.value)} />
+              <AmountInput className={inputClass} autoComplete="off" placeholder={kind === "gold" ? "130000" : "52.34"} value={rate} onChange={(e) => setRate(e.target.value)} />
             </Field>
             <button type="button" className="min-h-9 text-sm text-soft underline" onClick={() => setTyped(true)}>
               I will type what it is worth instead
@@ -177,10 +177,10 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
         {!holding && !counted && (
           <>
             <Field label="Already put in (₹)" hint="What you invested before Alfred, with no bank entry. Anything you buy from here on is recorded through a bank.">
-              <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="10000" value={invested} onChange={(e) => setInvested(e.target.value)} />
+              <AmountInput className={inputClass} autoComplete="off" placeholder="10000" value={invested} onChange={(e) => setInvested(e.target.value)} />
             </Field>
             <Field label="Worth now (₹)" hint="You type this yourself, and update it when you like. Alfred asks on the 1st of each month.">
-              <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="12000" value={value} onChange={(e) => setValue(e.target.value)} />
+              <AmountInput className={inputClass} autoComplete="off" placeholder="12000" value={value} onChange={(e) => setValue(e.target.value)} />
             </Field>
             {typed && (
               <button type="button" className="min-h-9 text-sm text-soft underline" onClick={() => setTyped(false)}>
@@ -242,7 +242,7 @@ function RateSheet({ holding, onClose }: { holding: Holding; onClose: () => void
           {holding.ratePaise ? `Last rate ${rupees(holding.ratePaise)} ${rateWord(unit)}${holding.valueDate ? ` on ${shortDate(holding.valueDate)}` : ""}.` : "No rate typed yet."}
         </p>
         <Field label={`Rate (₹ ${rateWord(unit)})`}>
-          <input className={inputClass} inputMode="decimal" autoComplete="off" autoFocus placeholder={holding.kind === "gold" ? "130000" : "52.34"} value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <AmountInput className={inputClass} autoComplete="off" autoFocus placeholder={holding.kind === "gold" ? "130000" : "52.34"} value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
         {preview !== null && (
           <p className="text-sm">
@@ -293,7 +293,7 @@ function ConvertSheet({ holding, onClose }: { holding: Holding; onClose: () => v
           <input className={inputClass} inputMode="decimal" autoComplete="off" autoFocus placeholder={holding.kind === "gold" ? "15.2" : "120.5"} value={qty} onChange={(e) => setQty(e.target.value)} />
         </Field>
         <Field label={`Rate today (₹ ${rateWord(unit)})`}>
-          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder={holding.kind === "gold" ? "130000" : "52.34"} value={rate} onChange={(e) => setRate(e.target.value)} />
+          <AmountInput className={inputClass} autoComplete="off" placeholder={holding.kind === "gold" ? "130000" : "52.34"} value={rate} onChange={(e) => setRate(e.target.value)} />
         </Field>
         <ErrorText>{error}</ErrorText>
         <Button type="submit" className="w-full" disabled={busy}>
@@ -328,7 +328,7 @@ function ValueSheet({ holding, onClose }: { holding: Holding; onClose: () => voi
           You put in {rupees(holding.investedPaise)}. Last {holding.valueDate ? `valued ${rupees(holding.valuePaise)} on ${shortDate(holding.valueDate)}` : "not valued yet"}.
         </p>
         <Field label="Worth now (₹)">
-          <input className={inputClass} inputMode="decimal" autoComplete="off" autoFocus placeholder="15200" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <AmountInput className={inputClass} autoComplete="off" autoFocus placeholder="15200" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
         <Field label="As of">
           <input className={inputClass} type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} />
@@ -397,7 +397,7 @@ function TradeSheet({ holding, selling, onClose }: { holding: Holding; selling: 
           </Field>
         )}
         <Field label={selling ? "Received (₹)" : "Paid in total (₹)"} hint={!selling && counted ? "Include making charges and GST." : undefined}>
-          <input className={inputClass} inputMode="decimal" autoComplete="off" autoFocus={!counted} placeholder={selling && !counted ? paiseToInput(holding.valuePaise) : "5000"} value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <AmountInput className={inputClass} autoComplete="off" autoFocus={!counted} placeholder={selling && !counted ? paiseToInput(holding.valuePaise) : "5000"} value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
         {!selling && counted ? (
           <Field label="From">
@@ -611,7 +611,9 @@ export function Investments() {
       {active.length > 0 && (
         <Card>
           <p className="text-xs tracking-wide text-soft uppercase">Worth now</p>
-          <p className="font-display mt-1 text-4xl tabular-nums">{rupees(totalValuePaise)}</p>
+          <p className="font-display mt-1 text-4xl tabular-nums">
+            <Amount paise={totalValuePaise} />
+          </p>
           <p className="mt-2 text-sm text-soft">
             Put in {rupees(totalInvestedPaise)} ·{" "}
             <span className={`font-medium ${tone(gainPaise)}`}>

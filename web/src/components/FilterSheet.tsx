@@ -1,6 +1,6 @@
 import type { Account, Category } from "../api";
 import { activePreset, applyPreset, emptyFilters, PRESETS, type TxnFilters } from "../filters";
-import { Button, Field, inputClass, Sheet } from "./ui";
+import { AmountInput, Button, Field, Sheet, inputClass } from "./ui";
 
 type Props = {
   filters: TxnFilters;
@@ -75,10 +75,10 @@ export function FilterSheet({ filters, accounts, categories, onChange, onClose }
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Amount at least (₹)">
-            <input className={inputClass} inputMode="decimal" placeholder="Any" value={filters.min} onChange={(e) => set({ min: e.target.value })} />
+            <AmountInput className={inputClass} placeholder="Any" value={filters.min} onChange={(e) => set({ min: e.target.value })} />
           </Field>
           <Field label="Amount at most (₹)">
-            <input className={inputClass} inputMode="decimal" placeholder="Any" value={filters.max} onChange={(e) => set({ max: e.target.value })} />
+            <AmountInput className={inputClass} placeholder="Any" value={filters.max} onChange={(e) => set({ max: e.target.value })} />
           </Field>
         </div>
 

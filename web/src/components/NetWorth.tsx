@@ -1,8 +1,8 @@
 import type { BalanceOverview } from "../api";
-import { rupees } from "../format";
+import { rupeesCompact as rupees } from "../format";
 import { useRunway } from "../queries";
 import { Link } from "../router";
-import { Card } from "./ui";
+import { Amount, Card } from "./ui";
 
 const LABEL = "Net worth";
 
@@ -24,7 +24,7 @@ export function NetWorthCard({ overview }: { overview: BalanceOverview }) {
   return (
     <Card>
       <p className="text-xs tracking-wide text-soft uppercase">{LABEL}</p>
-      <p className="font-display mt-1 text-4xl tabular-nums">{rupees(overview.netWorthPaise)}</p>
+      <p className="font-display mt-1 text-4xl tabular-nums"><Amount paise={overview.netWorthPaise} /></p>
       <div className="mt-3 divide-y divide-line border-t border-brass/50 pt-2">
         <Row label="In your bank accounts" value={rupees(overview.totalInBanksPaise)} />
         {overview.setAsidePaise !== 0 && (
@@ -83,7 +83,7 @@ export function NetWorthStrip({ overview }: { overview: BalanceOverview }) {
           {overview.loansPaise > 0 && <> · {rupees(overview.loansPaise)} owed on loans</>}
         </span>
       </span>
-      <span className="font-display text-2xl tabular-nums">{rupees(overview.netWorthPaise)}</span>
+      <span className="font-display text-2xl tabular-nums"><Amount paise={overview.netWorthPaise} /></span>
     </Link>
   );
 }

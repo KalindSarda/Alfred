@@ -6,7 +6,7 @@ import { Breakdown } from "../components/Breakdown";
 import { CashflowCard } from "../components/CashflowCard";
 import { CommitmentsCard } from "../components/Commitments";
 import { Card, Empty, Spinner } from "../components/ui";
-import { rupees, shortDate, today } from "../format";
+import { rupees, rupeesCompact, shortDate, today } from "../format";
 import { emptyFilters } from "../filters";
 import { NetWorthStrip } from "../components/NetWorth";
 import { Shortcuts } from "../components/Shortcuts";
@@ -88,9 +88,9 @@ export function Home() {
           </span>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          <Tile label="Income" value={rupees(s.incomePaise)} tone="good" />
-          <Tile label="Expense" value={rupees(s.expensePaise)} />
-          <Tile label="Net" value={rupees(s.netPaise)} tone={s.netPaise >= 0 ? "good" : "bad"} />
+          <Tile label="Income" value={rupeesCompact(s.incomePaise)} tone="good" />
+          <Tile label="Expense" value={rupeesCompact(s.expensePaise)} />
+          <Tile label="Net" value={rupeesCompact(s.netPaise)} tone={s.netPaise >= 0 ? "good" : "bad"} />
         </div>
       </section>
 

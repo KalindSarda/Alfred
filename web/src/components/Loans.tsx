@@ -6,7 +6,7 @@ import { rupeesToPaise } from "../filters";
 import { paiseToInput, rupees, shortDate, today } from "../format";
 import { useAccounts, useLoans, useRefreshMoney } from "../queries";
 import { useToast } from "./toast";
-import { Button, Card, ErrorText, Field, Sheet, inputClass } from "./ui";
+import { AmountInput, Button, Card, ErrorText, Field, Sheet, inputClass } from "./ui";
 
 const KINDS: { value: Loan["kind"]; label: string }[] = [
   { value: "home", label: "Home loan" },
@@ -141,7 +141,7 @@ function LoanSheet({ loan, onClose }: { loan: Loan | null; onClose: () => void }
         {!loan && (
           <>
             <Field label="Still owed now (₹)" hint="The outstanding principal in your loan statement, not the original loan amount.">
-              <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="1000000" value={owed} onChange={(e) => setOwed(e.target.value)} />
+              <AmountInput className={inputClass} autoComplete="off" placeholder="1000000" value={owed} onChange={(e) => setOwed(e.target.value)} />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Interest, % a year">
@@ -155,7 +155,7 @@ function LoanSheet({ loan, onClose }: { loan: Loan | null; onClose: () => void }
         )}
         <div className="grid grid-cols-2 gap-3">
           <Field label="EMI (₹)" hint={!loan && calculated > 0 ? `Worked out: ${rupees(calculated)}. Type your bank's figure to override.` : undefined}>
-            <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder={calculated ? paiseToInput(calculated) : "Calculated"} value={emi} onChange={(e) => setEmi(e.target.value)} />
+            <AmountInput className={inputClass} autoComplete="off" placeholder={calculated ? paiseToInput(calculated) : "Calculated"} value={emi} onChange={(e) => setEmi(e.target.value)} />
           </Field>
           <Field label="Due on the (day)">
             <input className={inputClass} type="number" min={1} max={31} placeholder="5" value={dueDay} onChange={(e) => setDueDay(e.target.value)} />
@@ -230,7 +230,7 @@ function PrepaySheet({ loan, onClose }: { loan: Loan; onClose: () => void }) {
       >
         <p className="text-sm text-soft">It leaves your bank as a loan payment, all of it against the principal. It is not spending.</p>
         <Field label="Amount (₹)">
-          <input className={inputClass} inputMode="decimal" autoComplete="off" autoFocus placeholder="200000" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <AmountInput className={inputClass} autoComplete="off" autoFocus placeholder="200000" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
         <Field label="On">
           <input className={inputClass} type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} />
@@ -356,7 +356,7 @@ function ForecloseSheet({ loan, onClose }: { loan: Loan; onClose: () => void }) 
           {rupees(loan.outstandingPaise)} leaves your bank as a loan payment and the loan is closed. Add any foreclosure charges below; they are recorded as an expense.
         </p>
         <Field label="Foreclosure charges (₹, optional)">
-          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="0" value={charges} onChange={(e) => setCharges(e.target.value)} />
+          <AmountInput className={inputClass} autoComplete="off" placeholder="0" value={charges} onChange={(e) => setCharges(e.target.value)} />
         </Field>
         <Field label="On">
           <input className={inputClass} type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} />
@@ -431,7 +431,7 @@ function Instalments({ loan }: { loan: Loan }) {
             </span>
             {editing === i.loanOn ? (
               <span className="flex items-center gap-2">
-                <input aria-label="Total taken by the bank" className={`${inputClass} w-28 text-right tabular-nums`} inputMode="decimal" autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} />
+                <AmountInput aria-label="Total taken by the bank" className={`${inputClass} w-28 text-right tabular-nums`} autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} />
                 <Button
                   className="min-h-11 py-1.5 text-sm"
                   disabled={busy}

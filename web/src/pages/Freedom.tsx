@@ -2,9 +2,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { type EmergencyFund, type FireView, type LadderStep, type MoneyHealth, type Settings, type TransferView, api, describeError } from "../api";
 import { useToast } from "../components/toast";
-import { Button, Card, Empty, ErrorText, Field, Sheet, Spinner, inputClass } from "../components/ui";
+import { Amount, AmountInput, Button, Card, Empty, ErrorText, Field, Sheet, Spinner, inputClass } from "../components/ui";
 import { rupeesToPaise } from "../filters";
-import { paiseToInput, rupees, shortDate } from "../format";
+import { paiseToInput, rupeesCompact as rupees, shortDate } from "../format";
 import { useEmergencyFund, useFire, useLadder, useMoneyHealth, useTransferSuggestion } from "../queries";
 import { Link } from "../router";
 
@@ -109,10 +109,10 @@ function FundSettings({ fund, onClose }: { fund: EmergencyFund; onClose: () => v
           <input className={inputClass} inputMode="numeric" value={months} onChange={(e) => setMonths(e.target.value)} />
         </Field>
         <Field label="Or a target of your own (₹)" hint="Optional. When set, it replaces months times your spending.">
-          <input className={inputClass} inputMode="decimal" placeholder="Leave empty to use the months" value={target} onChange={(e) => setTarget(e.target.value)} />
+          <AmountInput className={inputClass} placeholder="Leave empty to use the months" value={target} onChange={(e) => setTarget(e.target.value)} />
         </Field>
         <Field label="Medical reserve on top (₹)" hint="Optional. Kept in the same pool, filled after the living costs. It helps with what insurance does not pay.">
-          <input className={inputClass} inputMode="decimal" placeholder="For example 400000" value={medical} onChange={(e) => setMedical(e.target.value)} />
+          <AmountInput className={inputClass} placeholder="For example 400000" value={medical} onChange={(e) => setMedical(e.target.value)} />
         </Field>
         <Field label="Months to close the gap in" hint="Sets the monthly amount shown to put aside.">
           <input className={inputClass} inputMode="numeric" value={horizon} onChange={(e) => setHorizon(e.target.value)} />
@@ -156,7 +156,7 @@ function EmergencyCard() {
         </>
       ) : (
         <>
-          <p className="font-display text-4xl tabular-nums">{rupees(f.fundedPaise)}</p>
+          <p className="font-display text-4xl tabular-nums"><Amount paise={f.fundedPaise} /></p>
           {f.targetPaise !== null ? (
             <>
               <p className="text-sm text-soft">
@@ -416,10 +416,10 @@ function FireAssumptions({ fire, onClose }: { fire: FireView; onClose: () => voi
           </Field>
         </div>
         <Field label="Spending a month once work stops (₹)" hint={`In today's money. Empty uses your recent average${a.spendIsDefault && a.monthlySpendPaise !== null ? `, ${rupees(a.monthlySpendPaise)}` : ""}.`}>
-          <input className={inputClass} inputMode="decimal" value={spend} onChange={(e) => setSpend(e.target.value)} />
+          <AmountInput className={inputClass} value={spend} onChange={(e) => setSpend(e.target.value)} />
         </Field>
         <Field label="Saving a month from now (₹)" hint={`Empty uses your recent average${a.savingIsDefault && a.monthlySavingPaise !== null ? `, ${rupees(a.monthlySavingPaise)}` : ""}.`}>
-          <input className={inputClass} inputMode="decimal" value={saving} onChange={(e) => setSaving(e.target.value)} />
+          <AmountInput className={inputClass} value={saving} onChange={(e) => setSaving(e.target.value)} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Yearly return (%)" hint="Before tax. Not a promise.">
@@ -471,7 +471,7 @@ function FireCard() {
         <>
           <div>
             <p className="text-xs tracking-wide text-soft uppercase">Your number</p>
-            <p className="font-display text-4xl tabular-nums">{rupees(f.numberPaise)}</p>
+            <p className="font-display text-4xl tabular-nums"><Amount paise={f.numberPaise} /></p>
             <p className="text-sm text-soft">
               {rupees(a.monthlySpendPaise ?? 0)} a month{a.spendIsDefault ? " (your recent average)" : ""} at a {pct(a.withdrawalRateBp)}% yearly withdrawal.
               {f.early && a.spendIsDefault ? ` An early estimate, from ${f.basedOnDays} days of entries.` : ""}
@@ -598,7 +598,7 @@ export function Freedom() {
             <p className="text-xs tracking-wide text-soft uppercase">
               {period === "last" ? "Saved last month" : "Saved so far"} · {shortDate(h.period.from)} to {shortDate(h.period.to)}
             </p>
-            <p className={`font-display mt-1 text-4xl tabular-nums ${h.savingsPaise < 0 ? "text-bad" : ""}`}>{rupees(h.savingsPaise)}</p>
+            <p className={`font-display mt-1 text-4xl tabular-nums ${h.savingsPaise < 0 ? "text-bad" : ""}`}><Amount paise={h.savingsPaise} /></p>
             <p className="mt-1 text-sm text-soft">
               {h.savingsRatePct === null ? "No income recorded, so there is no rate." : `${h.savingsRatePct}% of income`}
               {h.savingsBand && (

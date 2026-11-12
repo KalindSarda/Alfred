@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { type Policy, type ProtectionView, api, describeError } from "../api";
 import { useToast } from "../components/toast";
-import { Button, Card, Empty, ErrorText, Field, Sheet, Spinner, inputClass } from "../components/ui";
+import { AmountInput, Button, Card, Empty, ErrorText, Field, Sheet, Spinner, inputClass } from "../components/ui";
 import { rupeesToPaise } from "../filters";
 import { paiseToInput, rupees, shortDate, today } from "../format";
 import { useProtection } from "../queries";
@@ -71,12 +71,12 @@ function PolicySheet({ policy, onClose }: { policy: Policy | null; onClose: () =
           <input className={inputClass} maxLength={40} autoComplete="off" value={insurer} onChange={(e) => setInsurer(e.target.value)} />
         </Field>
         <Field label="Cover (₹)" hint="The sum insured.">
-          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="1000000" value={cover} onChange={(e) => setCover(e.target.value)} />
+          <AmountInput className={inputClass} autoComplete="off" placeholder="1000000" value={cover} onChange={(e) => setCover(e.target.value)} />
         </Field>
         {source === "personal" && (
           <>
             <Field label="Premium (₹)" hint="What you pay each time. Alfred counts it among what is coming up.">
-              <input className={inputClass} inputMode="decimal" autoComplete="off" value={premium} onChange={(e) => setPremium(e.target.value)} />
+              <AmountInput className={inputClass} autoComplete="off" value={premium} onChange={(e) => setPremium(e.target.value)} />
             </Field>
             <Segmented label="How often" value={frequency} onChange={setFrequency} options={[["yearly", "Yearly"], ["half_yearly", "6 months"], ["quarterly", "3 months"], ["monthly", "Monthly"]] as const} />
           </>

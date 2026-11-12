@@ -5,7 +5,7 @@ import { rupeesToPaise } from "../filters";
 import { paiseToInput, rupees, shortDate, today } from "../format";
 import { useAccounts, useCategories, useHoldings, useRecurring, useRefreshMoney } from "../queries";
 import { useToast } from "./toast";
-import { Button, Card, Empty, ErrorText, Field, Sheet, inputClass } from "./ui";
+import { AmountInput, Button, Card, Empty, ErrorText, Field, Sheet, inputClass } from "./ui";
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -123,7 +123,7 @@ function RuleSheet({ rule, onClose }: { rule: RecurringRule | null; onClose: () 
           </div>
         )}
         <Field label="Amount (₹)">
-          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="22000" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <AmountInput className={inputClass} autoComplete="off" placeholder="22000" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
         <Field label={type === "income" ? "Paid into" : "Paid from"}>
           <select className={inputClass} value={chosenAccount} onChange={(e) => setAccountId(e.target.value)}>

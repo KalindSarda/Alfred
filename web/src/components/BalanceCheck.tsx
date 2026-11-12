@@ -4,7 +4,7 @@ import { rupeesToPaise } from "../filters";
 import { rupees } from "../format";
 import { useRefreshMoney } from "../queries";
 import { useToast } from "./toast";
-import { Button, ErrorText, Field, Sheet, inputClass } from "./ui";
+import { AmountInput, Button, ErrorText, Field, Sheet, inputClass } from "./ui";
 
 /**
  * Makes Alfred agree with the bank: type what the bank app shows, see how far apart they are, and book the gap as one
@@ -74,9 +74,9 @@ export function BalanceCheckSheet({ banks, onClose }: { banks: BankAccount[]; on
           </select>
         </Field>
         <Field label="What your bank shows (₹)">
-          <input
+          <AmountInput
             className={inputClass}
-            inputMode="decimal"
+           
             autoComplete="off"
             autoFocus
             placeholder="100284.52"

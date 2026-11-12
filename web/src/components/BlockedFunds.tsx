@@ -4,7 +4,7 @@ import { rupeesToPaise } from "../filters";
 import { paiseToInput, rupees, shortDate, today } from "../format";
 import { useAccounts, useHolds, useRefreshMoney } from "../queries";
 import { useToast } from "./toast";
-import { Button, Card, ErrorText, Field, Sheet, inputClass } from "./ui";
+import { AmountInput, Button, Card, ErrorText, Field, Sheet, inputClass } from "./ui";
 
 /** Runs one change, refreshes what depends on it, and reports back. Shared by the three sheets below. */
 function useAction(onClose: () => void) {
@@ -70,7 +70,7 @@ function HoldSheet({ hold, onClose }: { hold: Hold | null; onClose: () => void }
           </select>
         </Field>
         <Field label="Amount blocked (₹)">
-          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="15000" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <AmountInput className={inputClass} autoComplete="off" placeholder="15000" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Applied on">
@@ -130,7 +130,7 @@ function AllotSheet({ hold, onClose }: { hold: Hold; onClose: () => void }) {
           {rupees(hold.amountPaise)} was blocked in {hold.accountName}. Enter what was actually debited. It is recorded as an investment, not as spending.
         </p>
         <Field label="Amount debited (₹)">
-          <input className={inputClass} inputMode="decimal" autoComplete="off" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <AmountInput className={inputClass} autoComplete="off" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
         <Field label="Debited on">
           <input className={inputClass} type="date" value={date} onChange={(e) => setDate(e.target.value)} />

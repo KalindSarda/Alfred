@@ -1,4 +1,5 @@
-import { type ButtonHTMLAttributes, type ReactNode, useEffect, useRef } from "react";
+import { type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
+import { caretAfter, formatAmountInput, formatRupees, formatRupeesCompact } from "../../../src/domain/money";
 
 export const inputClass =
   "w-full rounded-xl border border-line bg-card px-3 py-3 text-base text-ink placeholder:text-faint focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30";
@@ -205,5 +206,54 @@ export function Icon({ name, className = "size-6" }: { name: keyof typeof icons;
     >
       {icons[name]}
     </svg>
+  );
+}
+
+/**
+ * A rupee figure for a glance: ₹45,000 as it is, then "₹1.5 L" and "₹7.23 Cr". The exact figure is the tooltip and what a
+ * screen reader reads; the detail views show it in full.
+ */
+export function Amount({ paise, className }: { paise: number; className?: string }) {
+  const full = formatRupees(paise);
+  const compact = formatRupeesCompact(paise);
+  if (compact === full) return <span className={className}>{full}</span>;
+  return (
+    <span className={className} title={full}>
+      <span aria-hidden="true">{compact}</span>
+      <span className="sr-only">{full}</span>
+    </span>
+  );
+}
+
+/**
+ * A box for a rupee amount that groups the digits the Indian way as they are typed (1234567 becomes 12,34,567), keeps up to
+ * two decimals, and keeps the caret beside the digit being typed. A drop-in for an input: callers read `e.target.value`, which
+ * is the grouped text, and the amount parsers already ignore the commas. For quantities, percentages and days use a plain input.
+ */
+export function AmountInput({ allowNegative = false, onChange, ...rest }: InputHTMLAttributes<HTMLInputElement> & { allowNegative?: boolean }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const caret = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (caret.current !== null && el && document.activeElement === el) el.setSelectionRange(caret.current, caret.current);
+    caret.current = null;
+  });
+  return (
+    <input
+      ref={ref}
+      inputMode="decimal"
+      autoComplete="off"
+      {...rest}
+      onChange={(e) => {
+        const el = e.target;
+        const typed = el.value.slice(0, el.selectionStart ?? el.value.length).replace(/[^0-9.]/g, "").length;
+        const formatted = formatAmountInput(el.value, allowNegative);
+        if (formatted !== el.value) el.value = formatted;
+        const at = caretAfter(formatted, typed);
+        el.setSelectionRange(at, at);
+        caret.current = at;
+        onChange?.(e);
+      }}
+    />
   );
 }

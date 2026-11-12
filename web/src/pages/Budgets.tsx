@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "../router";
 import { api, describeError, type BudgetItem } from "../api";
-import { Button, Card, Empty, ErrorText, Field, Sheet, Spinner, inputClass } from "../components/ui";
+import { AmountInput, Button, Card, Empty, ErrorText, Field, Sheet, Spinner, inputClass } from "../components/ui";
 import { useToast } from "../components/toast";
 import { rupeesToPaise, transactionsLink } from "../filters";
 import { paiseToInput, rupees, shortDate } from "../format";
@@ -114,9 +114,9 @@ function BudgetSheet({
           </select>
         </Field>
         <Field label="Monthly limit (₹)" hint="Measured over your month, as set on the home page.">
-          <input
+          <AmountInput
             className={inputClass}
-            inputMode="decimal"
+           
             autoComplete="off"
             placeholder="6000"
             value={amount}

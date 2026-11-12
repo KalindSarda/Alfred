@@ -4,7 +4,7 @@ import { rupeesToPaise } from "../filters";
 import { paiseToInput, rupees, shortDate, today } from "../format";
 import { useGoals, useRefreshMoney } from "../queries";
 import { useToast } from "./toast";
-import { Button, Card, Empty, ErrorText, Field, Sheet, inputClass } from "./ui";
+import { AmountInput, Button, Card, Empty, ErrorText, Field, Sheet, inputClass } from "./ui";
 
 /** Runs one change, refreshes what depends on it, and reports back. */
 function useAction(onClose: () => void) {
@@ -55,7 +55,7 @@ function GoalSheet({ goal, onClose }: { goal: Goal | null; onClose: () => void }
           <input className={inputClass} maxLength={40} autoComplete="off" placeholder="New laptop" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field label="Target (₹)">
-          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="60000" value={target} onChange={(e) => setTarget(e.target.value)} />
+          <AmountInput className={inputClass} autoComplete="off" placeholder="60000" value={target} onChange={(e) => setTarget(e.target.value)} />
         </Field>
         <Field label="By when (optional)" hint="With a date, Alfred shows what to put aside each month.">
           <input className={inputClass} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -116,7 +116,7 @@ function MoneySheet({ goal, taking, onClose }: { goal: Goal; taking: boolean; on
             : "The money stays in your bank. It is only taken off what you can spend, until the goal is done."}
         </p>
         <Field label="Amount (₹)">
-          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="5000" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <AmountInput className={inputClass} autoComplete="off" placeholder="5000" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
         <Field label="On">
           <input className={inputClass} type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} />

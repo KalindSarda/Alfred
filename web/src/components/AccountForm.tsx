@@ -5,7 +5,7 @@ import { type Account, api, describeError } from "../api";
 import { paiseToInput, parseSignedPaise } from "../format";
 import { useAccounts, useRefreshMoney } from "../queries";
 import { useToast } from "./toast";
-import { Button, ErrorText, Field, inputClass } from "./ui";
+import { AmountInput, Button, ErrorText, Field, inputClass } from "./ui";
 
 const entriesText = (n: number) => `${n} ${n === 1 ? "entry" : "entries"}`;
 
@@ -136,7 +136,7 @@ export function AccountForm({ initial, onDone, kind: fixedKind }: { initial?: Ac
                 : "What the account holds right now. Entries you add from here on are applied on top of it."
             }
           >
-            <input className={inputClass} inputMode="decimal" placeholder="0" value={opening} onChange={(e) => setOpening(e.target.value)} />
+            <AmountInput allowNegative className={inputClass} placeholder="0" value={opening} onChange={(e) => setOpening(e.target.value)} />
           </Field>
           <label className="flex min-h-11 items-center gap-3 text-sm">
             <input type="checkbox" className="size-5 accent-brand" checked={counts} onChange={(e) => setCounts(e.target.checked)} />
@@ -153,7 +153,7 @@ export function AccountForm({ initial, onDone, kind: fixedKind }: { initial?: Ac
       ) : (
         <>
           <Field label="Credit limit (₹)">
-            <input className={inputClass} inputMode="decimal" required value={limit} onChange={(e) => setLimit(e.target.value)} />
+            <AmountInput className={inputClass} required value={limit} onChange={(e) => setLimit(e.target.value)} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Statement day">
@@ -170,7 +170,7 @@ export function AccountForm({ initial, onDone, kind: fixedKind }: { initial?: Ac
             label={initial ? "Owed before your first entry (₹)" : "Owed right now (₹)"}
             hint={initial ? "What the card owed before the entries here. Changing it changes what it owes now by the same amount." : "Leave empty if you are starting fresh."}
           >
-            <input className={inputClass} inputMode="decimal" placeholder="0" value={outstanding} onChange={(e) => setOutstanding(e.target.value)} />
+            <AmountInput className={inputClass} placeholder="0" value={outstanding} onChange={(e) => setOutstanding(e.target.value)} />
           </Field>
         </>
       )}

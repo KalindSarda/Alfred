@@ -4,7 +4,7 @@ import { rupeesToPaise } from "../filters";
 import { paiseToInput, rupees, shortDate, today } from "../format";
 import { useAccounts, useDebts, useRefreshMoney } from "../queries";
 import { useToast } from "./toast";
-import { Button, Card, ErrorText, Field, Sheet, inputClass } from "./ui";
+import { AmountInput, Button, Card, ErrorText, Field, Sheet, inputClass } from "./ui";
 
 /** Runs one change, refreshes what depends on it, and reports back. */
 function useAction(onDone?: () => void) {
@@ -104,7 +104,7 @@ function AddSheet({ onClose, people }: { onClose: () => void; people: Person[] }
         </Field>
         {known?.trusted && direction === "lent" && <p className="-mt-2 text-xs text-soft">{known.name} is trusted, so Alfred will not follow up.</p>}
         <Field label="Amount (₹)">
-          <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="5000" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <AmountInput className={inputClass} autoComplete="off" placeholder="5000" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
         <AccountPick label={direction === "lent" ? "Paid from" : "Received in"} value={account} onChange={setAccountId} />
         <div className="grid grid-cols-2 gap-3">
@@ -220,7 +220,7 @@ function DebtBlock({ debt, person }: { debt: Debt; person: Person }) {
         <div className="space-y-3 rounded-xl bg-sunk p-3">
           {mode === "repay" && (
             <Field label={lent ? "Amount received (₹)" : "Amount repaid (₹)"}>
-              <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder={paiseToInput(debt.outstandingPaise)} value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <AmountInput className={inputClass} autoComplete="off" placeholder={paiseToInput(debt.outstandingPaise)} value={amount} onChange={(e) => setAmount(e.target.value)} />
             </Field>
           )}
           {mode === "settle" && <p className="text-sm">{rupees(debt.outstandingPaise)} is {lent ? "received" : "repaid"} in full.</p>}

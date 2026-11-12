@@ -5,7 +5,7 @@ import { type Transaction, type TxnType, api, describeError } from "../api";
 import { newKey, paiseToInput, rupees, today } from "../format";
 import { defaultAccountId, describeQuickLine, memoryFor, parseQuickLine, quickFailure, topMerchants } from "../quickLine";
 import { useAccounts, useCategories, useEntryHints, useHoldings, useRefreshMoney } from "../queries";
-import { Button, ErrorText, Field, inputClass } from "./ui";
+import { AmountInput, Button, ErrorText, Field, inputClass } from "./ui";
 import { useToast } from "./toast";
 
 const TYPES: { value: TxnType; label: string }[] = [
@@ -230,9 +230,9 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
       )}
 
       <Field label="Amount (₹)">
-        <input
+        <AmountInput
           className={`${inputClass} text-2xl font-semibold`}
-          inputMode="decimal"
+         
           placeholder="0"
           required
           value={amount}

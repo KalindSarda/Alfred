@@ -7,7 +7,7 @@ import { rupeesToPaise } from "../filters";
 import { paiseToInput, rupees, shortDate, today } from "../format";
 import { useAccounts, useCategories, useEmiPlans, useRefreshMoney } from "../queries";
 import { useToast } from "./toast";
-import { Button, Card, ErrorText, Field, Sheet, inputClass } from "./ui";
+import { AmountInput, Button, Card, ErrorText, Field, Sheet, inputClass } from "./ui";
 
 function useAction(onClose: () => void) {
   const refresh = useRefreshMoney();
@@ -176,7 +176,7 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
         {!frozen && (
           <>
             <Field label="Amount converted to EMI (₹)" hint="The purchase amount the bank converted, before interest.">
-              <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="122000" value={total} onChange={(e) => restart(() => setTotal(e.target.value))} />
+              <AmountInput className={inputClass} autoComplete="off" placeholder="122000" value={total} onChange={(e) => restart(() => setTotal(e.target.value))} />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Months">
@@ -194,7 +194,7 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
                 <p className="text-sm font-medium">One-off processing fee (optional)</p>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Fee (₹)">
-                    <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="299" value={fee} onChange={(e) => setFee(e.target.value)} />
+                    <AmountInput className={inputClass} autoComplete="off" placeholder="299" value={fee} onChange={(e) => setFee(e.target.value)} />
                   </Field>
                   <Field label="GST, %">
                     <input className={inputClass} inputMode="decimal" autoComplete="off" value={gst} onChange={(e) => restart(() => setGst(e.target.value))} />
@@ -220,7 +220,7 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
               </div>
             )}
             <Field label="Monthly instalment (optional)" hint="If you already know it, type it and every month is filled with it.">
-              <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="Leave empty to calculate" value={instalment} onChange={(e) => restart(() => setInstalment(e.target.value))} />
+              <AmountInput className={inputClass} autoComplete="off" placeholder="Leave empty to calculate" value={instalment} onChange={(e) => restart(() => setInstalment(e.target.value))} />
             </Field>
 
             {calculated.length > 0 && (
@@ -242,10 +242,10 @@ function PlanSheet({ plan, onClose }: { plan: EmiPlan | null; onClose: () => voi
                         </span>
                         {r.interestPaise > 0 && <span className="block text-xs text-soft">interest {rupees(r.interestPaise)}</span>}
                       </span>
-                      <input
+                      <AmountInput
                         aria-label={`Instalment ${r.n}`}
                         className={`${inputClass} w-32 text-right tabular-nums`}
-                        inputMode="decimal"
+                       
                         autoComplete="off"
                         value={rowText(i)}
                         onChange={(e) => setEdits({ ...edits, [i]: e.target.value })}
@@ -364,10 +364,10 @@ function Schedule({ plan, statement }: { plan: EmiPlan; statement: { statementDa
             </span>
             {editing === r.n ? (
               <span className="flex items-center gap-2">
-                <input
+                <AmountInput
                   aria-label={`Instalment ${r.n} amount`}
                   className={`${inputClass} w-28 text-right tabular-nums`}
-                  inputMode="decimal"
+                 
                   autoComplete="off"
                   value={value}
                   onChange={(e) => setValue(e.target.value)}

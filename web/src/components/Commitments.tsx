@@ -1,7 +1,7 @@
 import { daysBetween, inDays } from "../../../src/alfred/voice";
-import { rupees, shortDate, today } from "../format";
+import { rupeesCompact as rupees, shortDate, today } from "../format";
 import { useCommitments } from "../queries";
-import { Card } from "./ui";
+import { Amount, Card } from "./ui";
 
 const SOURCE: Record<string, string> = { card: "Card bill", emi: "Card EMI", loan: "Loan EMI", recurring: "Repeats", debt: "Borrowed", insurance: "Insurance" };
 
@@ -19,7 +19,7 @@ export function CommitmentsCard() {
   return (
     <Card>
       <p className="text-xs tracking-wide text-soft uppercase">Free to spend until {shortDate(v.until)}{v.basis === "salary" ? " (next salary)" : ""}</p>
-      <p className={`font-display mt-1 text-3xl tabular-nums ${negative ? "text-bad" : ""}`}>{rupees(v.freeToSpendPaise)}</p>
+      <p className={`font-display mt-1 text-3xl tabular-nums ${negative ? "text-bad" : ""}`}><Amount paise={v.freeToSpendPaise} /></p>
       <p className="mt-1 text-sm text-soft">
         Safe to spend {rupees(v.safeToSpendPaise)}
         {v.commitmentsPaise > 0 && <> less {rupees(v.commitmentsPaise)} still to leave</>}

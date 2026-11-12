@@ -5,7 +5,7 @@ import { rupeesToPaise } from "../filters";
 import { rupees, shortDate } from "../format";
 import { useRefreshMoney } from "../queries";
 import { useToast } from "./toast";
-import { Button, Card, ErrorText, Field, Sheet, inputClass } from "./ui";
+import { AmountInput, Button, Card, ErrorText, Field, Sheet, inputClass } from "./ui";
 
 /** Which card to use today for a purchase: the longest interest-free time before the bill falls due. */
 export function BestCard() {
@@ -25,7 +25,7 @@ export function BestCard() {
         <p className="text-sm text-soft">The card that gives the longest time before its bill is due.</p>
       </div>
       <Field label="Purchase (₹)" hint="Optional. With an amount, cards that cannot take it go last.">
-        <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="20000" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        <AmountInput className={inputClass} autoComplete="off" placeholder="20000" value={amount} onChange={(e) => setAmount(e.target.value)} />
       </Field>
       <ul className="divide-y divide-line">
         {cards.map((c) => (
@@ -123,9 +123,9 @@ export function StatementCheckSheet({ cards, onClose }: { cards: CardAccount[]; 
           </p>
         )}
         <Field label="Total amount due on the statement (₹)">
-          <input
+          <AmountInput
             className={inputClass}
-            inputMode="decimal"
+           
             autoComplete="off"
             autoFocus
             placeholder="20988.76"
