@@ -238,3 +238,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-11-13: slice 26 noted: the salary day plan (`services/salary.ts`, `planJob.ts`) built on the commitments view, and the opt-in morning briefing.
 - 2026-11-14: slice 27 noted: runway (`domain/runway.ts`, `services/runway.ts`, the essential flag on categories) and the part-payment what-if (`simulatePrepayment` in `domain/loans.ts`).
 - 2026-11-15: slice 28 noted: money health (`domain/health.ts`, `services/health.ts`), the monthly review, and `getNetWorthAt` for net worth at any day.
+- 2026-11-16: slice 29 noted: the emergency fund (`domain/emergency.ts`, `services/emergency.ts`), flags on accounts and holdings, and three settings.

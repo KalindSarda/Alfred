@@ -373,6 +373,35 @@ export function runwayLine(r: { burnPaise: number | null; months: number | null;
   return `Runway: at ${rupees(r.burnPaise)} a month of essential spending, your bank money would last about ${r.months} months${r.solid ? "" : ` (an early estimate, from ${r.basedOnDays} days of entries)`}.`;
 }
 
+export interface EmergencyText {
+  months: number;
+  burnPaise: number | null;
+  targetPaise: number | null;
+  fundedPaise: number;
+  nothingFlagged: boolean;
+  gapPaise: number | null;
+  topUpPaise: number | null;
+  horizonMonths: number;
+  fundedMonths: number | null;
+  liquidMonths: number | null;
+  early: boolean;
+  basedOnDays: number;
+}
+
+/** Where the emergency fund stands, for /balance and the monthly review. Empty when there is nothing useful to say yet. */
+export function emergencyLine(e: EmergencyText): string | null {
+  const early = e.early ? ` (an early estimate, from ${e.basedOnDays} days of entries)` : "";
+  if (e.nothingFlagged) {
+    if (e.liquidMonths === null) return null;
+    return `Emergency fund: nothing is marked as one yet. Your bank money alone would cover about ${e.liquidMonths} months of essentials${early}; a common aim is ${e.months}. You can mark accounts or holdings in the app.`;
+  }
+  if (e.targetPaise === null) return `Emergency fund: ${rupees(e.fundedPaise)} set apart. Once there are about two weeks of entries I can size a target.`;
+  const cover = e.fundedMonths === null ? "" : `, about ${e.fundedMonths} months of essentials`;
+  const head = `Emergency fund: ${rupees(e.fundedPaise)} of ${rupees(e.targetPaise)}${cover}${early}.`;
+  if (!e.gapPaise) return `${head} The target is met.`;
+  return `${head} Still to build: ${rupees(e.gapPaise)}; about ${rupees(e.topUpPaise ?? 0)} a month would close it in ${e.horizonMonths} months.`;
+}
+
 export interface ReviewText {
   from: string;
   to: string;
@@ -391,6 +420,7 @@ export interface ReviewText {
   utilizationPct: number | null;
   runway: { months: number | null; burnPaise: number | null; solid: boolean; basedOnDays: number };
   netWorth: { endPaise: number; changePaise: number } | null;
+  emergency?: EmergencyText;
 }
 
 /** The monthly review: what came in, what went out, what was saved, and a few ratios with their usual reference lines. */
@@ -407,6 +437,8 @@ export function monthlyReviewLines(v: ReviewText): string[] {
   if (v.emiBurdenPct !== null && v.emiPaise > 0) lines.push(`EMIs took ${v.emiBurdenPct}% of income (about 40% is the usual ceiling).`);
   if (v.utilizationPct !== null) lines.push(`Your cards owe ${v.utilizationPct}% of their limits (under 30% is the usual aim).`);
   if (v.runway.months !== null && v.runway.burnPaise !== null) lines.push(`Your bank money would last about ${v.runway.months} months at ${rupees(v.runway.burnPaise)} a month of essential spending${v.runway.solid ? "" : ` (an early estimate, from ${v.runway.basedOnDays} days of entries)`}.`);
+  const fund = v.emergency ? emergencyLine(v.emergency) : null;
+  if (fund) lines.push(fund);
   if (v.netWorth) lines.push(`Net worth ${rupees(v.netWorth.endPaise)}, ${v.netWorth.changePaise >= 0 ? "up" : "down"} ${rupees(Math.abs(v.netWorth.changePaise))} over the month.`);
   return lines;
 }

@@ -38,6 +38,8 @@ export const accounts = sqliteTable(
     // bank
     openingBalancePaise: integer("opening_balance_paise").notNull().default(0),
     countsTowardSafeToSpend: integer("counts_toward_safe_to_spend", { mode: "boolean" }).notNull().default(true),
+    /** Part of the emergency fund (a bank account only). Still spendable money: this only says what the fund is made of. */
+    isEmergency: integer("is_emergency", { mode: "boolean" }).notNull().default(false),
     // card
     creditLimitPaise: integer("credit_limit_paise"),
     statementDay: integer("statement_day"),
@@ -478,6 +480,10 @@ export const appSettings = sqliteTable("app_settings", {
   morningPush: integer("morning_push", { mode: "boolean" }).notNull().default(false),
   /** On the first morning of each month, a review of the month just ended on Telegram. On unless switched off. */
   monthlyReview: integer("monthly_review", { mode: "boolean" }).notNull().default(true),
+  /** The emergency fund: how many months of essential spending it should cover, an optional typed target, and the months to close a gap over. */
+  emergencyMonths: integer("emergency_months").notNull().default(6),
+  emergencyTargetPaise: integer("emergency_target_paise"),
+  emergencyHorizonMonths: integer("emergency_horizon_months").notNull().default(12),
 });
 
 /** A salary credit that has been planned for, so each is planned once. */
@@ -563,6 +569,8 @@ export const holdings = sqliteTable(
     openingUnitsE4: integer("opening_units_e4").notNull().default(0),
     status: text("status", { enum: ["active", "closed"] }).notNull().default("active"),
     closedAt: text("closed_at"),
+    /** Part of the emergency fund (a liquid fund, say). */
+    isEmergency: integer("is_emergency", { mode: "boolean" }).notNull().default(false),
     createdAt: text("created_at").notNull(),
   },
   (t) => [index("holdings_user_status_idx").on(t.userId, t.status), check("holdings_opening_nonnegative", sql`${t.openingInvestedPaise} >= 0`)],

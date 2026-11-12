@@ -18,6 +18,7 @@ export function AccountForm({ initial, onDone, kind: fixedKind }: { initial?: Ac
   const [last4, setLast4] = useState(initial?.last4 ?? "");
   const [opening, setOpening] = useState(initial?.kind === "bank" ? paiseToInput(initial.openingBalancePaise) : "");
   const [counts, setCounts] = useState(initial?.kind === "bank" ? initial.countsTowardSafeToSpend : true);
+  const [emergency, setEmergency] = useState(initial?.kind === "bank" ? initial.isEmergency : false);
   const [limit, setLimit] = useState(initial?.kind === "card" ? paiseToInput(initial.creditLimitPaise) : "");
   const [statementDay, setStatementDay] = useState(initial?.kind === "card" ? String(initial.statementDay) : "");
   const [dueDay, setDueDay] = useState(initial?.kind === "card" ? String(initial.dueDay) : "");
@@ -33,7 +34,7 @@ export function AccountForm({ initial, onDone, kind: fixedKind }: { initial?: Ac
       if (kind === "bank") {
         const openingBalancePaise = parseSignedPaise(opening);
         if (openingBalancePaise === null) throw new LocalError("Opening balance looks wrong. Use a number like 25000 or -1500.");
-        body = { ...common, openingBalancePaise, countsTowardSafeToSpend: counts };
+        body = { ...common, openingBalancePaise, countsTowardSafeToSpend: counts, isEmergency: emergency };
       } else {
         const creditLimitPaise = parsePaise(limit);
         const openingOutstandingPaise = parseSignedPaise(outstanding);
@@ -140,6 +141,13 @@ export function AccountForm({ initial, onDone, kind: fixedKind }: { initial?: Ac
           <label className="flex min-h-11 items-center gap-3 text-sm">
             <input type="checkbox" className="size-5 accent-brand" checked={counts} onChange={(e) => setCounts(e.target.checked)} />
             Count this account toward safe-to-spend
+          </label>
+          <label className="flex min-h-11 items-start gap-3 text-sm">
+            <input type="checkbox" className="mt-1 size-5 accent-brand" checked={emergency} onChange={(e) => setEmergency(e.target.checked)} />
+            <span>
+              Part of my emergency fund
+              <span className="block text-xs text-soft">It is still money in the bank and still counts toward safe-to-spend if that is ticked. This only tells Alfred what your fund is made of.</span>
+            </span>
           </label>
         </>
       ) : (

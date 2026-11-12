@@ -15,6 +15,10 @@ export const UpdateSettings = z
     /** Pause the evening check-in through this day; null resumes it. */
     morningPush: z.boolean(),
     monthlyReview: z.boolean(),
+    /** The emergency fund: months of essential spending to cover, a typed target that replaces it (null clears), and the months to close a gap over. */
+    emergencyMonths: z.number().int().min(1).max(24),
+    emergencyTargetPaise: z.number().int().positive().max(100_000_000_000_00).nullable(),
+    emergencyHorizonMonths: z.number().int().min(1).max(60),
     logNudgeUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   })
   .partial()
@@ -31,4 +35,7 @@ export interface SettingsDto {
   logNudgeUntil: string | null;
   morningPush: boolean;
   monthlyReview: boolean;
+  emergencyMonths: number;
+  emergencyTargetPaise: number | null;
+  emergencyHorizonMonths: number;
 }

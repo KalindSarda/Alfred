@@ -5,6 +5,7 @@ import { checkinLog } from "../db/schema";
 import { cycleRange, todayIst } from "../domain/dates";
 import { newId, nowIso } from "../utils/id";
 import { logger } from "../utils/logger";
+import { getEmergencyFund } from "./emergency";
 import { getHealth } from "./health";
 import { chatsFor } from "./recurringJob";
 import { getSettings } from "./settings";
@@ -36,7 +37,7 @@ export async function runMonthlyReview(deps: ReviewJobDeps): Promise<{ sent: num
       const claimed = await db.insert(checkinLog).values({ id: newId(), userId, kind: "review", day: today, createdAt: nowIso() }).onConflictDoNothing().returning({ id: checkinLog.id });
       if (claimed.length === 0) continue;
       try {
-        await telegram.sendMessage(chat, monthlyReviewLines({ ...view, from: view.period.from, to: view.period.to }).join("\n"));
+        await telegram.sendMessage(chat, monthlyReviewLines({ ...view, from: view.period.from, to: view.period.to, emergency: await getEmergencyFund(db, userId, today) }).join("\n"));
         sent += 1;
       } catch (error) {
         logger.error("monthly_review_send_failed", { error: error instanceof Error ? error.message : "unknown" });

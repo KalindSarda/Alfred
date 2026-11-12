@@ -32,7 +32,7 @@ export const CreateHolding = z
   .strict();
 export type CreateHoldingData = z.output<typeof CreateHolding>;
 
-export const UpdateHolding = z.object({ name: Name, kind: HoldingKind }).partial().strict();
+export const UpdateHolding = z.object({ name: Name, kind: HoldingKind, isEmergency: z.boolean() }).partial().strict();
 export type UpdateHoldingData = z.output<typeof UpdateHolding>;
 
 export const SetHoldingValue = z.object({ valuePaise: Money, date: IstDateString.optional() }).strict();

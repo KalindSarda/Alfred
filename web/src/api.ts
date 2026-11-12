@@ -81,6 +81,8 @@ export interface BankAccount {
   last4: string | null;
   openingBalancePaise: number;
   countsTowardSafeToSpend: boolean;
+  /** Part of the emergency fund. */
+  isEmergency: boolean;
   balancePaise: number;
   blockedPaise: number;
   availablePaise: number;
@@ -329,6 +331,9 @@ export interface Settings {
   logNudgeUntil: string | null;
   morningPush: boolean;
   monthlyReview: boolean;
+  emergencyMonths: number;
+  emergencyTargetPaise: number | null;
+  emergencyHorizonMonths: number;
 }
 
 /** A card ranked for a purchase today: the longest time before the bill first. */
@@ -458,6 +463,7 @@ export interface Holding {
   kind: string;
   kindName: string;
   status: "active" | "closed";
+  isEmergency: boolean;
   openingInvestedPaise: number;
   investedPaise: number;
   soldPaise: number;
@@ -524,6 +530,29 @@ export interface HoldingsOverview {
   totalInvestedPaise: number;
   gainPaise: number;
   holdings: Holding[];
+}
+
+/** Where the emergency fund stands: the target, what is flagged as the fund, and what is still missing. */
+export interface EmergencyFund {
+  months: number;
+  horizonMonths: number;
+  burnPaise: number | null;
+  targetPaise: number | null;
+  basis: "burn" | "manual" | null;
+  fundedPaise: number;
+  bankPaise: number;
+  holdingsPaise: number;
+  nothingFlagged: boolean;
+  gapPaise: number | null;
+  topUpPaise: number | null;
+  fundedMonths: number | null;
+  progressPct: number | null;
+  liquidPaise: number;
+  liquidMonths: number | null;
+  early: boolean;
+  basedOnDays: number;
+  accounts: { id: string; name: string; paise: number }[];
+  holdings: { id: string; name: string; paise: number }[];
 }
 
 /** How a month looked: what came in, what had to be spent, what was chosen, and what was saved. */

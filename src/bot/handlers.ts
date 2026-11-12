@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, commitmentsLines, monthlyReviewLines, runwayLine, swipeReply, whatIfLines, usualLabel, describeEntry, emiReply, goalsReply, holdsReply, investReply, loansReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
+import { askAccount, botVoice, budgetNote, budgetsReply, categoriesReply, commitmentsLines, monthlyReviewLines, emergencyLine, runwayLine, swipeReply, whatIfLines, usualLabel, describeEntry, emiReply, goalsReply, holdsReply, investReply, loansReply, owedReply, recurringReply, type EntryFacts, type Need, shortDate } from "../alfred/botVoice";
 import { daysBetween, inDays } from "../alfred/voice";
 import { AppError, ConflictError, NotFoundError, RateLimitedError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
@@ -20,6 +20,7 @@ import { unitWord, unitsQuestionFor } from "../services/holdingsJob";
 import { parseQuantityE4 } from "../domain/holdings";
 import { getCommitments } from "../services/commitments";
 import { buildSalaryPlan, latestSalary } from "../services/salary";
+import { getEmergencyFund } from "../services/emergency";
 import { getRunway } from "../services/runway";
 import { getHealth } from "../services/health";
 import { previewBalance, settleBalance } from "../services/balanceCheck";
@@ -365,7 +366,7 @@ async function runMenuItem(deps: BotDeps, who: Actor, id: string, today: IstDate
 async function cmdReview(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
   const view = await getHealth(deps.db, who.userId, today, "last");
   if (view.empty) return void (await deps.telegram.sendMessage(who.chatId, botVoice.reviewNothing));
-  await deps.telegram.sendMessage(who.chatId, monthlyReviewLines({ ...view, from: view.period.from, to: view.period.to }).join("\n"));
+  await deps.telegram.sendMessage(who.chatId, monthlyReviewLines({ ...view, from: view.period.from, to: view.period.to, emergency: await getEmergencyFund(deps.db, who.userId, today) }).join("\n"));
 }
 
 /** What part-paying a loan would do: "/whatif 25000 home" (add "12%" to compare the same money invested). */
@@ -655,6 +656,8 @@ async function cmdBalance(deps: BotDeps, who: Actor, today: IstDate): Promise<vo
   lines.push(`Net worth: ${rupees(overview.netWorthPaise)} (banks minus cards).`);
   const run = runwayLine(await getRunway(deps.db, who.userId, today));
   if (run) lines.push(run);
+  const fund = emergencyLine(await getEmergencyFund(deps.db, who.userId, today));
+  if (fund) lines.push(fund);
   await deps.telegram.sendMessage(who.chatId, lines.join("\n"));
 }
 

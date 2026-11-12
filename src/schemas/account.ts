@@ -11,6 +11,7 @@ export const CreateAccount = z.discriminatedUnion("kind", [
     last4: Last4.optional(),
     openingBalancePaise: z.number().int(),
     countsTowardSafeToSpend: z.boolean().optional(),
+    isEmergency: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal("card"),
@@ -31,6 +32,7 @@ export const UpdateAccount = z
     last4: Last4,
     openingBalancePaise: z.number().int(),
     countsTowardSafeToSpend: z.boolean(),
+    isEmergency: z.boolean(),
     creditLimitPaise: z.number().int().positive(),
     statementDay: Day,
     dueDay: Day,

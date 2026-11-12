@@ -1,5 +1,5 @@
 import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type CommitmentsView, type EntryHints, type MoneyHealth, type Runway, type HoldingKind, type HoldingsOverview, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type CommitmentsView, type EntryHints, type EmergencyFund, type MoneyHealth, type Runway, type HoldingKind, type HoldingsOverview, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -38,6 +38,9 @@ export const useCategories = () =>
 /** How the last full month (or this one so far) looked. */
 export const useMoneyHealth = (period: "last" | "current") =>
   useQuery({ queryKey: ["money-health", period], queryFn: () => api.get<MoneyHealth>(`/api/money-health?period=${period}`) });
+
+/** Where the emergency fund stands. */
+export const useEmergencyFund = () => useQuery({ queryKey: ["emergency-fund"], queryFn: () => api.get<EmergencyFund>("/api/emergency-fund") });
 
 /** How many months the bank money would last at essential spending. */
 export const useRunway = () => useQuery({ queryKey: ["runway"], queryFn: () => api.get<Runway>("/api/runway") });
@@ -160,6 +163,7 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["commitments"] }),
       client.invalidateQueries({ queryKey: ["runway"] }),
       client.invalidateQueries({ queryKey: ["money-health"] }),
+      client.invalidateQueries({ queryKey: ["emergency-fund"] }),
       client.invalidateQueries({ queryKey: ["loans"] }),
       client.invalidateQueries({ queryKey: ["hints"] }),
       client.invalidateQueries({ queryKey: ["networth"] }),

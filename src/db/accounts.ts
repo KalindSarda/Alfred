@@ -12,6 +12,7 @@ export type NewAccount =
       last4?: string | null;
       openingBalancePaise: number;
       countsTowardSafeToSpend?: boolean;
+      isEmergency?: boolean;
     }
   | {
       kind: "card";
@@ -41,6 +42,7 @@ export async function insertAccount(
       ? {
           openingBalancePaise: input.openingBalancePaise,
           countsTowardSafeToSpend: input.countsTowardSafeToSpend ?? true,
+          isEmergency: input.isEmergency ?? false,
         }
       : {
           creditLimitPaise: input.creditLimitPaise,

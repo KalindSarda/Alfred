@@ -20,6 +20,8 @@ export interface BankAccountDto {
   last4: string | null;
   openingBalancePaise: number;
   countsTowardSafeToSpend: boolean;
+  /** Part of the emergency fund. */
+  isEmergency: boolean;
   balancePaise: number;
   /** Money blocked in this account (IPO applications and the like); still in the balance, but not spendable. */
   blockedPaise: number;
@@ -64,6 +66,7 @@ export function toAccountDto(account: AccountWithFigures, entryCount = 0): Accou
       last4: account.last4,
       openingBalancePaise: account.openingBalancePaise,
       countsTowardSafeToSpend: account.countsTowardSafeToSpend,
+      isEmergency: account.isEmergency,
       balancePaise: account.balancePaise,
       blockedPaise: account.blockedPaise,
       availablePaise: account.balancePaise - account.blockedPaise,
@@ -212,7 +215,7 @@ export async function createAccount(db: Db, userId: string, input: CreateAccount
   return accountDto(db, userId, row.id, today);
 }
 
-const BANK_ONLY = ["openingBalancePaise", "countsTowardSafeToSpend"] as const;
+const BANK_ONLY = ["openingBalancePaise", "countsTowardSafeToSpend", "isEmergency"] as const;
 const CARD_ONLY = ["creditLimitPaise", "statementDay", "dueDay", "openingOutstandingPaise"] as const;
 
 export async function updateAccount(
