@@ -102,3 +102,33 @@ export function buildFlow(data: Cashflow): FlowModel | null {
 
   return { nodes, links, totalPaise };
 }
+
+export interface BarSegment {
+  id: string;
+  label: string;
+  amountPaise: number;
+  /** Share of the bar, a whole-number-friendly percentage with one decimal. */
+  pct: number;
+  color: string;
+}
+
+/**
+ * The few pieces of a stacked bar for a glance: where the money went, biggest first, then savings, with the tail folded
+ * into "Other". `max` counts the named pieces; savings always keeps its own piece. Pure, so it is unit-tested.
+ */
+export function barSegments(model: FlowModel, max = 5): BarSegment[] {
+  const sinks = model.nodes.filter((n) => n.side === "sink");
+  if (model.totalPaise <= 0 || sinks.length === 0) return [];
+  const savings = sinks.find((n) => n.id === "savings");
+  const spent = sinks.filter((n) => n.id !== "savings").sort((a, b) => b.amountPaise - a.amountPaise);
+  const keep = spent.length > max ? spent.slice(0, max - 1) : spent;
+  const rest = spent.slice(keep.length);
+  const piece = (n: FlowNode): BarSegment => ({ id: n.id, label: n.label, amountPaise: n.amountPaise, pct: round1((n.amountPaise / model.totalPaise) * 100), color: n.color });
+  const out = keep.map(piece);
+  if (rest.length > 0) {
+    const amountPaise = rest.reduce((s, n) => s + n.amountPaise, 0);
+    out.push({ id: "rest", label: `Other (${rest.length})`, amountPaise, pct: round1((amountPaise / model.totalPaise) * 100), color: OTHER_COLOR });
+  }
+  if (savings) out.push(piece(savings));
+  return out;
+}

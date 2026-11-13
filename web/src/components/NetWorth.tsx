@@ -18,13 +18,11 @@ function Row({ label, value, hint }: { label: string; value: string; hint?: stri
   );
 }
 
-/** The full breakdown, shown at the top of Accounts and cards. */
-export function NetWorthCard({ overview }: { overview: BalanceOverview }) {
+/** The breakdown lines and the runway, shared by the card on Money and the one that opens on Today. */
+export function NetWorthDetails({ overview }: { overview: BalanceOverview }) {
   const runway = useRunway().data;
   return (
-    <Card>
-      <p className="text-xs tracking-wide text-soft uppercase">{LABEL}</p>
-      <p className="font-display mt-1 text-4xl tabular-nums"><Amount paise={overview.netWorthPaise} /></p>
+    <>
       <div className="mt-3 divide-y divide-line border-t border-brass/50 pt-2">
         <Row label="In your bank accounts" value={rupees(overview.totalInBanksPaise)} />
         {overview.setAsidePaise !== 0 && (
@@ -61,6 +59,17 @@ export function NetWorthCard({ overview }: { overview: BalanceOverview }) {
           )}
         </div>
       )}
+    </>
+  );
+}
+
+/** The full breakdown, shown at the top of Money. */
+export function NetWorthCard({ overview }: { overview: BalanceOverview }) {
+  return (
+    <Card>
+      <p className="text-xs tracking-wide text-soft uppercase">{LABEL}</p>
+      <p className="font-display mt-1 text-4xl tabular-nums"><Amount paise={overview.netWorthPaise} /></p>
+      <NetWorthDetails overview={overview} />
       <p className="mt-3 text-xs text-faint">Everything you own and owe is counted here.</p>
     </Card>
   );

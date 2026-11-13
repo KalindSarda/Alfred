@@ -77,7 +77,7 @@ export function Card({
   );
 }
 
-export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Sheet({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -103,7 +103,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         aria-label={title}
         tabIndex={-1}
         onMouseDown={(e) => e.stopPropagation()}
-        className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-paper p-5 pb-8 shadow-xl focus:outline-none md:max-w-md md:rounded-3xl"
+        className={`max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-paper p-5 pb-8 shadow-xl focus:outline-none md:rounded-3xl ${wide ? "md:max-w-5xl" : "md:max-w-md"}`}
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{title}</h2>
