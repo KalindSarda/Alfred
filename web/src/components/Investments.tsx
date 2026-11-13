@@ -6,7 +6,7 @@ import { useAccounts, useHoldingKinds, useHoldings, useInvestmentAccounts, useRe
 import { NewKindSheet } from "./InvestmentKinds";
 import { AccountSelect, AccountsSheet, MoveSheet } from "./InvestmentAccounts";
 import { useToast } from "./toast";
-import { Amount, AmountInput, Button, Card, Empty, ErrorText, Field, Sheet, inputClass } from "./ui";
+import { Amount, AmountInput, Button, Card, Chevron, Empty, ErrorText, Field, Sheet, inputClass } from "./ui";
 
 /** What a kind is held in, and the quantity its rate is quoted for (gold for 10 g, silver for 1,000 g). */
 interface UnitInfo {
@@ -629,9 +629,7 @@ function Group({ title, note, holdings, sort, open, onToggle, onAct, actions }: 
             {put > 0 && ` (${Math.round((gain / put) * 1000) / 10}%)`}
           </span>
         </span>
-        <span aria-hidden="true" className="mt-1 text-soft">
-          {open ? "⌃" : "⌄"}
-        </span>
+        <Chevron open={open} className="mt-1.5 text-soft" />
       </button>
       {open && (
         <>
@@ -752,23 +750,18 @@ export function Investments() {
           {accounts.map((a) => (
             <Group key={a.id} title={a.name} note={a.purpose} holdings={inAccount(a.id)} sort={sort} open={!shut.has(a.id)} onToggle={() => toggle(a.id)} onAct={act} />
           ))}
-          {(loose.length > 0 || accounts.length === 0) && (
-            <Group
-              title={accounts.length > 0 ? "Not in an account yet" : "Your investments"}
-              note={null}
-              holdings={loose}
-              sort={sort}
-              open={!shut.has("loose")}
-              onToggle={() => toggle("loose")}
-              onAct={act}
-              actions={
-                accounts.length > 0 ? (
-                  <button type="button" className="min-h-11 w-full border-t border-line px-4 text-sm text-brand" onClick={() => setManage("move")}>
-                    Assign these to an account
-                  </button>
-                ) : undefined
-              }
-            />
+          {/* Investments that are in no broker account (gold coins, a property) are simply listed, with no card to open. */}
+          {loose.length > 0 && (
+            <div className="space-y-1">
+              {accounts.length > 0 && <p className="px-1 text-xs tracking-wide text-soft uppercase">Other investments</p>}
+              <Card pad="p-0">
+                <ul className="divide-y divide-line">
+                  {sortHoldings(loose, sort).map((h) => (
+                    <Row key={h.id} h={h} onAct={act(h)} />
+                  ))}
+                </ul>
+              </Card>
+            </div>
           )}
         </>
       )}
@@ -787,7 +780,7 @@ export function Investments() {
       )}
 
       {manage === "accounts" && <AccountsSheet onClose={() => setManage(null)} />}
-      {manage === "move" && <MoveSheet holdings={active} start={loose.map((h) => h.id)} onClose={() => setManage(null)} />}
+      {manage === "move" && <MoveSheet holdings={active} onClose={() => setManage(null)} />}
       {sheet?.kind === "edit" && <HoldingSheet holding={sheet.holding} all={holdings} onBuyInstead={(h) => setSheet({ kind: "buy", holding: h })} onClose={() => setSheet(null)} />}
       {sheet?.kind === "rate" && <RateSheet holding={sheet.holding} onClose={() => setSheet(null)} />}
       {sheet?.kind === "convert" && <ConvertSheet holding={sheet.holding} onClose={() => setSheet(null)} />}

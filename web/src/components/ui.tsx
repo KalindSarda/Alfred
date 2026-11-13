@@ -263,3 +263,23 @@ export function AmountInput({ allowNegative = false, onChange, ...rest }: InputH
     />
   );
 }
+
+/** A small chevron that points down and turns over when `open`, for things that expand in place. */
+export function Chevron({ open, className = "" }: { open: boolean; className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`shrink-0 transition-transform duration-150 ${open ? "rotate-180" : ""} ${className}`}
+    >
+      <path d="M3.5 6l4.5 4.5L12.5 6" />
+    </svg>
+  );
+}
