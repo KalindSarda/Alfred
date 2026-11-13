@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Cashflow, CashflowRow } from "../api";
+import { showIncomeCard } from "../cashflow";
 import { emptyFilters, transactionsLink, type TxnFilters } from "../filters";
 import { rupees } from "../format";
 import { useCashflow } from "../queries";
@@ -64,10 +65,11 @@ function List({ data, rows, type }: { data: Cashflow; rows: CashflowRow[]; type:
   );
 }
 
-function Panel({ period, type }: { period: string; type: "income" | "expense" }) {
+function Panel({ period, type, hideEmpty = false }: { period: string; type: "income" | "expense"; hideEmpty?: boolean }) {
   const [groupBy, setGroupBy] = useState<"category" | "merchant">("category");
   const query = useCashflow(period, groupBy);
   const title = type === "income" ? "Income" : "Expenses";
+  if (hideEmpty && type === "income" && query.data && !showIncomeCard(query.data)) return null;
 
   return (
     <Card>
@@ -98,11 +100,14 @@ function Panel({ period, type }: { period: string; type: "income" | "expense" })
   );
 }
 
-/** Two cards side by side: where income came from and where it went, with proportional bars. */
-export function Breakdown({ period }: { period: string }) {
+/**
+ * Where income came from and where it went, with proportional bars: two cards side by side, or `stacked` one under the
+ * other (income first, and left out when nothing came in) for a phone.
+ */
+export function Breakdown({ period, stacked = false }: { period: string; stacked?: boolean }) {
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <Panel period={period} type="income" />
+    <div className={stacked ? "space-y-6" : "grid gap-6 lg:grid-cols-2"}>
+      <Panel period={period} type="income" hideEmpty={stacked} />
       <Panel period={period} type="expense" />
     </div>
   );

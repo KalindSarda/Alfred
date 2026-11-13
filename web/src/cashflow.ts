@@ -132,3 +132,6 @@ export function barSegments(model: FlowModel, max = 5): BarSegment[] {
   if (savings) out.push(piece(savings));
   return out;
 }
+
+/** On a phone the income card only shows when something came in; an empty one would just push spending down. */
+export const showIncomeCard = (data: Pick<Cashflow, "incomePaise">): boolean => data.incomePaise > 0;

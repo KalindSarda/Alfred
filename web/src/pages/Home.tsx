@@ -3,16 +3,29 @@ import { daysBetween, inDays } from "../../../src/alfred/voice";
 import type { CardAccount } from "../api";
 import { AlfredPanel } from "../components/Alfred";
 import { Breakdown } from "../components/Breakdown";
+import { CashflowCard } from "../components/CashflowCard";
 import { CashflowToday } from "../components/CashflowToday";
 import { CommitmentsCard } from "../components/Commitments";
-import { Card, Empty, Spinner } from "../components/ui";
-import { rupees, shortDate, today } from "../format";
-import { emptyFilters } from "../filters";
+import { NetWorthStrip } from "../components/NetWorth";
 import { NetWorthToday } from "../components/NetWorthToday";
 import { Shortcuts } from "../components/Shortcuts";
-import { useAccounts, useBalanceOverview, useBriefing, useCategories, useTransactions } from "../queries";
+import { Card, Empty, Spinner } from "../components/ui";
+import { emptyFilters } from "../filters";
+import { rupees, rupeesCompact, shortDate, today } from "../format";
+import { useAccounts, useBalanceOverview, useBriefing, useCategories, useSummary, useTransactions } from "../queries";
 import { Link } from "../router";
 import { amountSign, amountTone, describeTxn } from "../txn";
+import { useWide } from "../useWide";
+
+function Tile({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" }) {
+  const color = tone === "good" ? "text-good" : tone === "bad" ? "text-bad" : "";
+  return (
+    <Card pad="p-3 md:p-4">
+      <p className="text-xs tracking-wide text-soft uppercase">{label}</p>
+      <p className={`font-display mt-1 text-xl tabular-nums md:text-2xl ${color}`}>{value}</p>
+    </Card>
+  );
+}
 
 function SectionTitle({ children, to, action }: { children: string; to?: string; action?: string }) {
   return (
@@ -27,9 +40,36 @@ function SectionTitle({ children, to, action }: { children: string; to?: string;
   );
 }
 
+/** Income, expense and net for the month as plain tiles; the wide layout's cash flow heading. */
+function CashflowTiles({ period }: { period: string }) {
+  const summary = useSummary(period);
+  if (!summary.data) return null;
+  const s = summary.data;
+  return (
+    <section aria-label="Cash flow summary" className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+        <h2 className="font-display text-xl">Cash flow</h2>
+        <span className="text-sm text-soft">
+          {shortDate(s.period.from)} – {shortDate(s.period.to)}
+          {" · "}
+          <Link to="/settings#month" className="text-brand hover:underline">
+            change month start
+          </Link>
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <Tile label="Income" value={rupeesCompact(s.incomePaise)} tone="good" />
+        <Tile label="Expense" value={rupeesCompact(s.expensePaise)} />
+        <Tile label="Net" value={rupeesCompact(s.netPaise)} tone={s.netPaise >= 0 ? "good" : "bad"} />
+      </div>
+    </section>
+  );
+}
+
 export function Home() {
   // The user's own month: calendar month by default, or from their payday (set in Settings).
   const period = "cycle";
+  const wide = useWide();
   const briefing = useBriefing();
   const accounts = useAccounts();
   const overview = useBalanceOverview();
@@ -45,7 +85,8 @@ export function Home() {
   }
 
   const b = briefing.data;
-  const panel = <AlfredPanel greeting={b.greeting} subline={b.subline} lines={b.lines} sections={b.sections} footer={b.footer} compact />;
+  // A phone gets a three-line glance that opens in place; a bigger screen shows the whole briefing.
+  const panel = <AlfredPanel greeting={b.greeting} subline={b.subline} lines={b.lines} sections={b.sections} footer={b.footer} compact={!wide} />;
   if ((accounts.data ?? []).length === 0) return <div className="space-y-5">{panel}</div>;
 
   const todayDate = today();
@@ -113,25 +154,38 @@ export function Home() {
     </Card>
   );
 
-  // One column on a phone, in the order of a morning look: the briefing, what is free, how the month went, net worth,
-  // what is coming, then the detail. From a wide screen it splits into two columns so more is in view at once.
+  // Phone: the briefing, what is free, how the month went, net worth, the shortcuts, what is coming, recent entries,
+  // then where income came from (only if any did) and where spending went.
+  if (!wide) {
+    return (
+      <div className="space-y-6">
+        <h1 className="sr-only">Today</h1>
+        {panel}
+        <CommitmentsCard />
+        <CashflowToday period={period} />
+        {overview.data && <NetWorthToday overview={overview.data} />}
+        {overview.data && <Shortcuts overview={overview.data} />}
+        {comingUp}
+        {recentCard}
+        <Breakdown period={period} stacked />
+      </div>
+    );
+  }
+
+  // Tablet and desktop: the wide single column, with the whole Sankey drawn in the page.
   return (
     <div className="space-y-6">
       <h1 className="sr-only">Today</h1>
-
+      {panel}
+      <CommitmentsCard />
+      {overview.data && <Shortcuts overview={overview.data} />}
+      <CashflowTiles period={period} />
+      {overview.data && <NetWorthStrip overview={overview.data} />}
+      <CashflowCard period={period} />
+      <Breakdown period={period} />
       <div className="grid items-start gap-6 lg:grid-cols-2">
-        <div className="space-y-6">
-          {panel}
-          <CommitmentsCard />
-          {overview.data && <Shortcuts overview={overview.data} />}
-          {comingUp}
-          {recentCard}
-        </div>
-        <div className="space-y-6">
-          <CashflowToday period={period} />
-          {overview.data && <NetWorthToday overview={overview.data} />}
-          <Breakdown period={period} />
-        </div>
+        {comingUp}
+        {recentCard}
       </div>
     </div>
   );

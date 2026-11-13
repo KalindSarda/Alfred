@@ -16,6 +16,7 @@ import { inviteEmailFromHash } from "./invite";
 import { clearInviteHash } from "./inviteUrl";
 import { useMe, useReviewCounts } from "./queries";
 import { Link, replacePath, usePath, useScrollToHash, useSearch } from "./router";
+import { useNavStyle } from "./navStyle";
 import { HUB_PATHS, type Hub, hubOf, redirectFor } from "./routes";
 
 /** The five places, in order. The rail shows all five; the phone's bottom bar shows the first four and keeps You in the header. */
@@ -67,6 +68,7 @@ export function App() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
   const current = hubOf(path);
+  const top = useNavStyle() === "top";
   // Old addresses (Transactions, Accounts, Freedom, Protection, Everything, Budgets) move over quietly.
   useEffect(() => {
     const to = redirectFor(path, window.location.search, window.location.hash);
@@ -118,8 +120,8 @@ export function App() {
   const badge = (hub: Hub) => (hub === "activity" && reviewTotal > 0 ? reviewTotal : 0);
 
   return (
-    <div className="min-h-dvh md:flex">
-      <aside className="hidden w-16 shrink-0 flex-col gap-1 border-r border-line p-2 md:flex min-[1100px]:w-64 min-[1100px]:p-4">
+    <div className={`min-h-dvh ${top ? "" : "md:flex"}`}>
+      <aside className={top ? "hidden" : "hidden w-16 shrink-0 flex-col gap-1 border-r border-line p-2 md:flex min-[1100px]:w-64 min-[1100px]:p-4"}>
         <p className="mb-4 px-3 font-display text-3xl tracking-tight max-[1099px]:text-center max-[1099px]:px-0 max-[1099px]:text-2xl">
           <span className="min-[1100px]:hidden">A</span>
           <span className="hidden min-[1100px]:inline">Alfred</span>
@@ -168,6 +170,47 @@ export function App() {
           </Link>
         ))}
       </aside>
+
+      {top && (
+        <header className="sticky top-0 z-30 hidden items-center gap-1 border-b border-line bg-paper px-6 py-2 md:flex">
+          <p className="mr-4 font-display text-2xl tracking-tight">Alfred</p>
+          {HUBS.slice(0, 4).map((item) => (
+            <Link
+              key={item.hub}
+              to={HUB_PATHS[item.hub]}
+              aria-current={current === item.hub ? "page" : undefined}
+              className={`flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${current === item.hub ? "bg-sunk text-brand" : "text-soft hover:bg-hover"}`}
+            >
+              <Icon name={item.icon} className="size-5" />
+              {item.label}
+              {badge(item.hub) > 0 && (
+                <span className="rounded-full bg-warn-bg px-2 py-0.5 text-xs text-warn-ink" aria-label={`${badge(item.hub)} entries need attention`}>
+                  {badge(item.hub)}
+                </span>
+              )}
+            </Link>
+          ))}
+          <div className="ml-auto flex items-center gap-1">
+            <button type="button" onClick={() => setFinding(true)} aria-label="Find anything" className="flex min-h-11 items-center gap-2 rounded-xl border border-line px-3 text-sm text-soft hover:bg-hover">
+              <Icon name="search" className="size-5" />
+              Find
+              <kbd className="rounded bg-sunk px-1.5 py-0.5 text-xs">/</kbd>
+            </button>
+            <Link
+              to={HUB_PATHS.you}
+              aria-label="You"
+              aria-current={current === "you" ? "page" : undefined}
+              className={`flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium ${current === "you" ? "bg-sunk text-brand" : "text-soft hover:bg-hover"}`}
+            >
+              <Icon name="grid" className="size-5" />
+              You
+            </Link>
+            <button type="button" onClick={() => setAdding(true)} className="flex min-h-11 items-center gap-2 rounded-xl bg-brand px-4 text-sm font-medium text-white hover:bg-brand-strong">
+              <Icon name="plus" className="size-5" /> New
+            </button>
+          </div>
+        </header>
+      )}
 
       <main className="mx-auto w-full min-w-0 max-w-5xl flex-1 px-4 pb-28 md:p-8 md:pb-8">
         <header className="sticky top-0 z-30 -mx-4 mb-2 flex items-center justify-between bg-paper px-4 pt-[env(safe-area-inset-top)] md:hidden">

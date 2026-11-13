@@ -254,3 +254,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-11-29: Investments page tidy: investments in no broker account are listed directly under an "Other investments" label (no card), and expandable cards use a chevron icon (`Chevron` in `web/src/components/ui.tsx`).
 - 2026-11-29: slice 41 noted: five hubs (Today, Activity, Money, Plan, You), `web/src/routes.ts` for hub membership and redirects, responsive shell (bottom bar, icon rail, full rail), Foundations and Protection as Plan views, the Everything page is now You.
 - 2026-11-29: slice 42 noted: Today screen (compact briefing, cash flow bar with Sankey sheet, net worth card with sparkline), two columns from 1024 px.
+- 2026-11-30: slice 42 follow-up noted: two Today layouts by width (`useWide`), sidebar or top bar on big screens (`navStyle`).
