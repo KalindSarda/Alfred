@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Cashflow, CashflowRow } from "../web/src/api";
-import { buildFlow, collapseSmall } from "../web/src/cashflow";
+import { buildFlow, collapseSmall, kindFromCategories, NEED_COLORS, SAVINGS_COLOR, WANT_COLORS } from "../web/src/cashflow";
 
 const row = (name: string, amountPaise: number, income = 100_000_00, key = name.toLowerCase()): CashflowRow => ({
   key,
@@ -88,5 +88,35 @@ describe("collapseSmall", () => {
   it("does nothing when the total is zero", () => {
     const rows = [row("A", 0)];
     expect(collapseSmall(rows, 0)).toBe(rows);
+  });
+});
+
+describe("colouring by purpose", () => {
+  const cats = [
+    { id: "rent", essential: true },
+    { id: "bills", essential: true },
+    { id: "food", essential: false },
+    { id: "fun", essential: false },
+  ];
+  const colorOf = (m: ReturnType<typeof buildFlow>, id: string) => m!.nodes.find((n) => n.id === id)?.color;
+
+  it("draws needs in blues and wants in warm colours, in order within each group", () => {
+    const m = buildFlow(data([row("Salary", 100_000_00)], [row("Rent", 30_000_00), row("Food", 10_000_00), row("Bills", 8_000_00), row("Fun", 6_000_00)]), kindFromCategories(cats));
+    expect(colorOf(m, "out:rent")).toBe(NEED_COLORS[0]);
+    expect(colorOf(m, "out:bills")).toBe(NEED_COLORS[1]);
+    expect(colorOf(m, "out:food")).toBe(WANT_COLORS[0]);
+    expect(colorOf(m, "out:fun")).toBe(WANT_COLORS[1]);
+    expect(colorOf(m, "savings")).toBe(SAVINGS_COLOR);
+  });
+
+  it("leaves a row grey when it is neither a known need nor a want", () => {
+    const m = buildFlow(data([row("Salary", 100_000_00)], [row("Swiggy", 10_000_00, 100_000_00, "swiggy"), row("Rent", 30_000_00)]), kindFromCategories(cats));
+    expect(colorOf(m, "out:swiggy")).toBe("#8a8f9a");
+    expect(colorOf(m, "out:rent")).toBe(NEED_COLORS[0]);
+  });
+
+  it("keeps the old cycling colours when no classifier is given", () => {
+    const m = buildFlow(data([row("Salary", 100_000_00)], [row("Rent", 30_000_00), row("Food", 10_000_00)]));
+    expect(colorOf(m, "out:rent")).not.toBe(colorOf(m, "out:food"));
   });
 });

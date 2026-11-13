@@ -1,13 +1,15 @@
 import { useMemo } from "react";
-import { buildFlow } from "../cashflow";
-import { useCashflow } from "../queries";
+import { buildFlow, kindFromCategories } from "../cashflow";
+import { useCashflow, useCategories } from "../queries";
+import { FlowLegend } from "./FlowLegend";
 import { Sankey } from "./Sankey";
 import { Card, Empty } from "./ui";
 
 /** "Where the money went": income flowing through to expenses and savings for the chosen period. */
 export function CashflowCard({ period }: { period: string }) {
   const query = useCashflow(period, "category");
-  const model = useMemo(() => (query.data ? buildFlow(query.data) : null), [query.data]);
+  const categories = useCategories();
+  const model = useMemo(() => (query.data ? buildFlow(query.data, kindFromCategories(categories.data ?? [])) : null), [query.data, categories.data]);
 
   return (
     <Card>
@@ -22,7 +24,10 @@ export function CashflowCard({ period }: { period: string }) {
       ) : !model ? (
         <Empty title="Nothing to chart in this period">Income and expenses you record will flow through here.</Empty>
       ) : (
-        <Sankey model={model} />
+        <>
+          <Sankey model={model} />
+          <FlowLegend />
+        </>
       )}
     </Card>
   );

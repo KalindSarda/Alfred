@@ -186,7 +186,7 @@ export function App() {
             </Link>
           </div>
         </header>
-        <div className={current === "today" || current === "activity" || current === "money" ? "" : "max-w-3xl"}>
+        <div className={current === "today" ? "" : "max-w-3xl"}>
           <Page path={path} />
         </div>
       </main>

@@ -16,6 +16,3 @@ export function useMinWidth(px: number): boolean {
 
 /** Tablet width and up. */
 export const useWide = (): boolean => useMinWidth(768);
-
-/** Wide enough for a list with its detail beside it. */
-export const useSplit = (): boolean => useMinWidth(1100);

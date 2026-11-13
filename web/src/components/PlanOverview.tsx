@@ -4,27 +4,35 @@ import { rupeesCompact } from "../format";
 import { planPath } from "../planView";
 import { useBudgets, useEmergencyFund, useFire, useGoals, useLadder, useProtection } from "../queries";
 import { Link } from "../router";
-import { Card } from "./ui";
+import { Card, Icon } from "./ui";
 
-const BAR: Record<FoundationRow["status"], string> = { ok: "bg-good", building: "bg-brand", attention: "bg-brass" };
+/** Done is green, in progress blue, needs attention amber; the long-term goal is purple. */
+const STATUS_COLOR: Record<FoundationRow["status"], string> = { ok: "#1f8a5b", building: "#2b6cde", attention: "#d98a1f" };
+const LONG_TERM = "#7a5ea8";
+const barColor = (r: FoundationRow): string => (r.key === "fire" && r.status !== "ok" ? LONG_TERM : STATUS_COLOR[r.status]);
 
-function Bar({ pct, tone = "bg-brand" }: { pct: number | null; tone?: string }) {
+function Bar({ pct, color = "#2b6cde" }: { pct: number | null; color?: string }) {
   return (
     <span className="block h-1.5 overflow-hidden rounded-full bg-sunk" aria-hidden="true">
-      <span className={`block h-full rounded-full ${tone}`} style={{ width: `${Math.max(pct && pct > 0 ? 3 : 0, Math.min(100, pct ?? 0))}%` }} />
+      <span className="block h-full rounded-full" style={{ background: color, width: `${Math.max(pct && pct > 0 ? 3 : 0, Math.min(100, pct ?? 0))}%` }} />
     </span>
   );
 }
 
 /** One place to go next: a title, one line of where it stands, and a link to the whole thing. */
-function Summary({ to, title, children }: { to: string; title: string; children: ReactNode }) {
+function Summary({ to, title, icon, color, children }: { to: string; title: string; icon: string; color: string; children: ReactNode }) {
   return (
-    <Link to={to} className="flex min-h-16 flex-col justify-center rounded-2xl border border-line bg-card px-4 py-3 hover:bg-hover">
-      <span className="flex items-baseline justify-between gap-3">
-        <span className="font-medium">{title}</span>
-        <span className="text-sm text-brand">Open →</span>
+    <Link to={to} className="flex min-h-16 items-center gap-3 rounded-2xl border border-line bg-card px-4 py-3 hover:bg-hover">
+      <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-xl" style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color }}>
+        <Icon name={icon} className="size-5" />
       </span>
-      <span className="mt-0.5 space-y-1.5 text-sm text-soft">{children}</span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-baseline justify-between gap-3">
+          <span className="font-medium">{title}</span>
+          <span className="text-sm text-brand">Open →</span>
+        </span>
+        <span className="mt-0.5 block space-y-1.5 text-sm text-soft">{children}</span>
+      </span>
     </Link>
   );
 }
@@ -66,7 +74,7 @@ export function PlanOverview() {
                   <span className="shrink-0 tabular-nums text-soft">{r.pct === null ? "n/a" : `${Math.round(r.pct)}%`}</span>
                 </span>
                 <span className="mt-1 block">
-                  <Bar pct={r.pct} tone={BAR[r.status]} />
+                  <Bar pct={r.pct} color={barColor(r)} />
                 </span>
               </li>
             ))}
@@ -75,13 +83,13 @@ export function PlanOverview() {
       )}
 
       {fund && (
-        <Summary to={planPath("foundations")} title="Emergency fund">
+        <Summary to={planPath("foundations")} title="Emergency fund" icon="shield" color="#2b6cde">
           {target?.pct != null ? (
             <>
               <span className="block">
                 {rupeesCompact(target.fundedPaise)} of {rupeesCompact(target.totalPaise ?? 0)} for your lifestyle goal · {Math.round(target.pct)}%
               </span>
-              <Bar pct={target.pct} />
+              <Bar pct={target.pct} color="#2b6cde" />
             </>
           ) : (
             <span className="block">Set a target to see how far along you are.</span>
@@ -90,14 +98,14 @@ export function PlanOverview() {
       )}
 
       {fire && (
-        <Summary to={planPath("foundations")} title="Independence">
+        <Summary to={planPath("foundations")} title="Independence" icon="sunrise" color="#7a5ea8">
           {fire.numberPaise != null && fire.progressPct != null ? (
             <>
               <span className="block">
                 {rupeesCompact(fire.corpus.totalPaise)} toward {rupeesCompact(fire.numberPaise)} · {Math.round(fire.progressPct)}%
                 {fire.projection?.year ? ` · about ${fire.projection.year} at this pace` : ""}
               </span>
-              <Bar pct={fire.progressPct} />
+              <Bar pct={fire.progressPct} color={LONG_TERM} />
             </>
           ) : (
             <span className="block">Add your age and what you spend to see your number.</span>
@@ -106,7 +114,7 @@ export function PlanOverview() {
       )}
 
       {cover && (
-        <Summary to={planPath("protection")} title="Protection">
+        <Summary to={planPath("protection")} title="Protection" icon="heart" color="#0f8f6e">
           <span className="block">
             {cover.policies.length === 0 ? "No cover recorded." : `${cover.policies.length} ${cover.policies.length === 1 ? "policy" : "policies"} recorded.`}
             {topGap ? ` ${topGap.title}.` : cover.policies.length > 0 ? " No gaps found." : ""}
@@ -115,7 +123,7 @@ export function PlanOverview() {
       )}
 
       {budgets && (
-        <Summary to={planPath("budgets")} title="Budgets">
+        <Summary to={planPath("budgets")} title="Budgets" icon="pie" color="#d98a1f">
           <span className="block">
             {budgets.items.length === 0
               ? "No monthly limits set yet."
@@ -125,14 +133,14 @@ export function PlanOverview() {
       )}
 
       {goals && (
-        <Summary to={planPath("goals")} title="Savings goals">
+        <Summary to={planPath("goals")} title="Savings goals" icon="target" color="#c2457a">
           <span className="block">
             {goals.goals.length === 0 ? "No goals yet." : `${rupeesCompact(goals.setAsidePaise)} put toward ${goals.goals.length} ${goals.goals.length === 1 ? "goal" : "goals"}`}
           </span>
         </Summary>
       )}
 
-      <Summary to={planPath("recurring")} title="Recurring entries">
+      <Summary to={planPath("recurring")} title="Recurring entries" icon="repeat" color="#6b7280">
         <span className="block">Rent, subscriptions, salary and SIPs added on their day.</span>
       </Summary>
     </div>

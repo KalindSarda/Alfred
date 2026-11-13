@@ -24,9 +24,12 @@ export interface FlowModel {
   totalPaise: number;
 }
 
-const SOURCE_COLORS = ["#1f6b4f", "#3f8f6b", "#5aa88a", "#7bbd9f", "#9bcfb5", "#b9dfcc"];
+const SOURCE_COLORS = ["#1f8a5b", "#3fa476", "#6bbf94", "#92d1b0", "#b3e0c8", "#cdeadb"];
 const SINK_COLORS = ["#2b6cde", "#c9a96a", "#7a5ea8", "#d98a3d", "#3f8fa6", "#b3638a", "#6b8e23", "#8a6d3b", "#4c7fa8", "#a0522d"];
-export const SAVINGS_COLOR = "#1f6b4f";
+/** Spending that cannot stop is drawn in blues, the rest in warm colours, so a colour says which group a category is in. */
+export const NEED_COLORS = ["#2f5fb3", "#5b8bd6", "#8fb3e8", "#1f3f7a", "#6f9be0"];
+export const WANT_COLORS = ["#e07a4f", "#e9b949", "#d9627d", "#f0a35e", "#c0573f"];
+export const SAVINGS_COLOR = "#1f8a5b";
 export const SHORTFALL_COLOR = "#b3372f";
 export const MIDDLE_COLOR = "#6b7280";
 const OTHER_COLOR = "#8a8f9a";
@@ -49,7 +52,10 @@ export function collapseSmall(rows: CashflowRow[], totalPaise: number, threshold
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-export function buildFlow(data: Cashflow): FlowModel | null {
+/** Whether a spending row is a need or a want; undefined when it cannot be told (a merchant, or no category). */
+export type KindOf = (row: CashflowRow) => "need" | "want" | undefined;
+
+export function buildFlow(data: Cashflow, kindOf?: KindOf): FlowModel | null {
   const { incomePaise, expensePaise, surplusPaise } = data;
   if (incomePaise === 0 && expensePaise === 0) return null;
 
@@ -82,6 +88,15 @@ export function buildFlow(data: Cashflow): FlowModel | null {
     links.push({ source: "shortfall", target: "center", value: gap });
   }
 
+  const used = { need: 0, want: 0 };
+  const sinkColor = (row: CashflowRow, i: number): string => {
+    if (row.key === "other") return OTHER_COLOR;
+    if (!kindOf) return SINK_COLORS[i % SINK_COLORS.length] ?? OTHER_COLOR;
+    const kind = kindOf(row);
+    if (!kind) return OTHER_COLOR;
+    const palette = kind === "need" ? NEED_COLORS : WANT_COLORS;
+    return palette[used[kind]++ % palette.length] ?? OTHER_COLOR;
+  };
   collapseSmall(data.expenses, totalPaise).forEach((row, i) => {
     const id = `out:${row.key}`;
     nodes.push({
@@ -89,7 +104,7 @@ export function buildFlow(data: Cashflow): FlowModel | null {
       label: row.name,
       amountPaise: row.amountPaise,
       pct: pctOf(row.amountPaise),
-      color: row.key === "other" ? OTHER_COLOR : (SINK_COLORS[i % SINK_COLORS.length] ?? OTHER_COLOR),
+      color: sinkColor(row, i),
       side: "sink",
     });
     links.push({ source: "center", target: id, value: row.amountPaise });
@@ -135,3 +150,9 @@ export function barSegments(model: FlowModel, max = 5): BarSegment[] {
 
 /** On a phone the income card only shows when something came in; an empty one would just push spending down. */
 export const showIncomeCard = (data: Pick<Cashflow, "incomePaise">): boolean => data.incomePaise > 0;
+
+/** A `KindOf` from the person's categories: essential ones are needs, other categories are wants. */
+export function kindFromCategories(categories: { id: string; essential: boolean }[]): KindOf {
+  const essential = new Map(categories.map((c) => [c.id, c.essential]));
+  return (row) => (row.categoryId && essential.has(row.categoryId) ? (essential.get(row.categoryId) ? "need" : "want") : undefined);
+}

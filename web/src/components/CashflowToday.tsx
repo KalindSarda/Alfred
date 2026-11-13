@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { barSegments, buildFlow } from "../cashflow";
+import { barSegments, buildFlow, kindFromCategories } from "../cashflow";
 import { rupeesCompact, shortDate } from "../format";
-import { useCashflow } from "../queries";
+import { useCashflow, useCategories } from "../queries";
+import { FlowLegend } from "./FlowLegend";
 import { Link } from "../router";
 import { Sankey } from "./Sankey";
 import { Amount, Card, Empty, Sheet } from "./ui";
@@ -13,7 +14,8 @@ import { Amount, Card, Empty, Sheet } from "./ui";
 export function CashflowToday({ period }: { period: string }) {
   const query = useCashflow(period, "category");
   const [full, setFull] = useState(false);
-  const model = useMemo(() => (query.data ? buildFlow(query.data) : null), [query.data]);
+  const categories = useCategories();
+  const model = useMemo(() => (query.data ? buildFlow(query.data, kindFromCategories(categories.data ?? [])) : null), [query.data, categories.data]);
   const segments = useMemo(() => (model ? barSegments(model) : []), [model]);
   const d = query.data;
 
@@ -74,7 +76,8 @@ export function CashflowToday({ period }: { period: string }) {
                   </li>
                 ))}
               </ul>
-              <button type="button" onClick={() => setFull(true)} className="mt-3 min-h-11 text-sm text-brand">
+              <FlowLegend />
+              <button type="button" onClick={() => setFull(true)} className="mt-1 min-h-11 text-sm text-brand">
                 Full flow
               </button>
             </>
@@ -85,6 +88,7 @@ export function CashflowToday({ period }: { period: string }) {
       {full && model && (
         <Sheet title="Where the money went" wide onClose={() => setFull(false)}>
           <Sankey model={model} />
+          <FlowLegend />
         </Sheet>
       )}
     </Card>

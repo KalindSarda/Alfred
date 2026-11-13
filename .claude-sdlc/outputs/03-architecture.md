@@ -256,3 +256,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-11-29: slice 42 noted: Today screen (compact briefing, cash flow bar with Sankey sheet, net worth card with sparkline), two columns from 1024 px.
 - 2026-11-30: slice 42 follow-up noted: two Today layouts by width (`useWide`), sidebar or top bar on big screens (`navStyle`).
 - 2026-12-01: slice 43 noted: Plan overview, Money tab figures, list and detail side by side from 1100 px (`DetailPanel`); the top bar option removed, the sidebar kept.
+- 2026-12-02: slice 43 follow-up noted: side panel removed, chart colours by purpose (needs blue, wants warm, saved green), Foundations without the month toggle.

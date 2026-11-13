@@ -649,10 +649,10 @@ function FireCard() {
   );
 }
 
-/** Where you stand: how the month looked, and the ratios behind it. */
+/** Where you stand: the foundations, the emergency fund and independence, then how last month went. */
 export function Freedom({ embedded = false }: { embedded?: boolean } = {}) {
-  const [period, setPeriod] = useState<"last" | "current">("last");
-  const query = useMoneyHealth(period);
+  // The foundations carry on from month to month, so the review at the end is always the last full month.
+  const query = useMoneyHealth("last");
   const h = query.data;
 
   return (
@@ -662,30 +662,25 @@ export function Freedom({ embedded = false }: { embedded?: boolean } = {}) {
         <p className="text-sm text-soft">How your money is doing. Reference lines are common rules of thumb, not advice.</p>
       </div>
 
-      <div role="tablist" aria-label="Month" className="grid grid-cols-2 gap-1 rounded-xl bg-sunk p-1">
-        {(
-          [
-            ["last", "Last month"],
-            ["current", "This month so far"],
-          ] as const
-        ).map(([key, label]) => (
-          <button key={key} type="button" role="tab" aria-selected={period === key} onClick={() => setPeriod(key)} className={`min-h-11 rounded-lg text-sm font-medium ${period === key ? "bg-card shadow-sm" : "text-soft"}`}>
-            {label}
-          </button>
-        ))}
-      </div>
-
       <FoundationsCard />
 
-      {!h && <Spinner />}
+      <EmergencyCard />
+      <FireCard />
+
+      <div className="pt-2">
+        <h2 className="font-display text-xl">How the month went</h2>
+        <p className="text-sm text-soft">Your last full month, for the habits behind the foundations.</p>
+      </div>
+
+      {!h && !query.isError && <Spinner />}
       {query.isError && <Empty title="Could not load this">Check your connection and reload.</Empty>}
-      {h && h.empty && <Empty title="Nothing to show yet">No income or spending {period === "last" ? "in your last full month" : "so far this month"}. Log a few entries and this fills in.</Empty>}
+      {h && h.empty && <Empty title="Nothing to show yet">No income or spending in your last full month. Log a few entries and this fills in.</Empty>}
 
       {h && !h.empty && (
         <>
           <Card>
             <p className="text-xs tracking-wide text-soft uppercase">
-              {period === "last" ? "Saved last month" : "Saved so far"} · {shortDate(h.period.from)} to {shortDate(h.period.to)}
+              Saved last month · {shortDate(h.period.from)} to {shortDate(h.period.to)}
             </p>
             <p className={`font-display mt-1 text-4xl tabular-nums ${h.savingsPaise < 0 ? "text-bad" : ""}`}><Amount paise={h.savingsPaise} /></p>
             <p className="mt-1 text-sm text-soft">
@@ -702,35 +697,16 @@ export function Freedom({ embedded = false }: { embedded?: boolean } = {}) {
           </Card>
 
           <Card className="divide-y divide-line">
-            <Row label="Income" value={rupees(h.incomePaise)} hint="Without refunds, repayments and balance corrections" />
-            {h.reimbursedPaise > 0 && <Row label="Refunded or repaid" value={rupees(h.reimbursedPaise)} hint="Taken off what you spent, not counted as income" />}
             <Row label="Needs" value={rupees(h.needsPaise)} hint="Essential categories, card EMIs and loan interest" />
             <Row label="Wants" value={rupees(h.wantsPaise)} hint="Everything else you spent" />
-            {h.investedPaise > 0 && <Row label="Put into investments" value={rupees(h.investedPaise)} hint="Part of what was saved" />}
-            {h.principalRepaidPaise > 0 && <Row label="Loan principal repaid" value={rupees(h.principalRepaidPaise)} hint="Part of what was saved" />}
-          </Card>
-
-          <Card className="divide-y divide-line">
+            {h.reimbursedPaise > 0 && <Row label="Refunded or repaid" value={rupees(h.reimbursedPaise)} hint="Taken off what you spent, not counted as income" />}
             {h.emiBurdenPct !== null && h.emiPaise > 0 && (
               <Row label="EMIs as a share of income" value={`${h.emiBurdenPct}%`} tone={h.emiBand ? BAND[h.emiBand]?.tone : undefined} hint="Under about 30% is comfortable; about 40% is the usual ceiling" />
             )}
             {h.utilizationPct !== null && <Row label="Credit cards used" value={`${h.utilizationPct}%`} hint="Of their limits, now. Under 30% is the usual aim" />}
-            {h.runway.months !== null && h.runway.burnPaise !== null ? (
-              <Row
-                label="Emergency cover"
-                value={`${h.runway.months} months`}
-                hint={`Your bank money at ${rupees(h.runway.burnPaise)} a month of essentials${h.runway.solid ? "" : `. An early estimate, from ${h.runway.basedOnDays} days of entries`}`}
-              />
-            ) : (
-              <Row label="Emergency cover" value="Not yet" hint="Needs about two weeks of entries, with some rent, bills or groceries among them" />
-            )}
-            {h.netWorth && <Row label="Net worth" value={rupees(h.netWorth.endPaise)} hint={`${h.netWorth.changePaise >= 0 ? "Up" : "Down"} ${rupees(Math.abs(h.netWorth.changePaise))} over the period`} />}
           </Card>
         </>
       )}
-
-      <EmergencyCard />
-      <FireCard />
     </div>
   );
 }
