@@ -21,12 +21,11 @@ export function hubOf(path: string): Hub {
 const MOVED: Record<string, string> = {
   "/transactions": "/activity",
   "/accounts": "/money",
-  "/budgets": "/plan",
   "/more": "/you",
 };
 
-/** Foundations and Protection used to be pages of their own; they are views of Plan now. */
-const PLAN_VIEWS: Record<string, string> = { "/freedom": "foundations", "/protection": "protection" };
+/** Budgets, Freedom and Protection used to be pages of their own; they are views of Plan now. */
+const PLAN_VIEWS: Record<string, string> = { "/budgets": "budgets", "/freedom": "foundations", "/protection": "protection" };
 
 /**
  * The new address for an old one, or null when the address is current. Pass the pieces of `window.location`.
@@ -37,7 +36,8 @@ export function redirectFor(path: string, search: string, hash: string): string 
   const view = PLAN_VIEWS[path];
   if (view) {
     const params = new URLSearchParams(search);
-    params.set("view", view);
+    // An old Budgets address that already names a view (Budgets once shared its page with Recurring and Goals) keeps it.
+    if (!(path === "/budgets" && params.has("view"))) params.set("view", view);
     return `/plan?${params.toString()}${hash}`;
   }
   return null;

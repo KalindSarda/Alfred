@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Account, Category, Transaction } from "../api";
+import { DetailPanel } from "../components/DetailPanel";
 import { FilterSheet } from "../components/FilterSheet";
 import { TxnForm } from "../components/TxnForm";
 import { Button, Card, Empty, inputClass, Sheet, Spinner } from "../components/ui";
@@ -8,6 +9,7 @@ import { longDate, rupees, shortDate } from "../format";
 import { useAccounts, useCategories, useTransactions } from "../queries";
 import { Link, navigate, replaceSearch, useSearch } from "../router";
 import { amountSign, amountTone, describeTxn, managedAt, needsCategory } from "../txn";
+import { useSplit } from "../useWide";
 
 const TYPE_FILTERS = [
   { value: "", label: "All" },
@@ -23,11 +25,13 @@ function Row({
   accounts,
   categories,
   onOpen,
+  selected = false,
 }: {
   txn: Transaction;
   accounts: Map<string, Account>;
   categories: Map<string, Category>;
   onOpen: () => void;
+  selected?: boolean;
 }) {
   const { title, sub } = describeTxn(txn, accounts, categories);
   return (
@@ -35,7 +39,8 @@ function Row({
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-2 text-left hover:bg-hover"
+        className={`flex min-h-14 w-full items-center justify-between gap-3 px-4 py-2 text-left hover:bg-hover ${selected ? "bg-sunk" : ""}`}
+        aria-current={selected ? "true" : undefined}
       >
         <span className="min-w-0">
           <span className="block truncate font-medium">{title}</span>
@@ -83,6 +88,7 @@ export function Transactions() {
 
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [filtering, setFiltering] = useState(false);
+  const split = useSplit();
 
   const accountsQuery = useAccounts(true);
   const categoriesQuery = useCategories();
@@ -123,7 +129,8 @@ export function Transactions() {
   const reviewing = filters.categories.length === 1 && filters.categories[0] === "none" ? "category" : filters.status === "draft" ? "confirmation" : null;
 
   return (
-    <div className="space-y-4">
+    <div className={split ? "grid grid-cols-[minmax(0,1fr)_24rem] items-start gap-6" : ""}>
+    <div className="min-w-0 space-y-4">
       <h1 className="text-3xl">Transactions</h1>
 
       <div className="space-y-3">
@@ -197,7 +204,7 @@ export function Transactions() {
               <h2 className="border-b border-line px-4 py-2 text-sm font-medium text-soft">{longDate(date)}</h2>
               <ul className="divide-y divide-line">
                 {items.map((txn) => (
-                  <Row key={txn.id} txn={txn} accounts={accountMap} categories={categoryMap} onOpen={() => (managedAt(txn) ? navigate(managedAt(txn) as string) : setEditing(txn))} />
+                  <Row key={txn.id} txn={txn} accounts={accountMap} categories={categoryMap} selected={editing?.id === txn.id} onOpen={() => (managedAt(txn) ? navigate(managedAt(txn) as string) : setEditing(txn))} />
                 ))}
               </ul>
             </Card>
@@ -210,7 +217,7 @@ export function Transactions() {
         </>
       )}
 
-      {editing && (
+      {editing && !split && (
         <Sheet title="Edit transaction" onClose={() => setEditing(null)}>
           <TxnForm initial={editing} onDone={() => setEditing(null)} />
         </Sheet>
@@ -225,6 +232,12 @@ export function Transactions() {
           onClose={() => setFiltering(false)}
         />
       )}
+    </div>
+    {split && (
+      <DetailPanel title="Edit transaction" onClose={() => setEditing(null)} empty="Pick an entry to see and edit it here.">
+        {editing ? <TxnForm key={editing.id} initial={editing} onDone={() => setEditing(null)} /> : null}
+      </DetailPanel>
+    )}
     </div>
   );
 }

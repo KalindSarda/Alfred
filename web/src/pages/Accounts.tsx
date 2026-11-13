@@ -10,11 +10,13 @@ import { EmiPlans } from "../components/EmiPlans";
 import { Investments } from "../components/Investments";
 import { LentBorrowed } from "../components/LentBorrowed";
 import { Loans } from "../components/Loans";
+import { DetailPanel } from "../components/DetailPanel";
 import { Button, Card, Empty, Sheet, Spinner } from "../components/ui";
-import { rupees, shortDate } from "../format";
+import { rupees, rupeesCompact, shortDate } from "../format";
 import { NetWorthCard } from "../components/NetWorth";
 import { useAccounts, useBalanceOverview } from "../queries";
 import { Link, replaceSearch, useSearch } from "../router";
+import { useSplit } from "../useWide";
 
 function CardRow({ card, onOpen }: { card: CardAccount; onOpen: () => void }) {
   const pct = Math.min(100, Math.max(0, card.utilizationPct));
@@ -69,12 +71,26 @@ export function Accounts() {
   const [editing, setEditing] = useState<Account | "new" | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkingStatement, setCheckingStatement] = useState(false);
+  const split = useSplit();
+
+  // Each tab says what is behind it, so the hub reads as a summary before a tap.
+  const figure = (v: AccountsView): string | null => {
+    const o = overview.data;
+    if (!o) return null;
+    if (v === "accounts") return `${rupeesCompact(o.totalInBanksPaise)} in banks`;
+    if (v === "commitments") return o.loansPaise + o.emiToComePaise > 0 ? `${rupeesCompact(o.loansPaise + o.emiToComePaise)} to repay` : null;
+    return o.investmentsPaise > 0 ? `${rupeesCompact(o.investmentsPaise)} invested` : null;
+  };
 
   const banks = (accounts.data ?? []).filter((a) => a.kind === "bank");
   const cards = (accounts.data ?? []).filter((a): a is CardAccount => a.kind === "card");
 
+  const detailTitle = editing === "new" ? "Add account" : editing ? `Edit ${editing.name}` : "";
+  const detail = editing ? <AccountForm key={editing === "new" ? "new" : editing.id} {...(editing === "new" ? {} : { initial: editing })} onDone={() => setEditing(null)} /> : null;
+
   return (
-    <div className="space-y-5">
+    <div className={split && view === "accounts" ? "grid grid-cols-[minmax(0,1fr)_24rem] items-start gap-6" : ""}>
+    <div className="min-w-0 space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl">Money</h1>
         {view === "accounts" && <Button onClick={() => setEditing("new")}>Add</Button>}
@@ -88,9 +104,10 @@ export function Accounts() {
             role="tab"
             aria-selected={view === v.value}
             onClick={() => replaceSearch(searchForView(v.value))}
-            className={`min-h-11 rounded-lg text-sm font-medium ${view === v.value ? "bg-card shadow-sm" : "text-soft"}`}
+            className={`min-h-14 rounded-lg px-1 text-sm font-medium ${view === v.value ? "bg-card shadow-sm" : "text-soft"}`}
           >
             {v.label}
+            {figure(v.value) && <span className="block text-xs font-normal text-soft">{figure(v.value)}</span>}
           </button>
         ))}
       </div>
@@ -202,11 +219,17 @@ export function Accounts() {
       {checkingStatement && <StatementCheckSheet cards={cards.filter((c): c is CardAccount => c.kind === "card" && !c.archived)} onClose={() => setCheckingStatement(false)} />}
       {checking && <BalanceCheckSheet banks={banks.filter((b): b is BankAccount => b.kind === "bank" && !b.archived)} onClose={() => setChecking(false)} />}
 
-      {editing && (
-        <Sheet title={editing === "new" ? "Add account" : `Edit ${editing.name}`} onClose={() => setEditing(null)}>
-          <AccountForm {...(editing === "new" ? {} : { initial: editing })} onDone={() => setEditing(null)} />
+      {editing && !(split && view === "accounts") && (
+        <Sheet title={detailTitle} onClose={() => setEditing(null)}>
+          {detail}
         </Sheet>
       )}
+    </div>
+    {split && view === "accounts" && (
+      <DetailPanel title={detailTitle} onClose={() => setEditing(null)} empty="Pick an account or card to see and edit it here.">
+        {detail}
+      </DetailPanel>
+    )}
     </div>
   );
 }

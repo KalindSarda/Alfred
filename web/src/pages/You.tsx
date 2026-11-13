@@ -2,14 +2,12 @@ import { rememberFeature } from "../components/JumpSearch";
 import { Icon } from "../components/ui";
 import { groupedFeatures } from "../features";
 import { useMe } from "../queries";
-import { type NavStyle, setNavStyle, useNavStyle } from "../navStyle";
 import { Link } from "../router";
 
 /** You: settings and every feature in one place, grouped, with a line on what each is for. The search opens from the box at the top. */
 export function You({ onSearch }: { onSearch: () => void }) {
   const me = useMe();
   const groups = groupedFeatures(undefined, Boolean(me.data?.isOwner));
-  const layout = useNavStyle();
 
   return (
     <div className="space-y-5">
@@ -23,22 +21,6 @@ export function You({ onSearch }: { onSearch: () => void }) {
         <Icon name="search" className="size-5" />
         <span>Find anything: “emi”, “lent”, “goal”…</span>
       </button>
-
-      <section aria-label="Layout" className="hidden space-y-2 md:block">
-        <h2 className="text-xs tracking-wide text-soft uppercase">Layout on a big screen</h2>
-        <div role="group" aria-label="Navigation on a big screen" className="grid max-w-sm grid-cols-2 gap-1 rounded-xl bg-sunk p-1">
-          {(
-            [
-              ["side", "Sidebar"],
-              ["top", "Top bar"],
-            ] as [NavStyle, string][]
-          ).map(([value, label]) => (
-            <button key={value} type="button" aria-pressed={layout === value} onClick={() => setNavStyle(value)} className={`min-h-11 rounded-lg text-sm font-medium ${layout === value ? "bg-card shadow-sm" : "text-soft"}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-      </section>
 
       {groups.map(({ group, items }) => (
         <section key={group} aria-label={group} className="space-y-2">

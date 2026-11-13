@@ -274,7 +274,7 @@ describe("budgets in the briefing", () => {
   });
 
   it("links to the Budgets page", () => {
-    expect(find({ budgets: [budget({ status: "over", remainingPaise: -1 })] }, "budget")?.to).toBe("/plan");
+    expect(find({ budgets: [budget({ status: "over", remainingPaise: -1 })] }, "budget")?.to).toBe("/plan?view=budgets");
   });
 });
 

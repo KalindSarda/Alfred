@@ -373,7 +373,7 @@ export function buildBriefingLines(facts: BriefingFacts, formatDate: (date: stri
   if (pressed.length > 0) {
     const parts = pressed.map((b) => (b.status === "over" ? `${b.categoryName} is ${m(-b.remainingPaise)} over its budget` : `${b.categoryName} is at ${Math.round(b.pct)}% of its budget`));
     const more = over.length + near.length - pressed.length;
-    add({ key: "budget", text: `${parts.join(", and ")}${more > 0 ? `, with ${more} more to watch` : ""}.`, to: "/plan", section: "trends", importance: over.length > 0 ? 58 : 48 });
+    add({ key: "budget", text: `${parts.join(", and ")}${more > 0 ? `, with ${more} more to watch` : ""}.`, to: "/plan?view=budgets", section: "trends", importance: over.length > 0 ? 58 : 48 });
   }
 
   const held = facts.holdings;

@@ -1,4 +1,5 @@
 import { Goals } from "../components/Goals";
+import { PlanOverview } from "../components/PlanOverview";
 import { Recurring } from "../components/Recurring";
 import { type PlanView, searchForView, viewFromSearch } from "../planView";
 import { replaceSearch, useSearch } from "../router";
@@ -7,6 +8,7 @@ import { Freedom } from "./Freedom";
 import { Protection } from "./Protection";
 
 const VIEWS: { value: PlanView; label: string }[] = [
+  { value: "overview", label: "Overview" },
   { value: "budgets", label: "Budgets" },
   { value: "recurring", label: "Recurring" },
   { value: "goals", label: "Goals" },
@@ -14,7 +16,7 @@ const VIEWS: { value: PlanView; label: string }[] = [
   { value: "protection", label: "Protection" },
 ];
 
-/** What you set up ahead of time and how you are doing: budgets, what repeats, goals, the foundations and cover. */
+/** Where you stand and what you set up ahead of time: an overview first, then budgets, what repeats, goals, the foundations and cover. */
 export function Plan() {
   const view = viewFromSearch(useSearch());
   return (
@@ -34,7 +36,9 @@ export function Plan() {
           </button>
         ))}
       </div>
-      {view === "recurring" ? (
+      {view === "overview" ? (
+        <PlanOverview />
+      ) : view === "recurring" ? (
         <Recurring />
       ) : view === "goals" ? (
         <Goals />

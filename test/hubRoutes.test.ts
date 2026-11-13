@@ -17,7 +17,8 @@ describe("old addresses", () => {
   it("move to their new place and keep the query and section", () => {
     expect(redirectFor("/transactions", "?category=none", "")).toBe("/activity?category=none");
     expect(redirectFor("/accounts", "?view=commitments", "#loans")).toBe("/money?view=commitments#loans");
-    expect(redirectFor("/budgets", "", "")).toBe("/plan");
+    expect(redirectFor("/budgets", "", "")).toBe("/plan?view=budgets");
+    expect(redirectFor("/budgets", "?view=goals", "")).toBe("/plan?view=goals");
     expect(redirectFor("/more", "", "")).toBe("/you");
   });
 

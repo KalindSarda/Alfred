@@ -34,7 +34,7 @@ export const FEATURES: Feature[] = [
   { id: "emi", title: "EMI plans", blurb: "Card purchases paid in instalments", group: "Money", to: "/money?view=commitments#emi", keywords: ["emi", "instalment", "installment", "no cost", "card plan", "loan on card"] },
   { id: "lent", title: "Lent and borrowed", blurb: "Who owes you, whom you owe, and follow-ups", group: "Money", to: "/money?view=commitments#lent", keywords: ["lend", "lent", "borrow", "borrowed", "owe", "owed", "debt", "loan", "friend", "trusted", "repay", "udhaar"] },
 
-  { id: "budgets", title: "Budgets", blurb: "Monthly limits for categories", group: "Plan", to: "/plan", keywords: ["budget", "limit", "overspend", "category limit"] },
+  { id: "budgets", title: "Budgets", blurb: "Monthly limits for categories", group: "Plan", to: "/plan?view=budgets", keywords: ["budget", "limit", "overspend", "category limit"] },
   { id: "recurring", title: "Recurring entries", blurb: "Rent, subscriptions, salary and SIPs added on their day", group: "Plan", to: "/plan?view=recurring", keywords: ["repeat", "subscription", "rent", "salary", "sip", "monthly", "bills", "autopay"] },
   { id: "goals", title: "Savings goals", blurb: "Money set aside for something you are saving for", group: "Plan", to: "/plan?view=goals", keywords: ["goal", "saving", "savings", "target", "save", "set aside", "laptop", "trip"] },
 
