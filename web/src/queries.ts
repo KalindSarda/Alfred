@@ -1,5 +1,5 @@
 import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type CommitmentsView, type EntryHints, type EmergencyFund, type FireView, type LadderView, type MoneyHealth, type TransferView, type ProtectionView, type Runway, type HoldingKind, type HoldingsOverview, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type CommitmentsView, type EntryHints, type EmergencyFund, type FireView, type InvestmentAccountsOverview, type LadderView, type MoneyHealth, type TransferView, type ProtectionView, type Runway, type HoldingKind, type HoldingsOverview, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -115,6 +115,10 @@ export const useEntryHints = () =>
 export const useHoldings = (status: "active" | "all" = "active") =>
   useQuery({ queryKey: ["holdings", status], queryFn: () => api.get<HoldingsOverview>(`/api/holdings?status=${status}`) });
 
+/** The person's broker accounts with what each holds. */
+export const useInvestmentAccounts = (includeArchived = false) =>
+  useQuery({ queryKey: ["investment-accounts", includeArchived], queryFn: () => api.get<InvestmentAccountsOverview>(`/api/investment-accounts${includeArchived ? "?includeArchived=true" : ""}`) });
+
 /** Bank loans: active ones, or every one when asked for. */
 export const useLoans = (status: "active" | "all" = "active") =>
   useQuery({ queryKey: ["loans", status], queryFn: () => api.get<LoansOverview>(`/api/loans?status=${status}`) });
@@ -175,6 +179,7 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["money-health"] }),
       client.invalidateQueries({ queryKey: ["emergency-fund"] }),
       client.invalidateQueries({ queryKey: ["fire"] }),
+      client.invalidateQueries({ queryKey: ["investment-accounts"] }),
       client.invalidateQueries({ queryKey: ["ladder"] }),
       client.invalidateQueries({ queryKey: ["transfer-suggestion"] }),
       client.invalidateQueries({ queryKey: ["loans"] }),

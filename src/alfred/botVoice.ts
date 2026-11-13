@@ -242,6 +242,8 @@ export interface HoldingLine {
   unitsHeldE4?: number;
   ratePaise?: number | null;
   ratePer?: number;
+  /** The broker account it is held in, when it has one. */
+  accountName?: string | null;
 }
 
 const upDown = (paise: number) => (paise === 0 ? "no change" : `${paise > 0 ? "up" : "down"} ${rupees(Math.abs(paise))}`);
@@ -259,7 +261,19 @@ export function investReply(items: HoldingLine[]): string {
   const value = items.reduce((s, h) => s + h.valuePaise, 0);
   const put = items.reduce((s, h) => s + h.investedPaise, 0);
   const gain = items.reduce((s, h) => s + h.gainPaise, 0);
-  const lines = items.map((h) => `${h.name}: ${heldAt(h)}${rupees(h.valuePaise)}, ${upDown(h.gainPaise)}${h.gainPct === null ? "" : ` (${h.gainPct}%)`}, ${age(h.staleDays)}`);
+  const line = (h: HoldingLine) => `${h.name}: ${heldAt(h)}${rupees(h.valuePaise)}, ${upDown(h.gainPaise)}${h.gainPct === null ? "" : ` (${h.gainPct}%)`}, ${age(h.staleDays)}`;
+  // With broker accounts, the holdings are listed under the account they are in, the biggest account first.
+  let lines: string[];
+  if (items.some((h) => h.accountName)) {
+    const groups = new Map<string, HoldingLine[]>();
+    for (const h of items) groups.set(h.accountName ?? "Not in an account yet", [...(groups.get(h.accountName ?? "Not in an account yet") ?? []), h]);
+    const sum = (xs: HoldingLine[]) => xs.reduce((s, h) => s + h.valuePaise, 0);
+    lines = [...groups.entries()]
+      .sort((a, b) => sum(b[1]) - sum(a[1]))
+      .flatMap(([name, xs], i) => [...(i > 0 ? [""] : []), `${name}: ${rupees(sum(xs))}, ${xs.length} ${xs.length === 1 ? "holding" : "holdings"}`, ...xs.map(line)]);
+  } else {
+    lines = items.map(line);
+  }
   return [`Your investments are worth ${rupees(value)}: ${rupees(put)} put in, ${upDown(gain)}.`, "", ...lines, "", "To update one: /value tata 15200. For gold, funds and shares counted by quantity, send the rate (gold: for 10 g), for example /value gold 13200."].join("\n");
 }
 

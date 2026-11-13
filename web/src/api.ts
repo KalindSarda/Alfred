@@ -478,6 +478,9 @@ export interface Holding {
   kind: string;
   kindName: string;
   status: "active" | "closed";
+  /** The broker or demat account it is held in, and its name; null until chosen. */
+  investmentAccountId: string | null;
+  accountName: string | null;
   isEmergency: boolean;
   countsForFire: boolean;
   openingInvestedPaise: number;
@@ -539,6 +542,26 @@ export interface HoldingKind {
   isSystem: boolean;
   holdingCount: number;
   locked: boolean;
+}
+
+/** A broker or demat account and what it holds. */
+export interface InvestmentAccount {
+  id: string;
+  name: string;
+  purpose: string | null;
+  archived: boolean;
+  holdingCount: number;
+  valuePaise: number;
+  investedPaise: number;
+  gainPaise: number;
+  gainPct: number | null;
+  sharePct: number | null;
+}
+
+export interface InvestmentAccountsOverview {
+  accounts: InvestmentAccount[];
+  unassigned: { holdingCount: number; valuePaise: number; investedPaise: number; gainPaise: number };
+  totalValuePaise: number;
 }
 
 export interface HoldingsOverview {

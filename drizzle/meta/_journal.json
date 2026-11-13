@@ -239,6 +239,13 @@
       "when": 1794569300751,
       "tag": "0033_counts_for_date",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1794570689214,
+      "tag": "0034_investment_accounts",
+      "breakpoints": true
     }
   ]
 }

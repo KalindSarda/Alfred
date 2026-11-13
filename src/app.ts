@@ -17,6 +17,7 @@ import { categoryRoutes } from "./routes/categories";
 import { moneyHealthRoutes } from "./routes/moneyHealth";
 import { fireRoutes } from "./routes/fire";
 import { ladderRoutes, transferSuggestionRoutes } from "./routes/ladder";
+import { investmentAccountRoutes } from "./routes/investmentAccounts";
 import { insuranceRoutes, protectionRoutes } from "./routes/protection";
 import { emergencyRoutes } from "./routes/emergency";
 import { runwayRoutes } from "./routes/runway";
@@ -99,6 +100,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/fire", fireRoutes);
   app.route("/api/ladder", ladderRoutes);
   app.route("/api/transfer-suggestion", transferSuggestionRoutes);
+  app.route("/api/investment-accounts", investmentAccountRoutes);
   app.route("/api/protection", protectionRoutes);
   app.route("/api/insurance", insuranceRoutes);
   app.route("/api/cards", cardToolRoutes);

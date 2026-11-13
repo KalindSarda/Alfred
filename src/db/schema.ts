@@ -583,6 +583,8 @@ export const holdings = sqliteTable(
     isEmergency: integer("is_emergency", { mode: "boolean" }).notNull().default(false),
     /** Counted in the corpus the FIRE plan measures progress against. */
     countsForFire: integer("counts_for_fire", { mode: "boolean" }).notNull().default(true),
+    /** The broker or demat account it is held in. No foreign key: accounts and their holdings are handled together in code. Null until chosen. */
+    investmentAccountId: text("investment_account_id"),
     createdAt: text("created_at").notNull(),
   },
   (t) => [index("holdings_user_status_idx").on(t.userId, t.status), check("holdings_opening_nonnegative", sql`${t.openingInvestedPaise} >= 0`)],
@@ -738,4 +740,19 @@ export const insuranceReminders = sqliteTable(
     sentAt: text("sent_at").notNull(),
   },
   (t) => [uniqueIndex("insurance_reminders_uq").on(t.userId, t.policyId, t.dueDate)],
+);
+
+/** A broker or demat account that holds investments (ICICI Direct, Groww): a place to group holdings, with a note on what it is for. */
+export const investmentAccounts = sqliteTable(
+  "investment_accounts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    name: text("name").notNull(),
+    /** What it is for, in a few words: "Long term, family". */
+    purpose: text("purpose"),
+    archivedAt: text("archived_at"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("investment_accounts_user_name_uq").on(t.userId, t.name)],
 );

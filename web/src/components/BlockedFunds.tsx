@@ -3,6 +3,7 @@ import { type Hold, api, describeError } from "../api";
 import { rupeesToPaise } from "../filters";
 import { paiseToInput, rupees, shortDate, today } from "../format";
 import { useAccounts, useHolds, useRefreshMoney } from "../queries";
+import { AccountSelect } from "./InvestmentAccounts";
 import { useToast } from "./toast";
 import { AmountInput, Button, Card, ErrorText, Field, Sheet, inputClass } from "./ui";
 
@@ -108,13 +109,14 @@ function AllotSheet({ hold, onClose }: { hold: Hold; onClose: () => void }) {
   const { run, error, setError, busy } = useAction(onClose);
   const [amount, setAmount] = useState(paiseToInput(hold.amountPaise));
   const [date, setDate] = useState(today());
+  const [brokerId, setBrokerId] = useState("");
   const paise = rupeesToPaise(amount);
   const released = paise !== null && paise > 0 && paise <= hold.amountPaise ? hold.amountPaise - paise : 0;
 
   const save = () => {
     if (!paise) return setError("Enter the amount that was debited.");
     if (paise > hold.amountPaise) return setError(`That is more than the ${rupees(hold.amountPaise)} that was blocked.`);
-    void run(() => api.post(`/api/holds/${hold.id}/allot`, { amountPaise: paise, date }), "Allotment recorded.");
+    void run(() => api.post(`/api/holds/${hold.id}/allot`, { amountPaise: paise, date, ...(brokerId ? { investmentAccountId: brokerId } : {}) }), "Allotment recorded.");
   };
 
   return (
@@ -135,6 +137,7 @@ function AllotSheet({ hold, onClose }: { hold: Hold; onClose: () => void }) {
         <Field label="Debited on">
           <input className={inputClass} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
+        <AccountSelect value={brokerId} onChange={setBrokerId} label="Held in" />
         {released > 0 && <p className="rounded-lg bg-sunk px-3 py-2 text-sm">{rupees(released)} of the block is released.</p>}
         <ErrorText>{error}</ErrorText>
         <Button type="submit" className="w-full" disabled={busy}>

@@ -25,6 +25,8 @@ export const CreateHolding = z
     ratePaise: Rate.optional(),
     /** What was put in before Alfred tracked it, with no bank entry. */
     investedPaise: Money.optional(),
+    /** The broker or demat account it is held in. */
+    investmentAccountId: Id.nullable().optional(),
     /** What it is worth now, as of `valueDate`. */
     valuePaise: Money.optional(),
     valueDate: IstDateString.optional(),
@@ -32,7 +34,7 @@ export const CreateHolding = z
   .strict();
 export type CreateHoldingData = z.output<typeof CreateHolding>;
 
-export const UpdateHolding = z.object({ name: Name, kind: HoldingKind, isEmergency: z.boolean(), countsForFire: z.boolean() }).partial().strict();
+export const UpdateHolding = z.object({ name: Name, kind: HoldingKind, isEmergency: z.boolean(), countsForFire: z.boolean(), investmentAccountId: Id.nullable() }).partial().strict();
 export type UpdateHoldingData = z.output<typeof UpdateHolding>;
 
 export const SetHoldingValue = z.object({ valuePaise: Money, date: IstDateString.optional() }).strict();

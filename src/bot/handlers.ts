@@ -540,7 +540,7 @@ async function cmdValue(deps: BotDeps, who: Actor, arg: string, today: IstDate):
   const fits = exact.length ? exact : words ? active.filter((h) => h.name.toLowerCase().includes(words)) : active.length === 1 ? active : [];
   if (words && fits.length === 0) return void (await deps.telegram.sendMessage(who.chatId, botVoice.valueNoMatch));
   if (fits.length !== 1) {
-    await deps.telegram.sendMessage(who.chatId, botVoice.valueAskWhich(paise), rows((fits.length ? fits : active).slice(0, MAX_OPTIONS).map((h) => ({ text: h.name, data: `i:${h.id}:v:${paise}` }))));
+    await deps.telegram.sendMessage(who.chatId, botVoice.valueAskWhich(paise), rows((fits.length ? fits : active).slice(0, MAX_OPTIONS).map((h) => ({ text: h.accountName && active.filter((x) => x.name === h.name).length > 1 ? `${h.name} (${h.accountName})` : h.name, data: `i:${h.id}:v:${paise}` }))));
     return;
   }
   await setHoldingValue(deps, who, fits[0]!.id, paise, today, { chatId: who.chatId });

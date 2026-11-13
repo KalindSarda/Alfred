@@ -166,7 +166,7 @@ export async function allotHold(
     );
     await db.update(holds).set({ resolvedTxnId: transaction.id }).where(eq(holds.id, id));
     // What was allotted is now something owned: it appears under Investments, worth what was paid until you update it.
-    const holdingId = await attachAllotment(db, userId, { name: claimed.title, txnId: transaction.id, amountPaise, date: transaction.txnDate });
+    const holdingId = await attachAllotment(db, userId, { name: claimed.title, txnId: transaction.id, amountPaise, date: transaction.txnDate, investmentAccountId: input.investmentAccountId ?? null });
     return { hold: await dtoFor(db, userId, id, today), transaction: { ...transaction, holdingId } };
   } catch (error) {
     await db.update(holds).set({ status: "active", resolvedAt: null }).where(eq(holds.id, id));

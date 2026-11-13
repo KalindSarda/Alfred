@@ -4,11 +4,12 @@ import type { Db } from "../db/client";
 import { getAccount } from "../db/accounts";
 import { getHoldingRow, type HoldingRow } from "../db/holdings";
 import { getKindByKey, type HoldingKindRow, kindsByKey } from "../db/holdingKinds";
-import { accounts, holdingLots, holdings, holdingValues, transactions } from "../db/schema";
+import { accounts, holdingLots, holdings, holdingValues, investmentAccounts, transactions } from "../db/schema";
 import { type IstDate, isValidIstDate } from "../domain/dates";
 import { avgCostPaise, gainPaise, gainPct, type HoldingFacts, investedPaise, latestRate, latestValue, soldPaise, staleDays, unitOne, unitsHeldE4, valueAtRate, valuePaise } from "../domain/holdings";
 import type { AddLotData, BuyHoldingData, ConvertHoldingData, CreateHoldingData, SellHoldingData, SetHoldingRateData, SetHoldingValueData, UpdateHoldingData } from "../schemas/holding";
 import { newId, nowIso } from "../utils/id";
+import { requireUsableInvestmentAccount } from "./investmentAccounts";
 
 export interface HoldingEntryDto {
   id: string;
@@ -36,6 +37,9 @@ export interface HoldingDto {
   kind: string;
   kindName: string;
   status: "active" | "closed";
+  /** The broker or demat account it is held in, and its name; null until chosen. */
+  investmentAccountId: string | null;
+  accountName: string | null;
   /** Part of the emergency fund. */
   isEmergency: boolean;
   /** Counted in the FIRE corpus. */
@@ -91,11 +95,13 @@ export interface LoadedHoldings {
   entries: Map<string, HoldingEntryDto[]>;
   lots: Map<string, HoldingLotDto[]>;
   kinds: Map<string, HoldingKindRow>;
+  /** The person's broker accounts, by id. */
+  brokers: Map<string, string>;
 }
 
 /** Everything about a person's holdings in three queries: the holdings, their typed values, and their linked entries. */
 export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldings> {
-  const [rows, values, txns, accountRows, lotRows, kinds] = await Promise.all([
+  const [rows, values, txns, accountRows, lotRows, kinds, brokerRows] = await Promise.all([
     db.select().from(holdings).where(eq(holdings.userId, userId)),
     db.select().from(holdingValues).where(eq(holdingValues.userId, userId)),
     db
@@ -105,6 +111,7 @@ export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldin
     db.select({ id: accounts.id, name: accounts.name }).from(accounts).where(eq(accounts.userId, userId)),
     db.select().from(holdingLots).where(eq(holdingLots.userId, userId)),
     kindsByKey(db, userId),
+    db.select({ id: investmentAccounts.id, name: investmentAccounts.name }).from(investmentAccounts).where(eq(investmentAccounts.userId, userId)),
   ]);
   const accountName = new Map(accountRows.map((a) => [a.id, a.name]));
   type Mutable = {
@@ -148,10 +155,10 @@ export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldin
     list.push({ id: l.id, date: l.date, unitsE4: l.unitsE4, costPaise: l.costPaise, note: l.note });
     lots.set(l.holdingId, list);
   }
-  return { rows, facts: facts as Map<string, HoldingFacts>, entries, lots, kinds };
+  return { rows, facts: facts as Map<string, HoldingFacts>, entries, lots, kinds, brokers: new Map(brokerRows.map((b) => [b.id, b.name])) };
 }
 
-function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lots: HoldingLotDto[], today: IstDate, kind?: HoldingKindRow): HoldingDto {
+function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lots: HoldingLotDto[], today: IstDate, kind?: HoldingKindRow, brokerName: string | null = null): HoldingDto {
   const rate = f.units ? latestRate(f.units, today) : null;
   const latest = f.units ? rate : latestValue(f, today);
   const unit = f.units ? (kind?.unit ?? null) : null;
@@ -161,6 +168,8 @@ function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lot
     kind: row.kind,
     kindName: kind?.name ?? row.kind,
     status: row.status,
+    investmentAccountId: brokerName === null ? null : row.investmentAccountId,
+    accountName: brokerName,
     isEmergency: row.isEmergency,
     countsForFire: row.countsForFire,
     openingInvestedPaise: row.openingInvestedPaise,
@@ -190,10 +199,10 @@ function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lot
 
 /** Active holdings first, the most valuable first; closed ones after when asked for. */
 export async function listHoldings(db: Db, userId: string, today: IstDate, status: "active" | "all"): Promise<HoldingsOverview> {
-  const { rows, facts, entries, lots, kinds } = await loadHoldings(db, userId);
+  const { rows, facts, entries, lots, kinds, brokers } = await loadHoldings(db, userId);
   const dtos = rows
     .filter((r) => status === "all" || r.status === "active")
-    .map((r) => toDto(r, facts.get(r.id) as HoldingFacts, entries.get(r.id) ?? [], lots.get(r.id) ?? [], today, kinds.get(r.kind)))
+    .map((r) => toDto(r, facts.get(r.id) as HoldingFacts, entries.get(r.id) ?? [], lots.get(r.id) ?? [], today, kinds.get(r.kind), r.investmentAccountId ? (brokers.get(r.investmentAccountId) ?? null) : null))
     .sort((a, b) => (a.status === b.status ? 0 : a.status === "active" ? -1 : 1) || b.valuePaise - a.valuePaise || a.name.localeCompare(b.name));
   const live = dtos.filter((h) => h.status === "active");
   return {
@@ -223,10 +232,11 @@ async function requireActive(db: Db, userId: string, id: string): Promise<Holdin
   return row;
 }
 
-async function requireFreeName(db: Db, userId: string, name: string, exceptId?: string) {
+/** A name is free when no other active holding in the same broker account has it: the same stock may sit in two accounts. */
+async function requireFreeName(db: Db, userId: string, name: string, accountId: string | null, exceptId?: string) {
   const key = keyOf(name);
-  const active = await db.select({ id: holdings.id, name: holdings.name }).from(holdings).where(and(eq(holdings.userId, userId), eq(holdings.status, "active")));
-  if (active.some((h) => h.id !== exceptId && keyOf(h.name) === key)) throw invalid("name", "You already have a holding with that name");
+  const active = await db.select({ id: holdings.id, name: holdings.name, account: holdings.investmentAccountId }).from(holdings).where(and(eq(holdings.userId, userId), eq(holdings.status, "active")));
+  if (active.some((h) => h.id !== exceptId && h.account === accountId && keyOf(h.name) === key)) throw invalid("name", accountId === null ? "You already have a holding with that name" : "That account already holds an investment with that name");
 }
 
 /** The person's kind for a key, which must exist and not be archived. */
@@ -260,10 +270,12 @@ export async function createHolding(db: Db, userId: string, input: CreateHolding
   if (counted && !kind.unit) throw invalid("kind", `${kind.name} has no unit, so it is valued by typing what it is worth`);
   if (!counted && (input.unitsE4 !== undefined || input.ratePaise !== undefined)) throw invalid("tracking", "A quantity and a rate need tracking by quantity");
   if (counted && input.valuePaise !== undefined) throw invalid("valuePaise", "Counted by quantity, the worth comes from the rate");
-  await requireFreeName(db, userId, input.name);
+  const accountId = input.investmentAccountId ?? null;
+  if (accountId !== null) await requireUsableInvestmentAccount(db, userId, accountId);
+  await requireFreeName(db, userId, input.name, accountId);
   const id = newId();
   const held = counted ? (input.unitsE4 ?? 0) : 0;
-  await db.insert(holdings).values({ id, userId, name: tidy(input.name), kind: input.kind, openingInvestedPaise: input.investedPaise ?? 0, tracking: counted ? "units" : "value", openingUnitsE4: held, createdAt: nowIso() });
+  await db.insert(holdings).values({ id, userId, name: tidy(input.name), kind: input.kind, openingInvestedPaise: input.investedPaise ?? 0, tracking: counted ? "units" : "value", openingUnitsE4: held, investmentAccountId: accountId, createdAt: nowIso() });
   if (input.valuePaise !== undefined) await putValue(db, userId, id, valueDate, input.valuePaise);
   if (counted && input.ratePaise !== undefined) await putRate(db, userId, id, valueDate, input.ratePaise, held, kind.ratePer);
   return getHolding(db, userId, id, today);
@@ -272,7 +284,9 @@ export async function createHolding(db: Db, userId: string, input: CreateHolding
 export async function updateHolding(db: Db, userId: string, id: string, patch: UpdateHoldingData, today: IstDate): Promise<HoldingDto> {
   const row = await getHoldingRow(db, userId, id);
   if (!row) throw new NotFoundError("Holding not found");
-  if (patch.name !== undefined && row.status === "active") await requireFreeName(db, userId, patch.name, id);
+  const accountId = patch.investmentAccountId === undefined ? row.investmentAccountId : patch.investmentAccountId;
+  if (patch.investmentAccountId !== undefined && accountId !== null && accountId !== row.investmentAccountId) await requireUsableInvestmentAccount(db, userId, accountId);
+  if (row.status === "active" && (patch.name !== undefined || accountId !== row.investmentAccountId)) await requireFreeName(db, userId, patch.name ?? row.name, accountId, id);
   if (patch.kind !== undefined && patch.kind !== row.kind) {
     const next = await requireKind(db, userId, patch.kind);
     if (row.tracking === "units") {
@@ -282,7 +296,7 @@ export async function updateHolding(db: Db, userId: string, id: string, patch: U
   }
   await db
     .update(holdings)
-    .set({ name: patch.name === undefined ? row.name : tidy(patch.name), kind: patch.kind ?? row.kind, isEmergency: patch.isEmergency ?? row.isEmergency, countsForFire: patch.countsForFire ?? row.countsForFire })
+    .set({ name: patch.name === undefined ? row.name : tidy(patch.name), kind: patch.kind ?? row.kind, isEmergency: patch.isEmergency ?? row.isEmergency, countsForFire: patch.countsForFire ?? row.countsForFire, investmentAccountId: accountId })
     .where(and(eq(holdings.id, id), eq(holdings.userId, userId)));
   return getHolding(db, userId, id, today);
 }
@@ -447,7 +461,7 @@ export async function reopenHolding(db: Db, userId: string, id: string, today: I
   const row = await getHoldingRow(db, userId, id);
   if (!row) throw new NotFoundError("Holding not found");
   if (row.status === "active") throw new ConflictError("That holding is not closed");
-  await requireFreeName(db, userId, row.name, id);
+  await requireFreeName(db, userId, row.name, row.investmentAccountId, id);
   await db.update(holdings).set({ status: "active", closedAt: null }).where(and(eq(holdings.id, id), eq(holdings.userId, userId)));
   return getHolding(db, userId, id, today);
 }
@@ -465,13 +479,16 @@ export async function deleteHolding(db: Db, userId: string, id: string): Promise
  * An allotted IPO becomes a holding: added to an active one of the same name, or a new Stock holding valued at what
  * was paid. The investment entry is linked to it.
  */
-export async function attachAllotment(db: Db, userId: string, input: { name: string; txnId: string; amountPaise: number; date: IstDate }): Promise<string> {
+export async function attachAllotment(db: Db, userId: string, input: { name: string; txnId: string; amountPaise: number; date: IstDate; investmentAccountId?: string | null }): Promise<string> {
+  const accountId = input.investmentAccountId ?? null;
+  if (accountId !== null) await requireUsableInvestmentAccount(db, userId, accountId);
   const active = await db.select().from(holdings).where(and(eq(holdings.userId, userId), eq(holdings.status, "active")));
-  const found = active.find((h) => keyOf(h.name) === keyOf(input.name));
+  // Added to the same stock in the same account when there is one, else (with no account chosen) to any active one of that name.
+  const found = active.find((h) => keyOf(h.name) === keyOf(input.name) && h.investmentAccountId === accountId) ?? (accountId === null ? active.find((h) => keyOf(h.name) === keyOf(input.name)) : undefined);
   let holdingId = found?.id;
   if (!holdingId) {
     holdingId = newId();
-    await db.insert(holdings).values({ id: holdingId, userId, name: tidy(input.name).slice(0, 40), kind: "stock", openingInvestedPaise: 0, createdAt: nowIso() });
+    await db.insert(holdings).values({ id: holdingId, userId, name: tidy(input.name).slice(0, 40), kind: "stock", openingInvestedPaise: 0, investmentAccountId: accountId, createdAt: nowIso() });
     await putValue(db, userId, holdingId, input.date, input.amountPaise);
   }
   await db.update(transactions).set({ holdingId }).where(and(eq(transactions.userId, userId), eq(transactions.id, input.txnId)));

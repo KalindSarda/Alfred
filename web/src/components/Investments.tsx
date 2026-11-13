@@ -2,8 +2,9 @@ import { useState } from "react";
 import { type Holding, type HoldingKind, api, describeError } from "../api";
 import { rupeesToPaise } from "../filters";
 import { e4ToQty, paiseToInput, qtyToE4, rupees, shortDate, today } from "../format";
-import { useAccounts, useHoldingKinds, useHoldings, useRefreshMoney } from "../queries";
+import { useAccounts, useHoldingKinds, useHoldings, useInvestmentAccounts, useRefreshMoney } from "../queries";
 import { NewKindSheet } from "./InvestmentKinds";
+import { AccountSelect, AccountsSheet, MoveSheet } from "./InvestmentAccounts";
 import { useToast } from "./toast";
 import { Amount, AmountInput, Button, Card, Empty, ErrorText, Field, Sheet, inputClass } from "./ui";
 
@@ -76,6 +77,7 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
   const [typed, setTyped] = useState(false);
   const [emergency, setEmergency] = useState(holding?.isEmergency ?? false);
   const [forFire, setForFire] = useState(holding?.countsForFire ?? true);
+  const [brokerId, setBrokerId] = useState(holding?.investmentAccountId ?? "");
   const unit = unitOfKind(kinds.find((k) => k.key === kind));
   const counted = !holding && !!unit && !typed;
   const key = name.trim().replace(/\s+/g, " ").toLowerCase();
@@ -83,7 +85,7 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
 
   const save = () => {
     if (!name.trim()) return setError("Name it, such as Gold coins or Tata Technologies.");
-    if (holding) return void run(() => api.patch(`/api/holdings/${holding.id}`, { name: name.trim(), kind, isEmergency: emergency, countsForFire: forFire }), "Saved.");
+    if (holding) return void run(() => api.patch(`/api/holdings/${holding.id}`, { name: name.trim(), kind, isEmergency: emergency, countsForFire: forFire, investmentAccountId: brokerId || null }), "Saved.");
     if (dupe) return setError(`You already have ${dupe.name}. Add a purchase to it instead.`);
     const put = invested.trim() ? rupeesToPaise(invested) : 0;
     if (invested.trim() && put === null) return setError("What you paid looks wrong. Leave it empty if nothing yet.");
@@ -93,13 +95,13 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
       const price = rate.trim() ? rupeesToPaise(rate) : null;
       if (rate.trim() && !price) return setError(`The rate looks wrong. Type it ${rateWord(unit)}, such as 130000.`);
       return void run(
-        () => api.post("/api/holdings", { name: name.trim(), kind, tracking: "units", ...(held ? { unitsE4: held } : {}), ...(put ? { investedPaise: put } : {}), ...(price ? { ratePaise: price } : {}) }),
+        () => api.post("/api/holdings", { name: name.trim(), kind, ...(brokerId ? { investmentAccountId: brokerId } : {}), tracking: "units", ...(held ? { unitsE4: held } : {}), ...(put ? { investedPaise: put } : {}), ...(price ? { ratePaise: price } : {}) }),
         "Investment added.",
       );
     }
     const worth = value.trim() ? rupeesToPaise(value) : null;
     if (value.trim() && worth === null) return setError("What it is worth looks wrong. Leave it empty if you do not know yet.");
-    void run(() => api.post("/api/holdings", { name: name.trim(), kind, ...(put ? { investedPaise: put } : {}), ...(worth !== null ? { valuePaise: worth } : {}) }), "Investment added.");
+    void run(() => api.post("/api/holdings", { name: name.trim(), kind, ...(brokerId ? { investmentAccountId: brokerId } : {}), ...(put ? { investedPaise: put } : {}), ...(worth !== null ? { valuePaise: worth } : {}) }), "Investment added.");
   };
 
   return (
@@ -132,6 +134,7 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
             <option value={NEW_KIND}>+ New kind…</option>
           </select>
         </Field>
+        <AccountSelect value={brokerId} onChange={setBrokerId} />
         {holding && (
           <label className="flex min-h-11 items-start gap-3 text-sm">
             <input type="checkbox" className="mt-1 size-5 accent-brand" checked={emergency} onChange={(e) => setEmergency(e.target.checked)} />
@@ -587,10 +590,76 @@ function Row({ h, onAct }: { h: Holding; onAct: (what: Act) => void }) {
   );
 }
 
-/** What you own and what it is worth: shares, IPO allotments, gold, crypto. Values are typed by you; buying and selling go through a bank. */
+type Sort = "value" | "gain" | "name";
+const SORTS: { key: Sort; label: string }[] = [
+  { key: "value", label: "Value" },
+  { key: "gain", label: "Gain" },
+  { key: "name", label: "A to Z" },
+];
+const sortHoldings = (items: Holding[], by: Sort): Holding[] =>
+  [...items].sort((a, b) => (by === "name" ? a.name.localeCompare(b.name) : by === "gain" ? b.gainPaise - a.gainPaise : b.valuePaise - a.valuePaise) || a.name.localeCompare(b.name));
+
+/** Rows shown at first in an account; the rest open in place. */
+const TOP = 5;
+
+/** One broker account (or what is not in one yet): its totals, and its holdings, the first few at first. */
+function Group({ title, note, holdings, sort, open, onToggle, onAct, actions }: { title: string; note: string | null; holdings: Holding[]; sort: Sort; open: boolean; onToggle: () => void; onAct: (h: Holding) => (what: Act) => void; actions?: React.ReactNode }) {
+  const [all, setAll] = useState(false);
+  const value = holdings.reduce((s, h) => s + h.valuePaise, 0);
+  const put = holdings.reduce((s, h) => s + h.investedPaise, 0);
+  const gain = holdings.reduce((s, h) => s + h.gainPaise, 0);
+  const sorted = sortHoldings(holdings, sort);
+  const shown = all ? sorted : sorted.slice(0, TOP);
+  return (
+    <Card pad="p-0">
+      <button type="button" className="flex min-h-14 w-full items-start justify-between gap-3 px-4 py-3 text-left" onClick={onToggle} aria-expanded={open}>
+        <span className="min-w-0">
+          <span className="block font-medium">{title}</span>
+          <span className="block text-xs text-soft">
+            {holdings.length} {holdings.length === 1 ? "holding" : "holdings"}
+            {note ? ` · ${note}` : ""}
+          </span>
+        </span>
+        <span className="shrink-0 text-right">
+          <span className="block font-semibold tabular-nums">
+            <Amount paise={value} />
+          </span>
+          <span className={`block text-xs ${tone(gain)}`}>
+            {signed(gain)}
+            {put > 0 && ` (${Math.round((gain / put) * 1000) / 10}%)`}
+          </span>
+        </span>
+        <span aria-hidden="true" className="mt-1 text-soft">
+          {open ? "⌃" : "⌄"}
+        </span>
+      </button>
+      {open && (
+        <>
+          <ul className="divide-y divide-line border-t border-line">
+            {shown.map((h) => (
+              <Row key={h.id} h={h} onAct={onAct(h)} />
+            ))}
+          </ul>
+          {sorted.length > TOP && (
+            <button type="button" className="min-h-11 w-full border-t border-line px-4 text-sm text-brand" onClick={() => setAll((v) => !v)}>
+              {all ? "Show fewer" : `Show ${sorted.length - TOP} more`}
+            </button>
+          )}
+          {actions}
+        </>
+      )}
+    </Card>
+  );
+}
+
+/** What you own and what it is worth, by broker account: shares, IPO allotments, funds, gold, crypto. Values are typed by you; buying and selling go through a bank. */
 export function Investments() {
   const query = useHoldings("all");
+  const brokers = useInvestmentAccounts();
   const [sheet, setSheet] = useState<SheetState>(null);
+  const [manage, setManage] = useState<"accounts" | "move" | null>(null);
+  const [sort, setSort] = useState<Sort>("value");
+  const [shut, setShut] = useState<Set<string>>(new Set());
 
   if (query.isPending) return <p className="py-8 text-center text-sm text-soft">Loading…</p>;
   if (query.isError) return <Empty title="Could not load your investments">Check your connection and reload.</Empty>;
@@ -600,12 +669,28 @@ export function Investments() {
   const closed = holdings.filter((h) => h.status === "closed");
   const act = (h: Holding) => (what: Act) => setSheet(what === "edit" ? { kind: "edit", holding: h } : { kind: what, holding: h });
   const pct = totalInvestedPaise > 0 ? Math.round((gainPaise / totalInvestedPaise) * 1000) / 10 : null;
+  const accounts = brokers.data?.accounts ?? [];
+  const known = new Set(accounts.map((a) => a.id));
+  const inAccount = (id: string) => active.filter((h) => h.investmentAccountId === id);
+  const loose = active.filter((h) => !h.investmentAccountId || !known.has(h.investmentAccountId));
+  const toggle = (key: string) =>
+    setShut((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   return (
     <div className="space-y-4" id="investments">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-soft">{active.length === 0 ? "Nothing recorded yet" : `${active.length} ${active.length === 1 ? "investment" : "investments"}`}</p>
-        <Button onClick={() => setSheet({ kind: "edit", holding: null })}>Add investment</Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={() => setManage("accounts")}>
+            Broker accounts
+          </Button>
+          <Button onClick={() => setSheet({ kind: "edit", holding: null })}>Add investment</Button>
+        </div>
       </div>
 
       {active.length > 0 && (
@@ -621,19 +706,71 @@ export function Investments() {
               {pct !== null && ` (${pct}%)`}
             </span>
           </p>
+          {accounts.length > 0 && totalValuePaise > 0 && (
+            <div className="mt-3 space-y-1.5">
+              {accounts.filter((a) => a.valuePaise > 0).map((a) => (
+                <div key={a.id}>
+                  <div className="flex justify-between text-xs text-soft">
+                    <span>{a.name}</span>
+                    <span>{a.sharePct}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-sunk">
+                    <span className="block h-full bg-brand" style={{ width: `${a.sharePct ?? 0}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
       )}
 
       {active.length === 0 ? (
         <Empty title="No investments yet">Add gold, a mutual fund, shares or crypto. For gold, funds and shares you give the quantity and the rate; otherwise you type what it is worth. It counts toward your net worth.</Empty>
       ) : (
-        <Card pad="p-0">
-          <ul className="divide-y divide-line">
-            {active.map((h) => (
-              <Row key={h.id} h={h} onAct={act(h)} />
-            ))}
-          </ul>
-        </Card>
+        <>
+          {active.length > TOP && (
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Sort by">
+              {SORTS.map((s) => (
+                <button key={s.key} type="button" aria-pressed={sort === s.key} className={`min-h-11 rounded-full px-3 text-sm ${sort === s.key ? "bg-brand text-white" : "bg-sunk text-soft"}`} onClick={() => setSort(s.key)}>
+                  {s.label}
+                </button>
+              ))}
+              {accounts.length > 0 && (
+                <button type="button" className="ml-auto min-h-11 text-sm text-brand" onClick={() => setManage("move")}>
+                  Move investments…
+                </button>
+              )}
+            </div>
+          )}
+
+          {accounts.length === 0 && active.length > 0 && (
+            <p className="rounded-xl bg-sunk p-3 text-sm text-soft">
+              Hold investments in more than one demat or broker account? Add them under Broker accounts and Alfred shows what each holds.
+            </p>
+          )}
+
+          {accounts.map((a) => (
+            <Group key={a.id} title={a.name} note={a.purpose} holdings={inAccount(a.id)} sort={sort} open={!shut.has(a.id)} onToggle={() => toggle(a.id)} onAct={act} />
+          ))}
+          {(loose.length > 0 || accounts.length === 0) && (
+            <Group
+              title={accounts.length > 0 ? "Not in an account yet" : "Your investments"}
+              note={null}
+              holdings={loose}
+              sort={sort}
+              open={!shut.has("loose")}
+              onToggle={() => toggle("loose")}
+              onAct={act}
+              actions={
+                accounts.length > 0 ? (
+                  <button type="button" className="min-h-11 w-full border-t border-line px-4 text-sm text-brand" onClick={() => setManage("move")}>
+                    Assign these to an account
+                  </button>
+                ) : undefined
+              }
+            />
+          )}
+        </>
       )}
 
       {closed.length > 0 && (
@@ -649,6 +786,8 @@ export function Investments() {
         </details>
       )}
 
+      {manage === "accounts" && <AccountsSheet onClose={() => setManage(null)} />}
+      {manage === "move" && <MoveSheet holdings={active} start={loose.map((h) => h.id)} onClose={() => setManage(null)} />}
       {sheet?.kind === "edit" && <HoldingSheet holding={sheet.holding} all={holdings} onBuyInstead={(h) => setSheet({ kind: "buy", holding: h })} onClose={() => setSheet(null)} />}
       {sheet?.kind === "rate" && <RateSheet holding={sheet.holding} onClose={() => setSheet(null)} />}
       {sheet?.kind === "convert" && <ConvertSheet holding={sheet.holding} onClose={() => setSheet(null)} />}

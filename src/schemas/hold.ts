@@ -28,7 +28,7 @@ export const UpdateHold = z
 export type UpdateHoldData = z.output<typeof UpdateHold>;
 
 /** Allotted for a lower amount than was blocked? Say so; the rest is released. Both fields are optional. */
-export const AllotHold = z.object({ amountPaise: Amount.optional(), date: IstDateString.optional() }).strict();
+export const AllotHold = z.object({ amountPaise: Amount.optional(), date: IstDateString.optional(), /** The broker account the allotment is held in. */ investmentAccountId: z.string().min(1).nullable().optional() }).strict();
 export type AllotHoldData = z.output<typeof AllotHold>;
 
 export const ListHoldsQuery = z.object({ status: z.enum(["active", "all"]).default("active") });
