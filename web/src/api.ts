@@ -722,6 +722,8 @@ export interface MoneyHealth {
   investedPaise: number;
   principalRepaidPaise: number;
   emiPaise: number;
+  /** Refunds and money other people paid back: taken off spending, not counted as income. */
+  reimbursedPaise: number;
   savingsRatePct: number | null;
   needsPct: number | null;
   wantsPct: number | null;

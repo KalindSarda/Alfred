@@ -75,7 +75,7 @@ const CATEGORY_WORDS: Record<string, string> = {
   recharge: "Bills & Utilities", gas: "Bills & Utilities", bill: "Bills & Utilities", bills: "Bills & Utilities",
   rent: "Rent", medicine: "Health", medicines: "Health", doctor: "Health", pharmacy: "Health", hospital: "Health",
   movie: "Entertainment", movies: "Entertainment", cinema: "Entertainment", concert: "Entertainment",
-  salary: "Salary", interest: "Interest", refund: "Refunds", cashback: "Cashback",
+  salary: "Salary", interest: "Interest", dividend: "Dividends", refund: "Refunds", repaid: "Repaid by others", reimbursed: "Repaid by others", reimbursement: "Repaid by others", cashback: "Cashback",
 };
 
 /** Well-known merchants: the word stays as the merchant, and suggests a category when none is given. */

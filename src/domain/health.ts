@@ -15,6 +15,8 @@ export interface PeriodFacts {
   principalRepaidPaise: number;
   /** Card EMI instalments and loan instalments (interest and principal) in the period. */
   emiPaise: number;
+  /** Refunds and money other people paid back: left out of income, and already taken off `needsPaise` and `wantsPaise`. */
+  reimbursedPaise: number;
 }
 
 export type SavingsBand = "strong" | "fair" | "low";
@@ -33,6 +35,8 @@ export interface Health {
   investedPaise: number;
   principalRepaidPaise: number;
   emiPaise: number;
+  /** Refunds and money other people paid back, which are taken off spending rather than counted as income. */
+  reimbursedPaise: number;
   /** Percentages of income to one decimal place; null with no income. */
   savingsRatePct: number | null;
   needsPct: number | null;
@@ -58,6 +62,7 @@ export function healthOf(f: PeriodFacts): Health {
     investedPaise: f.investedPaise,
     principalRepaidPaise: f.principalRepaidPaise,
     emiPaise: f.emiPaise,
+    reimbursedPaise: f.reimbursedPaise,
     savingsRatePct,
     needsPct: pct(f.needsPaise, f.incomePaise),
     wantsPct: pct(f.wantsPaise, f.incomePaise),

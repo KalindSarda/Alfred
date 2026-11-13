@@ -705,7 +705,8 @@ export function Freedom() {
           </Card>
 
           <Card className="divide-y divide-line">
-            <Row label="Income" value={rupees(h.incomePaise)} hint="Without refunds and balance corrections" />
+            <Row label="Income" value={rupees(h.incomePaise)} hint="Without refunds, repayments and balance corrections" />
+            {h.reimbursedPaise > 0 && <Row label="Refunded or repaid" value={rupees(h.reimbursedPaise)} hint="Taken off what you spent, not counted as income" />}
             <Row label="Needs" value={rupees(h.needsPaise)} hint="Essential categories, card EMIs and loan interest" />
             <Row label="Wants" value={rupees(h.wantsPaise)} hint="Everything else you spent" />
             {h.investedPaise > 0 && <Row label="Put into investments" value={rupees(h.investedPaise)} hint="Part of what was saved" />}

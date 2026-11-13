@@ -225,6 +225,13 @@
       "when": 1794481700195,
       "tag": "0031_ladder",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1794567521610,
+      "tag": "0032_income_categories",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,9 @@
 /** Name of the system income category used for cashback received. It can be archived but not renamed. */
 export const CASHBACK_CATEGORY = "Cashback";
 
+/** Name of the system income category for money other people paid back (a ticket you booked for them, a share of a bill). It is left out of income and taken off spending. It can be archived but not renamed. */
+export const REPAID_CATEGORY = "Repaid by others";
+
 export const DEFAULT_EXPENSE_CATEGORIES = [
   "Groceries",
   "Food & Dining",
@@ -27,4 +30,4 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
 /** The spending that cannot stop, which the runway is measured against. Editable per person. */
 export const DEFAULT_ESSENTIAL_CATEGORIES: readonly string[] = ["Groceries", "Transport", "Fuel", "Bills & Utilities", "Rent", "Health", "Insurance", "Education"];
 
-export const DEFAULT_INCOME_CATEGORIES = ["Salary", CASHBACK_CATEGORY, "Interest", "Refunds", "Other income"] as const;
+export const DEFAULT_INCOME_CATEGORIES = ["Salary", CASHBACK_CATEGORY, "Interest", "Dividends", "Refunds", REPAID_CATEGORY, "Gifts received", "Other income"] as const;

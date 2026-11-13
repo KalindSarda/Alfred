@@ -2,6 +2,7 @@ import { newId, nowIso } from "../utils/id";
 import type { Db } from "./client";
 import {
   CASHBACK_CATEGORY,
+  REPAID_CATEGORY,
   DEFAULT_ESSENTIAL_CATEGORIES,
   DEFAULT_EXPENSE_CATEGORIES,
   DEFAULT_INCOME_CATEGORIES,
@@ -9,7 +10,7 @@ import {
 import { DEFAULT_HOLDING_KINDS } from "./defaultKinds";
 import { categories, holdingKinds } from "./schema";
 
-export { CASHBACK_CATEGORY, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES };
+export { CASHBACK_CATEGORY, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, REPAID_CATEGORY };
 
 export async function seedDefaultCategories(db: Db, userId: string): Promise<void> {
   const createdAt = nowIso();
@@ -18,7 +19,7 @@ export async function seedDefaultCategories(db: Db, userId: string): Promise<voi
     ...DEFAULT_INCOME_CATEGORIES.map((name) => ({
       name,
       kind: "income" as const,
-      isSystem: name === CASHBACK_CATEGORY,
+      isSystem: name === CASHBACK_CATEGORY || name === REPAID_CATEGORY,
       isEssential: false,
     })),
   ].map((row) => ({ id: newId(), userId, createdAt, ...row }));

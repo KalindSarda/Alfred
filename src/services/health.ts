@@ -1,5 +1,6 @@
 import { and, eq, gte, isNull, lte } from "drizzle-orm";
 import type { Db } from "../db/client";
+import { REPAID_CATEGORY } from "../db/defaultCategories";
 import { categories, transactions } from "../db/schema";
 import { addDays, cycleRange, type DateRange, type IstDate } from "../domain/dates";
 import { type Health, healthOf, type PeriodFacts } from "../domain/health";
@@ -27,8 +28,12 @@ export function healthRange(today: IstDate, startDay: number, which: HealthPerio
   return which === "last" ? cycleRange(addDays(current.from, -1), startDay) : { from: current.from, to: today };
 }
 
+/** Income categories that are money coming back, not earnings: left out of income and taken off spending. */
+const NETTED_CATEGORIES: readonly string[] = ["Refunds", REPAID_CATEGORY];
+
 /**
- * What the period looked like. Income leaves out refunds and balance-check bookings (they are not earnings). Needs are
+ * What the period looked like. Income leaves out refunds, money other people paid back and balance-check bookings (they are
+ * not earnings); the refunds and repayments are taken off spending instead, wants first and then needs. Needs are
  * the essential categories plus card EMIs and loan interest, each counted once; wants are every other expense, including
  * "Unlogged spending". Investing and loan principal are not spending: they are part of what was saved.
  */
@@ -39,11 +44,13 @@ export async function periodFacts(db: Db, userId: string, range: DateRange): Pro
     .leftJoin(categories, eq(categories.id, transactions.categoryId))
     .where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt), eq(transactions.status, "confirmed"), gte(transactions.txnDate, range.from), lte(transactions.txnDate, range.to)));
 
-  const f: PeriodFacts = { incomePaise: 0, needsPaise: 0, wantsPaise: 0, investedPaise: 0, principalRepaidPaise: 0, emiPaise: 0 };
+  const f: PeriodFacts = { incomePaise: 0, needsPaise: 0, wantsPaise: 0, investedPaise: 0, principalRepaidPaise: 0, emiPaise: 0, reimbursedPaise: 0 };
   for (const r of rows) {
     const instalment = r.loanOn !== null && r.source === "loan";
     if (r.type === "income") {
-      if (r.category !== "Refunds" && r.source !== "check") f.incomePaise += r.amountPaise;
+      if (r.source === "check") continue;
+      if (r.category !== null && NETTED_CATEGORIES.includes(r.category)) f.reimbursedPaise += r.amountPaise;
+      else f.incomePaise += r.amountPaise;
     } else if (r.type === "expense") {
       const emi = r.source === "emi";
       if (r.essential || emi || instalment) f.needsPaise += r.amountPaise;
@@ -56,6 +63,10 @@ export async function periodFacts(db: Db, userId: string, range: DateRange): Pro
       if (instalment) f.emiPaise += r.amountPaise;
     }
   }
+  // What came back is taken off what was spent: first off the wants, then off the needs, never below zero.
+  const fromWants = Math.min(f.reimbursedPaise, f.wantsPaise);
+  f.wantsPaise -= fromWants;
+  f.needsPaise -= Math.min(f.reimbursedPaise - fromWants, f.needsPaise);
   return f;
 }
 
@@ -82,7 +93,7 @@ export async function getHealth(db: Db, userId: string, today: IstDate, which: H
   return {
     ...health,
     period: { kind: which, ...range },
-    empty: facts.incomePaise === 0 && health.spentPaise === 0,
+    empty: facts.incomePaise === 0 && health.spentPaise === 0 && facts.reimbursedPaise === 0,
     utilizationPct: limit > 0 ? Math.round((owed / limit) * 1000) / 10 : null,
     runway: { months: runway.months, burnPaise: runway.burnPaise, solid: runway.solid, basedOnDays: runway.basedOnDays },
     netWorth: nw.firstDate !== null && start !== undefined && end !== undefined ? { endPaise: end, changePaise: end - start } : null,

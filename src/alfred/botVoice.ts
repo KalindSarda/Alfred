@@ -532,6 +532,8 @@ export interface ReviewText {
   emiBurdenPct: number | null;
   investedPaise: number;
   principalRepaidPaise: number;
+  /** Refunds and money other people paid back, already taken off spending. */
+  reimbursedPaise?: number;
   utilizationPct: number | null;
   runway: { months: number | null; burnPaise: number | null; solid: boolean; basedOnDays: number };
   netWorth: { endPaise: number; changePaise: number } | null;
@@ -547,6 +549,7 @@ export function monthlyReviewLines(v: ReviewText): string[] {
   if (v.savingsPaise >= 0) lines.push(`Saved ${rupees(v.savingsPaise)}${v.savingsRatePct === null ? "" : `, which is ${v.savingsRatePct}% of income (a common aim is 20% or more)`}.`);
   else lines.push(`More went out than came in, by ${rupees(-v.savingsPaise)}.`);
   if (v.needsPct !== null && v.wantsPct !== null) lines.push(`Needs ${rupees(v.needsPaise)} (${v.needsPct}%), wants ${rupees(v.wantsPaise)} (${v.wantsPct}%). A common rule of thumb is 50% needs, 30% wants, 20% saved.`);
+  if (v.reimbursedPaise && v.reimbursedPaise > 0) lines.push(`${rupees(v.reimbursedPaise)} of refunds and money other people paid back is taken off spending, and is not counted as income.`);
   if (v.investedPaise > 0 || v.principalRepaidPaise > 0) {
     const parts = [v.investedPaise > 0 ? `${rupees(v.investedPaise)} went into investments` : "", v.principalRepaidPaise > 0 ? `${rupees(v.principalRepaidPaise)} repaid loan principal` : ""].filter(Boolean);
     lines.push(`${parts.join(" and ")}.`);

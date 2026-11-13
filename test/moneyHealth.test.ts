@@ -30,7 +30,8 @@ describe("the health of a month", () => {
     await september(w);
     const v = await view(w);
     expect(v.period).toEqual({ kind: "last", from: "2026-09-01", to: "2026-09-30" });
-    expect(v).toMatchObject({ incomePaise: 1_00_000_00, needsPaise: 25_000_00, wantsPaise: 15_000_00, spentPaise: 40_000_00, savingsPaise: 60_000_00, savingsRatePct: 60, needsPct: 25, wantsPct: 15, investedPaise: 10_000_00, empty: false, savingsBand: "strong" });
+    // The ₹2,000 refund is not income; it is taken off what was spent, wants first.
+    expect(v).toMatchObject({ incomePaise: 1_00_000_00, needsPaise: 25_000_00, wantsPaise: 13_000_00, spentPaise: 38_000_00, savingsPaise: 62_000_00, savingsRatePct: 62, needsPct: 25, wantsPct: 13, investedPaise: 10_000_00, reimbursedPaise: 2_000_00, empty: false, savingsBand: "strong" });
   });
 
   it("is empty for a new person, and the current month is the one so far", async () => {
@@ -78,6 +79,53 @@ describe("the health of a month", () => {
   });
 });
 
+describe("money that comes back", () => {
+  it("takes money other people paid back off spending, and does not count it as income", async () => {
+    const w = await world();
+    await entry(w, "income", 1_00_000_00, "2026-09-05", "Salary");
+    await entry(w, "expense", 60_000_00, "2026-09-07", "Travel");
+    await entry(w, "income", 26_468_00, "2026-09-20", "Repaid by others");
+    const v = await view(w);
+    expect(v).toMatchObject({ incomePaise: 1_00_000_00, wantsPaise: 33_532_00, spentPaise: 33_532_00, savingsPaise: 66_468_00, reimbursedPaise: 26_468_00 });
+  });
+
+  it("takes it off the wants first and then the needs, never below zero", async () => {
+    const w = await world();
+    await entry(w, "income", 1_00_000_00, "2026-09-05", "Salary");
+    await entry(w, "expense", 10_000_00, "2026-09-07", "Shopping");
+    await entry(w, "expense", 20_000_00, "2026-09-08", "Rent");
+    await entry(w, "income", 15_000_00, "2026-09-20", "Refunds");
+    await entry(w, "income", 20_000_00, "2026-09-21", "Repaid by others");
+    // ₹35,000 came back: the ₹10,000 of wants, then ₹20,000 of rent, with ₹5,000 more than was spent.
+    expect(await view(w)).toMatchObject({ wantsPaise: 0, needsPaise: 0, spentPaise: 0, reimbursedPaise: 35_000_00, savingsPaise: 1_00_000_00 });
+  });
+
+  it("is not an empty month when only a refund came in", async () => {
+    const w = await world();
+    await entry(w, "income", 3_000_00, "2026-09-10", "Refunds");
+    expect((await view(w)).empty).toBe(false);
+  });
+
+  it("gives every person Dividends, Gifts received and Repaid by others, the last of them a system category", async () => {
+    const w = await world();
+    const items = (await w.api("GET", "/api/categories")).json.items as Json[];
+    const income = items.filter((c) => c.kind === "income").map((c) => c.name);
+    expect(income).toEqual(expect.arrayContaining(["Salary", "Cashback", "Interest", "Dividends", "Refunds", "Repaid by others", "Gifts received", "Other income"]));
+    expect(items.find((c) => c.name === "Repaid by others")).toMatchObject({ isSystem: true });
+    expect(items.find((c) => c.name === "Dividends")).toMatchObject({ isSystem: false });
+    const rename = await w.api("PATCH", `/api/categories/${items.find((c) => c.name === "Repaid by others")!.id}`, { name: "Friends" });
+    expect(rename.status).toBe(409);
+  });
+
+  it("understands repaid, reimbursed and dividend in the bot", async () => {
+    const w = await world();
+    await w.say("/income 2500 repaid labdhi hdfc");
+    expect(w.tg.last.text).toMatch(/Repaid by others/);
+    await w.say("/income 17.25 dividend hdfc");
+    expect(w.tg.last.text).toMatch(/Dividends/);
+  });
+});
+
 describe("the monthly review", () => {
   it("is sent on the first morning of the next month, with the month in words", async () => {
     const w = await world();
@@ -85,9 +133,10 @@ describe("the monthly review", () => {
     await review(w, "2026-10-01");
     const text = mine(w).at(-1)!.text;
     expect(text).toContain("Your month, 1 Sep to 30 Sep.");
-    expect(text).toContain("Income ₹1,00,000. Spent ₹40,000.");
-    expect(text).toContain("Saved ₹60,000, which is 60% of income (a common aim is 20% or more).");
-    expect(text).toContain("Needs ₹25,000 (25%), wants ₹15,000 (15%). A common rule of thumb is 50% needs, 30% wants, 20% saved.");
+    expect(text).toContain("Income ₹1,00,000. Spent ₹38,000.");
+    expect(text).toContain("Saved ₹62,000, which is 62% of income (a common aim is 20% or more).");
+    expect(text).toContain("Needs ₹25,000 (25%), wants ₹13,000 (13%). A common rule of thumb is 50% needs, 30% wants, 20% saved.");
+    expect(text).toContain("₹2,000 of refunds and money other people paid back is taken off spending, and is not counted as income.");
     expect(text).toContain("₹10,000 went into investments.");
     expect(text).toMatch(/Net worth ₹[\d,.]+, (up|down) ₹[\d,.]+ over the month\./);
   });
@@ -129,7 +178,7 @@ describe("the monthly review", () => {
     expect(w.tg.last.text).toBe("There is nothing to review yet: no income or spending in your last full month.");
     await september(w);
     await w.say("/review");
-    expect(w.tg.last.text).toContain("Saved ₹60,000, which is 60% of income");
+    expect(w.tg.last.text).toContain("Saved ₹62,000, which is 62% of income");
   });
 
   it("says when more went out than came in, and /settings says whether it is on", async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { healthOf } from "../../src/domain/health";
 
-const month = { incomePaise: 1_00_000_00, needsPaise: 45_000_00, wantsPaise: 25_000_00, investedPaise: 20_000_00, principalRepaidPaise: 5_000_00, emiPaise: 12_000_00 };
+const month = { incomePaise: 1_00_000_00, needsPaise: 45_000_00, wantsPaise: 25_000_00, investedPaise: 20_000_00, principalRepaidPaise: 5_000_00, emiPaise: 12_000_00, reimbursedPaise: 0 };
 
 describe("healthOf", () => {
   it("works out savings, the rate and the split against income", () => {
