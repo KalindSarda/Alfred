@@ -6,6 +6,9 @@ export const CASHBACK_CATEGORY = "Cashback";
 /** Name of the system income category for money other people paid back (a ticket you booked for them, a share of a bill). It is left out of income and taken off spending. It can be archived but not renamed. */
 export const REPAID_CATEGORY = "Repaid by others";
 
+/** Income categories that are money coming back, not earnings: left out of income and taken off spending, in the month of the spending they pay back. */
+export const NETTED_INCOME_CATEGORIES: readonly string[] = ["Refunds", REPAID_CATEGORY];
+
 export const DEFAULT_EXPENSE_CATEGORIES = [
   "Groceries",
   "Food & Dining",

@@ -1,0 +1,1 @@
+ALTER TABLE `transactions` ADD `counts_for_date` text;

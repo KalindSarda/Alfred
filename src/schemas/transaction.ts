@@ -21,6 +21,8 @@ const TransactionFields = z.object({
   note: z.string().trim().max(280).nullable().optional(),
   /** An investment can belong to a holding; nothing else can. */
   holdingId: Id.nullable().optional(),
+  /** Refunds and money paid back only: the day of the spending this pays back. */
+  countsForDate: IstDateString.nullable().optional(),
 });
 
 /** Shape rules shared by create (zod refinement) and update (service, on the merged result). */
@@ -30,6 +32,7 @@ export function checkTransactionShape(v: {
   toAccountId?: string | null | undefined;
   categoryId?: string | null | undefined;
   holdingId?: string | null | undefined;
+  countsForDate?: string | null | undefined;
 }): ErrorDetail[] {
   const issues: ErrorDetail[] = [];
   if (isMovement(v.type)) {
@@ -44,6 +47,7 @@ export function checkTransactionShape(v: {
   if ((v.type === "investment" || v.type === "investment_sale" || v.type === "loan_payment") && v.categoryId) issues.push({ path: "categoryId", message: "Investments have no category" });
   if (v.holdingId && v.type !== "investment") issues.push({ path: "holdingId", message: "Only an investment can belong to a holding" });
   if (isDebtType(v.type) && v.categoryId) issues.push({ path: "categoryId", message: "Lent and borrowed money has no category" });
+  if (v.countsForDate && v.type !== "income") issues.push({ path: "countsForDate", message: "Only a refund or money paid back can count for an earlier day" });
   return issues;
 }
 
@@ -72,6 +76,7 @@ export const Transaction = z.object({
   merchant: z.string().nullable(),
   note: z.string().nullable(),
   holdingId: Id.nullable(),
+  countsForDate: IstDateString.nullable(),
   status: TxnStatus,
   source: TxnSource,
   createdAt: z.string(),

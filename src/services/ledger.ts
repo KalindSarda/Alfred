@@ -2,6 +2,7 @@ import { ConflictError, NotFoundError, ValidationError } from "../config/errors"
 import type { Db } from "../db/client";
 import { getAccount, listAccounts, type AccountRow } from "../db/accounts";
 import { getCategory } from "../db/categories";
+import { NETTED_INCOME_CATEGORIES } from "../db/defaultCategories";
 import {
   getTransactionRow,
   insertTransactionRow,
@@ -53,6 +54,7 @@ interface Resolved {
   merchant: string | null;
   note: string | null;
   holdingId: string | null;
+  countsForDate: string | null;
   status: TransactionDto["status"];
 }
 
@@ -112,6 +114,13 @@ async function validateReferences(db: Db, userId: string, v: Resolved): Promise<
       failShape([{ path: "categoryId", message: `A ${category.kind} category cannot be used on an ${v.type}` }]);
     }
   }
+  if (v.countsForDate) {
+    if (!isValidIstDate(v.countsForDate)) failShape([{ path: "countsForDate", message: "Not a real calendar date" }]);
+    const category = v.categoryId ? await getCategory(db, userId, v.categoryId) : undefined;
+    if (!category || !NETTED_INCOME_CATEGORIES.includes(category.name)) {
+      failShape([{ path: "countsForDate", message: "Only Refunds and Repaid by others can count for an earlier day" }]);
+    }
+  }
 }
 
 /**
@@ -147,6 +156,7 @@ export async function createTransaction(
     merchant: v.merchant ?? null,
     note: v.note ?? null,
     holdingId: v.holdingId ?? null,
+    countsForDate: v.countsForDate ?? null,
     status: v.status,
   };
   await validateReferences(db, userId, resolved);
@@ -205,6 +215,7 @@ export async function updateTransaction(
     merchant: p.merchant === undefined ? existing.merchant : p.merchant,
     note: p.note === undefined ? existing.note : p.note,
     holdingId: p.holdingId === undefined ? existing.holdingId : p.holdingId,
+    countsForDate: p.countsForDate === undefined ? existing.countsForDate : p.countsForDate,
     status: p.status ?? existing.status,
   };
   // Only an investment can belong to a holding; changing it into something else lets go of it.
@@ -212,6 +223,12 @@ export async function updateTransaction(
   // Changing to a movement (transfer or bill payment) or an investment clears the category; changing away clears the destination.
   if (hasNoCategory(merged.type) && p.categoryId === undefined) merged.categoryId = null;
   if (!isMovement(merged.type) && p.toAccountId === undefined) merged.toAccountId = null;
+
+  // The day it counts for belongs to a refund or a repayment: moved to something else, it lets go of it.
+  if (merged.countsForDate !== null && p.countsForDate === undefined) {
+    const category = merged.type === "income" && merged.categoryId ? await getCategory(db, userId, merged.categoryId) : undefined;
+    if (!category || !NETTED_INCOME_CATEGORIES.includes(category.name)) merged.countsForDate = null;
+  }
 
   const issues = checkTransactionShape(merged);
   if (issues.length) failShape(issues);

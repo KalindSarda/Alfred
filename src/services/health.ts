@@ -1,6 +1,6 @@
-import { and, eq, gte, isNull, lte } from "drizzle-orm";
+import { and, eq, gte, isNotNull, isNull, lte, or } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { REPAID_CATEGORY } from "../db/defaultCategories";
+import { NETTED_INCOME_CATEGORIES } from "../db/defaultCategories";
 import { categories, transactions } from "../db/schema";
 import { addDays, cycleRange, type DateRange, type IstDate } from "../domain/dates";
 import { type Health, healthOf, type PeriodFacts } from "../domain/health";
@@ -28,28 +28,38 @@ export function healthRange(today: IstDate, startDay: number, which: HealthPerio
   return which === "last" ? cycleRange(addDays(current.from, -1), startDay) : { from: current.from, to: today };
 }
 
-/** Income categories that are money coming back, not earnings: left out of income and taken off spending. */
-const NETTED_CATEGORIES: readonly string[] = ["Refunds", REPAID_CATEGORY];
-
 /**
  * What the period looked like. Income leaves out refunds, money other people paid back and balance-check bookings (they are
- * not earnings); the refunds and repayments are taken off spending instead, wants first and then needs. Needs are
+ * not earnings); the refunds and repayments are taken off spending instead, in the month of the spending they pay back (the day
+ * set on the entry, else the day it arrived), wants first and then needs. Needs are
  * the essential categories plus card EMIs and loan interest, each counted once; wants are every other expense, including
  * "Unlogged spending". Investing and loan principal are not spending: they are part of what was saved.
  */
 export async function periodFacts(db: Db, userId: string, range: DateRange): Promise<PeriodFacts> {
   const rows = await db
-    .select({ type: transactions.type, source: transactions.source, amountPaise: transactions.amountPaise, loanOn: transactions.loanOn, category: categories.name, essential: categories.isEssential })
+    .select({ type: transactions.type, source: transactions.source, amountPaise: transactions.amountPaise, loanOn: transactions.loanOn, txnDate: transactions.txnDate, countsForDate: transactions.countsForDate, category: categories.name, essential: categories.isEssential })
     .from(transactions)
     .leftJoin(categories, eq(categories.id, transactions.categoryId))
-    .where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt), eq(transactions.status, "confirmed"), gte(transactions.txnDate, range.from), lte(transactions.txnDate, range.to)));
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        isNull(transactions.deletedAt),
+        eq(transactions.status, "confirmed"),
+        // Entries dated in the range, and refunds or repayments that count for a day in it.
+        or(and(gte(transactions.txnDate, range.from), lte(transactions.txnDate, range.to)), and(isNotNull(transactions.countsForDate), gte(transactions.countsForDate, range.from), lte(transactions.countsForDate, range.to))),
+      ),
+    );
 
   const f: PeriodFacts = { incomePaise: 0, needsPaise: 0, wantsPaise: 0, investedPaise: 0, principalRepaidPaise: 0, emiPaise: 0, reimbursedPaise: 0 };
   for (const r of rows) {
+    const netted = r.type === "income" && r.category !== null && NETTED_INCOME_CATEGORIES.includes(r.category);
+    // Only a refund or a repayment can count on another day than it arrived.
+    const day = netted ? (r.countsForDate ?? r.txnDate) : r.txnDate;
+    if (day < range.from || day > range.to) continue;
     const instalment = r.loanOn !== null && r.source === "loan";
     if (r.type === "income") {
       if (r.source === "check") continue;
-      if (r.category !== null && NETTED_CATEGORIES.includes(r.category)) f.reimbursedPaise += r.amountPaise;
+      if (netted) f.reimbursedPaise += r.amountPaise;
       else f.incomePaise += r.amountPaise;
     } else if (r.type === "expense") {
       const emi = r.source === "emi";

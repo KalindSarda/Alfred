@@ -232,6 +232,13 @@
       "when": 1794567521610,
       "tag": "0032_income_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1794569300751,
+      "tag": "0033_counts_for_date",
+      "breakpoints": true
     }
   ]
 }

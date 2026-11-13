@@ -254,6 +254,8 @@ export interface Transaction {
   merchant: string | null;
   note: string | null;
   holdingId: string | null;
+  /** On a refund or money paid back: the day of the spending it pays back. */
+  countsForDate?: string | null;
   status: "draft" | "confirmed";
   source: "web" | "telegram" | "seed" | "ai" | "emi" | "recurring" | "loan" | "check";
 }

@@ -40,6 +40,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
   const [merchant, setMerchant] = useState(initial?.merchant ?? "");
   const [note, setNote] = useState(initial?.note ?? "");
   const [holdingId, setHoldingId] = useState(initial?.holdingId ?? "");
+  const [countsFor, setCountsFor] = useState(initial?.countsForDate ?? "");
   const [localError, setLocalError] = useState("");
   // The sheet takes focus when it opens; the one-line add gets it straight after, so typing can begin at once.
   useEffect(() => {
@@ -113,6 +114,9 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
     if ((force || !accountTouched) && allowedFrom(type).some((a) => a.id === memory.accountId)) setAccountId(memory.accountId);
   };
 
+  // Refunds and money other people paid back are taken off spending: they can count in the month of the spending they pay back.
+  const comesBack = type === "income" && ["Refunds", "Repaid by others"].includes((categoriesQuery.data ?? []).find((c) => c.id === categoryId)?.name ?? "");
+
   const save = useMutation({
     mutationFn: () => {
       const paise = parsePaise(amount);
@@ -127,6 +131,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
         merchant: merchant.trim() || null,
         note: note.trim() || null,
         holdingId: type === "investment" && holdingId ? holdingId : null,
+        countsForDate: comesBack && countsFor ? countsFor : null,
       };
       return initial
         ? api.patch<Transaction>(`/api/transactions/${initial.id}`, body)
@@ -304,6 +309,12 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
       <Field label="Date">
         <input className={inputClass} type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
       </Field>
+
+      {comesBack && (
+        <Field label="For spending on (optional)" hint="Leave empty if it pays back something from this month. Set it to the day you spent the money, so that month shows the true spending.">
+          <input className={inputClass} type="date" value={countsFor} onChange={(e) => setCountsFor(e.target.value)} />
+        </Field>
+      )}
 
       {!isMovement(type) && (
         <Field label={type === "investment" ? "What (for example, the IPO)" : "Merchant"}>

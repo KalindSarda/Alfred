@@ -126,6 +126,78 @@ describe("money that comes back", () => {
   });
 });
 
+describe("a repayment counts in the month of the spend", () => {
+  // The test clock is 27 Oct, so the last month is September and the current one is October so far.
+  async function flights(w: W, extra: object = {}, repaymentDate = "2026-10-05") {
+    await entry(w, "income", 1_00_000_00, "2026-09-05", "Salary");
+    await entry(w, "expense", 68_000_00, "2026-09-20", "Travel");
+    return entry(w, "income", 26_000_00, repaymentDate, "Repaid by others", extra);
+  }
+
+  it("offsets the month of the flights, not the month the money arrived, when a day is set", async () => {
+    const w = await world();
+    const res = await flights(w, { countsForDate: "2026-09-26" });
+    expect(res.status).toBe(201);
+    expect(res.json.countsForDate).toBe("2026-09-26");
+    expect(await view(w)).toMatchObject({ wantsPaise: 42_000_00, spentPaise: 42_000_00, reimbursedPaise: 26_000_00, savingsPaise: 58_000_00 });
+    // The October entry no longer reduces October, and is still not income.
+    expect(await view(w, "?period=current")).toMatchObject({ incomePaise: 0, reimbursedPaise: 0 });
+  });
+
+  it("counts on the day it arrived when no day is set", async () => {
+    const w = await world();
+    await flights(w);
+    expect(await view(w)).toMatchObject({ wantsPaise: 68_000_00, reimbursedPaise: 0 });
+    expect(await view(w, "?period=current")).toMatchObject({ incomePaise: 0, reimbursedPaise: 26_000_00 });
+  });
+
+  it("works for a refund too, and still takes off wants first and never below zero", async () => {
+    const w = await world();
+    await entry(w, "income", 1_00_000_00, "2026-09-05", "Salary");
+    await entry(w, "expense", 5_000_00, "2026-09-20", "Shopping");
+    await entry(w, "income", 8_000_00, "2026-10-08", "Refunds", { countsForDate: "2026-09-25" });
+    expect(await view(w)).toMatchObject({ wantsPaise: 0, spentPaise: 0, reimbursedPaise: 8_000_00 });
+  });
+
+  it("can be changed or cleared afterwards", async () => {
+    const w = await world();
+    const created = (await flights(w, { countsForDate: "2026-09-26" })).json as Json;
+    expect((await w.api("PATCH", `/api/transactions/${created.id}`, { countsForDate: null })).json.countsForDate).toBeNull();
+    expect(await view(w)).toMatchObject({ wantsPaise: 68_000_00 });
+    await w.api("PATCH", `/api/transactions/${created.id}`, { countsForDate: "2026-09-20" });
+    expect(await view(w)).toMatchObject({ wantsPaise: 42_000_00 });
+  });
+
+  it("is only for refunds and money paid back, on income", async () => {
+    const w = await world();
+    const bad = async (type: string, category: string, extra: object = {}) => {
+      const res = await entry(w, type, 1_000_00, "2026-10-05", category, { countsForDate: "2026-09-26", ...extra });
+      expect(res.status).toBe(422);
+      return res;
+    };
+    expect((await bad("income", "Salary")).json.error.details[0].path).toBe("countsForDate");
+    expect((await bad("expense", "Travel")).json.error.details[0].path).toBe("countsForDate");
+    expect((await entry(w, "income", 1_000_00, "2026-10-05", "Refunds", { countsForDate: "2026-02-30" })).status).toBe(422);
+    // Without a category it has nothing to belong to.
+    expect((await w.api("POST", "/api/transactions", { type: "income", amountPaise: 1_000_00, txnDate: "2026-10-05", accountId: w.hdfc.id, countsForDate: "2026-09-26" })).status).toBe(422);
+  });
+
+  it("lets go of the day when the entry is moved to another category", async () => {
+    const w = await world();
+    const created = (await flights(w, { countsForDate: "2026-09-26" })).json as Json;
+    const moved = await w.api("PATCH", `/api/transactions/${created.id}`, { categoryId: w.category("Other income") });
+    expect(moved.status).toBe(200);
+    expect(moved.json.countsForDate).toBeNull();
+  });
+
+  it("is each person's own", async () => {
+    const w = await world();
+    const other = await world();
+    await flights(w, { countsForDate: "2026-09-26" });
+    expect((await view(other)).reimbursedPaise).toBe(0);
+  });
+});
+
 describe("the monthly review", () => {
   it("is sent on the first morning of the next month, with the month in words", async () => {
     const w = await world();

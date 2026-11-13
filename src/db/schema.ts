@@ -100,6 +100,8 @@ export const transactions = sqliteTable(
     loanOn: text("loan_on"),
     /** The quantity bought or sold (in 1/10,000 of a unit) on an entry linked to a holding counted by quantity. */
     unitsE4: integer("units_e4"),
+    /** On a refund or money paid back: the day of the spending it pays back, so the money-health numbers count it in that month. Null means the day it arrived. */
+    countsForDate: text("counts_for_date"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
     deletedAt: text("deleted_at"),

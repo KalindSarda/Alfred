@@ -21,6 +21,7 @@ export function toDto(row: TransactionRow): TransactionDto {
     merchant: row.merchant,
     note: row.note,
     holdingId: row.holdingId,
+    countsForDate: row.countsForDate,
     status: row.status,
     source: row.source,
     createdAt: row.createdAt,
