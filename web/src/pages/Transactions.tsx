@@ -168,7 +168,7 @@ export function Transactions() {
       {reviewing && (
         <p className="rounded-2xl bg-warn-bg px-4 py-3 text-sm text-warn-ink">
           {reviewing === "category" ? "These entries need a category. Open one to choose it." : "These entries are drafts waiting for your confirmation. Open one to review it."}{" "}
-          <Link to="/transactions" className="font-medium underline">
+          <Link to="/activity" className="font-medium underline">
             Show everything
           </Link>
         </p>

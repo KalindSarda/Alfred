@@ -69,7 +69,7 @@ export function NetWorthCard({ overview }: { overview: BalanceOverview }) {
 /** A slim strip for Home that links to the full breakdown. */
 export function NetWorthStrip({ overview }: { overview: BalanceOverview }) {
   return (
-    <Link to="/accounts" className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border border-line bg-card px-4 py-3 hover:bg-hover">
+    <Link to="/money" className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border border-line bg-card px-4 py-3 hover:bg-hover">
       <span>
         <span className="block text-xs tracking-wide text-soft uppercase">{LABEL}</span>
         <span className="block text-xs text-soft">

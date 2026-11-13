@@ -10,4 +10,4 @@ export function viewFromSearch(search: string): AccountsView {
 export const searchForView = (view: AccountsView): string => (view === "accounts" ? "" : `?view=${view}`);
 
 /** Where a link to a view goes. */
-export const accountsPath = (view: AccountsView): string => `/accounts${searchForView(view)}`;
+export const accountsPath = (view: AccountsView): string => `/money${searchForView(view)}`;

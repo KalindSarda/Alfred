@@ -134,7 +134,7 @@ function Questions({ view }: { view: ProtectionView }) {
 }
 
 /** Health and life cover: where there is none, and the policies you hold. */
-export function Protection() {
+export function Protection({ embedded = false }: { embedded?: boolean } = {}) {
   const query = useProtection();
   const [sheet, setSheet] = useState<{ policy: Policy | null } | null>(null);
   const v = query.data;
@@ -142,10 +142,7 @@ export function Protection() {
   return (
     <div className="space-y-4">
       <div>
-        <Link to="/more" className="text-sm text-brand">
-          ← Everything
-        </Link>
-        <h1 className="text-3xl">Protection</h1>
+        {!embedded && <h1 className="text-3xl">Protection</h1>}
         <p className="text-sm text-soft">Health and life cover. Reference figures are common rules of thumb. Alfred does not recommend products or insurers.</p>
       </div>
 

@@ -17,9 +17,9 @@ describe("filters in the address bar", () => {
   });
 
   it("builds links used by the briefing and charts", () => {
-    expect(transactionsLink({ categories: ["none"] })).toBe("/transactions?category=none");
-    expect(transactionsLink({ status: "draft" })).toBe("/transactions?status=draft");
-    expect(transactionsLink({})).toBe("/transactions");
+    expect(transactionsLink({ categories: ["none"] })).toBe("/activity?category=none");
+    expect(transactionsLink({ status: "draft" })).toBe("/activity?status=draft");
+    expect(transactionsLink({})).toBe("/activity");
   });
 });
 

@@ -9,7 +9,7 @@ describe("/invest", () => {
   it("says how to start when there are none", async () => {
     const w = await world();
     await w.say("/invest");
-    expect(w.tg.last.text).toBe("You have no investments recorded yet. Add one in the app, under Accounts and commitments, then Investments.");
+    expect(w.tg.last.text).toBe("You have no investments recorded yet. Add one in the app, under Money, then Investments.");
   });
 
   it("lists each holding with its value, gain and how old the value is, and the total", async () => {
@@ -70,7 +70,7 @@ describe("/value", () => {
     await w.say("/value tata");
     expect(w.tg.last.text).toBe("How much is it worth now? For example: /value tata 15200.");
     await w.say("/value tata 100");
-    expect(w.tg.last.text).toBe("You have no investments recorded yet. Add one in the app, under Accounts and commitments, then Investments.");
+    expect(w.tg.last.text).toBe("You have no investments recorded yet. Add one in the app, under Money, then Investments.");
     await make(w, "Tata Tech");
     await w.say("/value reliance 100");
     expect(w.tg.last.text).toBe("I could not find that investment. /invest lists them.");

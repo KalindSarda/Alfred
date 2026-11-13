@@ -103,7 +103,7 @@ export function Home() {
 
       <div className="grid items-start gap-6 lg:grid-cols-2">
         <Card>
-          <SectionTitle to="/accounts" action="All accounts">
+          <SectionTitle to="/money" action="All accounts">
             Upcoming payments
           </SectionTitle>
           {dueCards.length === 0 ? (
@@ -129,7 +129,7 @@ export function Home() {
         </Card>
 
         <Card>
-          <SectionTitle to="/transactions" action="See all">
+          <SectionTitle to="/activity" action="See all">
             Recent
           </SectionTitle>
           {latest.length === 0 ? (

@@ -162,7 +162,7 @@ export function TxnForm({ initial, onDone }: { initial?: Transaction; onDone: ()
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setLocalError("");
-    if (!effectiveAccount) return setLocalError("Add an account first (Accounts and commitments tab).");
+    if (!effectiveAccount) return setLocalError("Add an account first (Money tab).");
     if (isMovement(type) && !toAccountId) {
       return setLocalError(type === "bill_payment" ? "Choose the credit card you are paying." : "Choose the account the money goes to.");
     }

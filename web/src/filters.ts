@@ -67,8 +67,8 @@ export function filtersToSearch(f: TxnFilters): string {
   return text ? `?${text}` : "";
 }
 
-/** "/transactions?category=none" style link for a set of filters. */
-export const transactionsLink = (f: Partial<TxnFilters>): string => `/transactions${filtersToSearch({ ...emptyFilters, ...f })}`;
+/** "/activity?category=none" style link for a set of filters. */
+export const transactionsLink = (f: Partial<TxnFilters>): string => `/activity${filtersToSearch({ ...emptyFilters, ...f })}`;
 
 /** Rupee text to paise; null when it is empty or not a valid positive amount. */
 export function rupeesToPaise(text: string): number | null {

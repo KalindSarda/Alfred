@@ -7,6 +7,8 @@ describe("the Plan page view", () => {
     expect(viewFromSearch("?view=recurring")).toBe("recurring");
     expect(viewFromSearch("?x=1&view=recurring")).toBe("recurring");
     expect(viewFromSearch("?view=goals")).toBe("goals");
+    expect(viewFromSearch("?view=foundations")).toBe("foundations");
+    expect(viewFromSearch("?view=protection")).toBe("protection");
   });
 
   it("treats anything else as Budgets", () => {
@@ -22,6 +24,7 @@ describe("the Plan page view", () => {
     expect(planPath("goals")).toBe("/plan?view=goals");
     expect(planPath("budgets")).toBe("/plan");
     expect(planPath("recurring")).toBe("/plan?view=recurring");
+    expect(planPath("foundations")).toBe("/plan?view=foundations");
     expect(viewFromSearch(searchForView("recurring"))).toBe("recurring");
   });
 });

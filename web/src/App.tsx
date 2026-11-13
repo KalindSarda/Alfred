@@ -8,9 +8,7 @@ import { Categories } from "./pages/Categories";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { Setup } from "./pages/Setup";
-import { Everything } from "./pages/Everything";
-import { Freedom } from "./pages/Freedom";
-import { Protection } from "./pages/Protection";
+import { You } from "./pages/You";
 import { Settings } from "./pages/Settings";
 import { Plan } from "./pages/Plan";
 import { Transactions } from "./pages/Transactions";
@@ -18,34 +16,31 @@ import { inviteEmailFromHash } from "./invite";
 import { clearInviteHash } from "./inviteUrl";
 import { useMe, useReviewCounts } from "./queries";
 import { Link, replacePath, usePath, useScrollToHash, useSearch } from "./router";
+import { HUB_PATHS, type Hub, hubOf, redirectFor } from "./routes";
 
-const NAV = [
-  { to: "/", label: "Home", icon: "cashflow" },
-  { to: "/transactions", label: "Transactions", icon: "transactions" },
-  { to: "/plan", label: "Plan", icon: "budgets" },
-  { to: "/accounts", label: "Accounts and commitments", short: "Accounts", icon: "accounts" },
-  { to: "/more", label: "Everything", icon: "grid" },
-] as const;
+/** The five places, in order. The rail shows all five; the phone's bottom bar shows the first four and keeps You in the header. */
+const HUBS: { hub: Hub; label: string; icon: "cashflow" | "transactions" | "accounts" | "budgets" | "grid" }[] = [
+  { hub: "today", label: "Today", icon: "cashflow" },
+  { hub: "activity", label: "Activity", icon: "transactions" },
+  { hub: "money", label: "Money", icon: "accounts" },
+  { hub: "plan", label: "Plan", icon: "budgets" },
+  { hub: "you", label: "You", icon: "grid" },
+];
 
-function Page({ path, onSearch }: { path: string; onSearch: () => void }) {
+function Page({ path }: { path: string }) {
   switch (path) {
-    case "/transactions":
+    case "/activity":
       return <Transactions />;
     case "/plan":
-    case "/budgets":
       return <Plan />;
-    case "/accounts":
+    case "/money":
       return <Accounts />;
-    case "/more":
-      return <Everything onSearch={onSearch} />;
+    case "/you":
+      return <You onSearch={() => window.dispatchEvent(new Event("alfred:find"))} />;
     case "/settings":
       return <Settings />;
     case "/categories":
       return <Categories />;
-    case "/freedom":
-      return <Freedom />;
-    case "/protection":
-      return <Protection />;
     default:
       return <Home />;
   }
@@ -71,11 +66,18 @@ export function App() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
-  const isActive = (to: string) => path === to || (to === "/more" && (path === "/categories" || path === "/settings" || path === "/freedom" || path === "/protection")) || (to === "/plan" && path === "/budgets");
-  // The Budgets tab is now the Plan tab; an old link or bookmark moves over quietly.
+  const current = hubOf(path);
+  // Old addresses (Transactions, Accounts, Freedom, Protection, Everything, Budgets) move over quietly.
   useEffect(() => {
-    if (path === "/budgets") replacePath(`/plan${window.location.search}`);
+    const to = redirectFor(path, window.location.search, window.location.hash);
+    if (to) replacePath(to);
   }, [path]);
+  // The You page's search box opens the same search.
+  useEffect(() => {
+    const open = () => setFinding(true);
+    window.addEventListener("alfred:find", open);
+    return () => window.removeEventListener("alfred:find", open);
+  }, []);
   const review = useReviewCounts(Boolean(me.data));
   // An invitation link carries the invited address in its fragment; it matters only when someone else is signed in.
   const [invite, setInvite] = useState(() => inviteEmailFromHash(window.location.hash));
@@ -113,100 +115,121 @@ export function App() {
   // New people are guided through setup first; "Run setup again" under Settings opens it on request.
   if (me.data.needsSetup || path === "/setup") return <Setup />;
 
+  const badge = (hub: Hub) => (hub === "activity" && reviewTotal > 0 ? reviewTotal : 0);
+
   return (
     <div className="min-h-dvh md:flex">
-      <aside className="hidden w-64 shrink-0 flex-col gap-1 border-r border-line p-4 md:flex">
-        <p className="mb-5 px-3 font-display text-3xl tracking-tight">Alfred</p>
+      <aside className="hidden w-16 shrink-0 flex-col gap-1 border-r border-line p-2 md:flex min-[1100px]:w-64 min-[1100px]:p-4">
+        <p className="mb-4 px-3 font-display text-3xl tracking-tight max-[1099px]:text-center max-[1099px]:px-0 max-[1099px]:text-2xl">
+          <span className="min-[1100px]:hidden">A</span>
+          <span className="hidden min-[1100px]:inline">Alfred</span>
+        </p>
         <button
           type="button"
           onClick={() => setAdding(true)}
+          aria-label="New transaction"
+          title="New"
           className="mb-3 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand font-medium text-white hover:bg-brand-strong"
         >
-          <Icon name="plus" className="size-5" /> New
+          <Icon name="plus" className="size-5" /> <span className="hidden min-[1100px]:inline">New</span>
         </button>
         <button
           type="button"
           onClick={() => setFinding(true)}
-          className="mb-1 flex min-h-11 items-center gap-3 rounded-xl border border-line px-3 text-sm text-soft hover:bg-hover"
+          aria-label="Find anything"
+          title="Find anything"
+          className="mb-1 flex min-h-11 items-center justify-center gap-3 rounded-xl border border-line px-3 text-sm text-soft hover:bg-hover min-[1100px]:justify-start"
         >
           <Icon name="search" className="size-5" />
-          Find anything
-          <kbd className="ml-auto rounded bg-sunk px-1.5 py-0.5 text-xs">/</kbd>
+          <span className="hidden min-[1100px]:inline">Find anything</span>
+          <kbd className="ml-auto hidden rounded bg-sunk px-1.5 py-0.5 text-xs min-[1100px]:inline">/</kbd>
         </button>
-        {NAV.map((item) => (
+        {HUBS.map((item) => (
           <Link
-            key={item.to}
-            to={item.to}
-            aria-current={isActive(item.to) ? "page" : undefined}
-            className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium ${
-              isActive(item.to)
-                ? "bg-sunk text-brand"
-                : "text-soft hover:bg-hover"
+            key={item.hub}
+            to={HUB_PATHS[item.hub]}
+            aria-current={current === item.hub ? "page" : undefined}
+            aria-label={item.label}
+            title={item.label}
+            className={`relative flex min-h-11 items-center justify-center gap-3 rounded-xl px-3 text-sm font-medium min-[1100px]:justify-start ${
+              current === item.hub ? "bg-sunk text-brand" : "text-soft hover:bg-hover"
             }`}
           >
             <Icon name={item.icon} className="size-5" />
-            {item.label}
-            {item.to === "/transactions" && reviewTotal > 0 && (
-              <span className="ml-auto rounded-full bg-warn-bg px-2 py-0.5 text-xs text-warn-ink" aria-label={`${reviewTotal} entries need attention`}>
-                {reviewTotal}
+            <span className="hidden min-[1100px]:inline">{item.label}</span>
+            {badge(item.hub) > 0 && (
+              <span
+                className="absolute top-1 right-1 min-w-4 rounded-full bg-warn-bg px-1 text-center text-[10px] leading-4 font-semibold text-warn-ink min-[1100px]:static min-[1100px]:ml-auto min-[1100px]:px-2 min-[1100px]:text-xs"
+                aria-label={`${badge(item.hub)} entries need attention`}
+              >
+                {badge(item.hub)}
               </span>
             )}
           </Link>
         ))}
       </aside>
 
-      <main className="mx-auto w-full min-w-0 max-w-5xl flex-1 p-4 pb-28 md:p-8 md:pb-8">
-        <div className="mb-1 flex justify-end md:hidden">
-          <button type="button" onClick={() => setFinding(true)} className="flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm text-soft hover:bg-hover">
-            <Icon name="search" className="size-5" />
-            Find
-          </button>
-        </div>
-        <div className={path === "/" ? "" : "max-w-3xl"}>
-          <Page path={path} onSearch={() => setFinding(true)} />
+      <main className="mx-auto w-full min-w-0 max-w-5xl flex-1 px-4 pb-28 md:p-8 md:pb-8">
+        <header className="sticky top-0 z-30 -mx-4 mb-2 flex items-center justify-between bg-paper px-4 pt-[env(safe-area-inset-top)] md:hidden">
+          <p className="font-display text-2xl tracking-tight">Alfred</p>
+          <div className="flex items-center">
+            <button type="button" onClick={() => setFinding(true)} aria-label="Find anything" className="flex size-11 items-center justify-center rounded-xl text-soft hover:bg-hover">
+              <Icon name="search" className="size-5" />
+            </button>
+            <Link
+              to={HUB_PATHS.you}
+              aria-label="You"
+              aria-current={current === "you" ? "page" : undefined}
+              className={`flex size-11 items-center justify-center rounded-xl hover:bg-hover ${current === "you" ? "text-brand" : "text-soft"}`}
+            >
+              <Icon name="grid" className="size-5" />
+            </Link>
+          </div>
+        </header>
+        <div className={current === "today" ? "" : "max-w-3xl"}>
+          <Page path={path} />
         </div>
       </main>
-
-      <button
-        type="button"
-        onClick={() => setAdding(true)}
-        aria-label="New transaction"
-        className="fixed right-4 bottom-20 z-40 flex size-14 items-center justify-center rounded-full bg-brand text-white shadow-lg hover:bg-brand-strong md:hidden"
-      >
-        <Icon name="plus" className="size-7" />
-      </button>
 
       <nav
         aria-label="Main"
         className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-card pb-[env(safe-area-inset-bottom)] md:hidden"
       >
-        {NAV.map((item) => (
-          <Link
-            key={item.to}
-            to={item.to}
-            aria-current={isActive(item.to) ? "page" : undefined}
-            className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${
-              isActive(item.to) ? "text-brand" : "text-soft"
-            }`}
-          >
-            <span className="relative">
-              <Icon name={item.icon} className="size-6" />
-              {item.to === "/transactions" && reviewTotal > 0 && (
-                <span
-                  className="absolute -top-1 -right-3 min-w-4 rounded-full bg-brass px-1 text-center text-[10px] leading-4 font-semibold text-navy"
-                  aria-label={`${reviewTotal} entries need attention`}
-                >
-                  {reviewTotal}
-                </span>
-              )}
-            </span>
-            {"short" in item ? item.short : item.label}
-          </Link>
+        {HUBS.slice(0, 2).map((item) => (
+          <TabLink key={item.hub} item={item} active={current === item.hub} badge={badge(item.hub)} />
+        ))}
+        <button type="button" onClick={() => setAdding(true)} aria-label="New transaction" className="flex min-h-14 items-center justify-center">
+          <span className="flex size-12 items-center justify-center rounded-full bg-brand text-white shadow-md">
+            <Icon name="plus" className="size-7" />
+          </span>
+        </button>
+        {HUBS.slice(2, 4).map((item) => (
+          <TabLink key={item.hub} item={item} active={current === item.hub} badge={badge(item.hub)} />
         ))}
       </nav>
 
       {adding && <QuickAddSheet onClose={() => setAdding(false)} />}
       {finding && <JumpSearch onClose={() => setFinding(false)} />}
     </div>
+  );
+}
+
+function TabLink({ item, active, badge }: { item: (typeof HUBS)[number]; active: boolean; badge: number }) {
+  return (
+    <Link
+      to={HUB_PATHS[item.hub]}
+      aria-current={active ? "page" : undefined}
+      className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${active ? "text-brand" : "text-soft"}`}
+    >
+      <span className="relative">
+        <Icon name={item.icon} className="size-6" />
+        {badge > 0 && (
+          <span className="absolute -top-1 -right-3 min-w-4 rounded-full bg-brass px-1 text-center text-[10px] leading-4 font-semibold text-navy" aria-label={`${badge} entries need attention`}>
+            {badge}
+          </span>
+        )}
+      </span>
+      {item.label}
+    </Link>
   );
 }

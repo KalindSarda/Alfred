@@ -650,7 +650,7 @@ function FireCard() {
 }
 
 /** Where you stand: how the month looked, and the ratios behind it. */
-export function Freedom() {
+export function Freedom({ embedded = false }: { embedded?: boolean } = {}) {
   const [period, setPeriod] = useState<"last" | "current">("last");
   const query = useMoneyHealth(period);
   const h = query.data;
@@ -658,10 +658,7 @@ export function Freedom() {
   return (
     <div className="space-y-4">
       <div>
-        <Link to="/more" className="text-sm text-brand">
-          ← Everything
-        </Link>
-        <h1 className="text-3xl">Freedom</h1>
+        {!embedded && <h1 className="text-3xl">Foundations</h1>}
         <p className="text-sm text-soft">How your money is doing. Reference lines are common rules of thumb, not advice.</p>
       </div>
 

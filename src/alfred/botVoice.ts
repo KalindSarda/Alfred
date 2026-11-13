@@ -112,7 +112,7 @@ export function categoriesReply(expense: string[], income: string[]): string {
     `Expense categories: ${expense.length ? expense.join(", ") : "none yet"}.`,
     `Income categories: ${income.length ? income.join(", ") : "none yet"}.`,
     "",
-    "To add one: /category add Pets (for income: /category add income Freelance). Renaming, merging and deleting are in the app, under Everything, then Categories.",
+    "To add one: /category add Pets (for income: /category add income Freelance). Renaming, merging and deleting are in the app, under You, then Categories.",
   ].join("\n");
 }
 
@@ -150,7 +150,7 @@ export interface EmiLine {
 /** Running EMI plans: how far along each is and what is still to be billed. */
 export function emiReply(items: EmiLine[]): string {
   const running = items.filter((p) => p.status === "active");
-  if (running.length === 0) return "You have no EMI plans running. You can add one in the app, under Accounts and commitments, then Commitments.";
+  if (running.length === 0) return "You have no EMI plans running. You can add one in the app, under Money, then Commitments.";
   const lines = ["Your EMI plans:"];
   for (const p of running) {
     const next = p.nextDate && p.nextAmountPaise !== null ? `, next ${rupees(p.nextAmountPaise)} on ${shortDate(p.nextDate)}` : "";
@@ -257,7 +257,7 @@ const age = (days: number | null) => (days === null ? "no value typed yet" : day
 
 /** The holdings, what they are worth and how they have done. */
 export function investReply(items: HoldingLine[]): string {
-  if (items.length === 0) return "You have no investments recorded yet. Add one in the app, under Accounts and commitments, then Investments.";
+  if (items.length === 0) return "You have no investments recorded yet. Add one in the app, under Money, then Investments.";
   const value = items.reduce((s, h) => s + h.valuePaise, 0);
   const put = items.reduce((s, h) => s + h.investedPaise, 0);
   const gain = items.reduce((s, h) => s + h.gainPaise, 0);
@@ -294,7 +294,7 @@ export interface LoanLine {
 
 /** What is owed on bank loans, and what comes next. */
 export function loansReply(items: LoanLine[]): string {
-  if (items.length === 0) return "You have no bank loans recorded. Add one in the app, under Accounts and commitments, then Commitments.";
+  if (items.length === 0) return "You have no bank loans recorded. Add one in the app, under Money, then Commitments.";
   const total = items.reduce((s, l) => s + l.outstandingPaise, 0);
   const emi = items.reduce((s, l) => s + l.emiPaise, 0);
   const lines = items.map((l) => `${l.name}: ${rupees(l.outstandingPaise)} owed, EMI ${rupees(l.emiPaise)}${l.nextDueDate ? `, next on ${shortDate(l.nextDueDate)}` : ""}, about ${l.monthsLeft} ${l.monthsLeft === 1 ? "month" : "months"} left`);
@@ -651,7 +651,7 @@ export const botVoice = {
   loanFixed: (name: string, totalPaise: number, owedPaise: number) => `Corrected. ${name} took ${rupees(totalPaise)} that month, and ${rupees(owedPaise)} is still owed.`,
   loanGone: "I cannot find that instalment any more, so there is nothing to correct.",
   valueNeedsAmount: "How much is it worth now? For example: /value tata 15200.",
-  valueNoHoldings: "You have no investments recorded yet. Add one in the app, under Accounts and commitments, then Investments.",
+  valueNoHoldings: "You have no investments recorded yet. Add one in the app, under Money, then Investments.",
   valueNoMatch: "I could not find that investment. /invest lists them.",
   valueAskWhich: (paise: number) => `Which investment is worth ${rupees(paise)}?`,
   valueSet: (name: string, valuePaise: number, gainPaise: number) => `Noted. ${name} is worth ${rupees(valuePaise)}, ${upDown(gainPaise)} on what you put in.`,
@@ -689,7 +689,7 @@ export const botVoice = {
     return `${greeting(name, now)} At your service. /help lists what I can do.`;
   },
 
-  linkFailed: "That code did not work. It may have expired. You can ask for a fresh one in the app, under Everything, then Settings.",
+  linkFailed: "That code did not work. It may have expired. You can ask for a fresh one in the app, under You, then Settings.",
 
   help: [
     "Here is what I can do.",

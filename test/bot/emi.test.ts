@@ -9,7 +9,7 @@ describe("/emi", () => {
   it("says so when no plan is running", async () => {
     const w = await world();
     await w.say("/emi");
-    expect(w.tg.last.text).toBe("You have no EMI plans running. You can add one in the app, under Accounts and commitments, then Commitments.");
+    expect(w.tg.last.text).toBe("You have no EMI plans running. You can add one in the app, under Money, then Commitments.");
   });
 
   it("lists running plans with progress, the next instalment and the total still to come", async () => {

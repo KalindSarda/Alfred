@@ -692,7 +692,7 @@ async function accountsView(deps: BotDeps, who: Actor, today: IstDate, note?: st
     for (const k of cards) if (k.kind === "card") lines.push(`${k.name}: owes ${rupees(k.outstandingPaise)}`);
   }
   if (archived.length) lines.push("", `Archived: ${archived.map((a) => a.name).join(", ")}.`);
-  lines.push("", "Adding, editing, merging and deleting are in the app, under Accounts and commitments.");
+  lines.push("", "Adding, editing, merging and deleting are in the app, under Money.");
 
   const buttons: Button[][] = [
     ...active.map((a) => [{ text: `Archive ${a.name}`, data: `a:${a.id}:x` }]),
@@ -827,7 +827,7 @@ async function cmdSettings(deps: BotDeps, who: Actor): Promise<void> {
       settings.monthlyReview ? "On the first morning of each month I send you a review of the one just ended." : "I shall not send a monthly review.",
       settings.morningPush ? "I send your briefing here each morning when something needs attention." : "I shall not send a morning briefing here unless you ask me to, in Settings.",
       "",
-      "These can be changed in the app, under Everything, then Settings.",
+      "These can be changed in the app, under You, then Settings.",
     ].join("\n"),
   );
 }

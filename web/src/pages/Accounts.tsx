@@ -76,7 +76,7 @@ export function Accounts() {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl">Accounts and commitments</h1>
+        <h1 className="text-3xl">Money</h1>
         {view === "accounts" && <Button onClick={() => setEditing("new")}>Add</Button>}
       </div>
 
@@ -101,7 +101,7 @@ export function Accounts() {
         <Empty title="Could not load accounts">Check your connection and reload.</Empty>
       ) : (accounts.data ?? []).length === 0 ? (
         <Empty title="No accounts yet">
-          Add a bank account or credit card to start, or load demo data from Everything, then Settings.
+          Add a bank account or credit card to start, or load demo data from You, then Settings.
         </Empty>
       ) : (
         view === "investments" ? (

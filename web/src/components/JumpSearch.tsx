@@ -62,7 +62,7 @@ export function JumpSearch({ onClose }: { onClose: () => void }) {
             sub: "Merchant, note, category or account",
             go: () => {
               onClose();
-              navigate(`/transactions?q=${encodeURIComponent(text)}`);
+              navigate(`/activity?q=${encodeURIComponent(text)}`);
             },
           },
         ]

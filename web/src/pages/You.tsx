@@ -4,14 +4,14 @@ import { groupedFeatures } from "../features";
 import { useMe } from "../queries";
 import { Link } from "../router";
 
-/** Every feature in one place, grouped, with a line on what each is for. The search opens from the box at the top. */
-export function Everything({ onSearch }: { onSearch: () => void }) {
+/** You: settings and every feature in one place, grouped, with a line on what each is for. The search opens from the box at the top. */
+export function You({ onSearch }: { onSearch: () => void }) {
   const me = useMe();
   const groups = groupedFeatures(undefined, Boolean(me.data?.isOwner));
 
   return (
     <div className="space-y-5">
-      <h1 className="text-3xl">Everything</h1>
+      <h1 className="text-3xl">You</h1>
 
       <button
         type="button"

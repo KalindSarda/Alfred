@@ -482,7 +482,7 @@ describe("questions", () => {
     expect(w.tg.last.text).toContain("I call you Kalind.");
     expect(w.tg.last.text).toContain("3 days before a card payment is due");
     expect(w.tg.last.text).toContain("starts on day 30");
-    expect(w.tg.last.text).toContain("under Everything, then Settings");
+    expect(w.tg.last.text).toContain("under You, then Settings");
   });
 
   it("/help lists the commands and unknown ones are acknowledged", async () => {

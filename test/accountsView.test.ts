@@ -20,10 +20,10 @@ describe("the Accounts page view", () => {
   it("writes the address back, leaving the default view clean", () => {
     expect(searchForView("accounts")).toBe("");
     expect(searchForView("commitments")).toBe("?view=commitments");
-    expect(accountsPath("accounts")).toBe("/accounts");
-    expect(accountsPath("commitments")).toBe("/accounts?view=commitments");
+    expect(accountsPath("accounts")).toBe("/money");
+    expect(accountsPath("commitments")).toBe("/money?view=commitments");
     expect(searchForView("investments")).toBe("?view=investments");
-    expect(accountsPath("investments")).toBe("/accounts?view=investments");
+    expect(accountsPath("investments")).toBe("/money?view=investments");
     expect(viewFromSearch(searchForView("commitments"))).toBe("commitments");
   });
 });

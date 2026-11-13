@@ -252,3 +252,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-11-27: slice 39 noted: `transactions.counts_for_date` lets a refund or repayment count in the month of the spending it pays back (`periodFacts` attributes by `COALESCE(counts_for_date, txn_date)` for those two categories).
 - 2026-11-28: slice 40 noted: broker and demat accounts (`services/investmentAccounts.ts`, table `investment_accounts`), holdings grouped by account, bulk move.
 - 2026-11-29: Investments page tidy: investments in no broker account are listed directly under an "Other investments" label (no card), and expandable cards use a chevron icon (`Chevron` in `web/src/components/ui.tsx`).
+- 2026-11-29: slice 41 noted: five hubs (Today, Activity, Money, Plan, You), `web/src/routes.ts` for hub membership and redirects, responsive shell (bottom bar, icon rail, full rail), Foundations and Protection as Plan views, the Everything page is now You.

@@ -197,8 +197,8 @@ export function Categories() {
   return (
     <div className="space-y-4">
       <div>
-        <Link to="/more" className="text-sm text-brand">
-          ← Everything
+        <Link to="/you" className="text-sm text-brand">
+          ← You
         </Link>
         <div className="flex items-end justify-between gap-3">
           <h1 className="text-3xl">Categories and kinds</h1>

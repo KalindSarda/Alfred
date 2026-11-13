@@ -19,7 +19,7 @@ describe("/loans", () => {
   it("says how to start when there are none", async () => {
     const w = await world();
     await w.say("/loans");
-    expect(w.tg.last.text).toBe("You have no bank loans recorded. Add one in the app, under Accounts and commitments, then Commitments.");
+    expect(w.tg.last.text).toBe("You have no bank loans recorded. Add one in the app, under Money, then Commitments.");
   });
 
   it("lists what is owed, the EMI, the next date and the months left, with the total", async () => {

@@ -47,8 +47,8 @@ export const amountSign = (type: Transaction["type"]): string =>
 
 /** Where an entry is managed when it is not edited like the others: lent and borrowed, an investment sale, or a loan instalment. */
 export function managedAt(txn: Pick<Transaction, "type" | "source">): string | null {
-  if (txn.source === "loan" || txn.type === "loan_payment") return "/accounts?view=commitments#loans";
-  if (isDebt(txn.type)) return "/accounts?view=commitments";
-  if (txn.type === "investment_sale") return "/accounts?view=investments";
+  if (txn.source === "loan" || txn.type === "loan_payment") return "/money?view=commitments#loans";
+  if (isDebt(txn.type)) return "/money?view=commitments";
+  if (txn.type === "investment_sale") return "/money?view=investments";
   return null;
 }
