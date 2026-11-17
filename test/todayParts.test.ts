@@ -3,6 +3,7 @@ import type { Cashflow, CashflowRow } from "../web/src/api";
 import { compactLines } from "../web/src/briefingCompact";
 import { barSegments, buildFlow } from "../web/src/cashflow";
 import { sparkline, trendWindow } from "../web/src/spark";
+import { ACCOUNT_COLORS, accountColors, spendChange } from "../web/src/spend";
 
 const row = (key: string, amountPaise: number): CashflowRow => ({ key, categoryId: key, name: key, amountPaise, pctOfIncome: 0 });
 const flow = (income: number, expenses: [string, number][]): Cashflow => {
@@ -70,5 +71,35 @@ describe("the compact briefing", () => {
     const sections = [{ lines: ["a", "b"] }, { lines: ["c", "d", "e"] }];
     expect(compactLines(sections, 3)).toEqual({ shown: ["a", "b", "c"], total: 5 });
     expect(compactLines([], 3)).toEqual({ shown: [], total: 0 });
+  });
+});
+
+describe("spending by account", () => {
+  it("gives each account a colour that stays with it, by its place among all accounts by name", () => {
+    const all = [
+      { id: "z", name: "SBI" },
+      { id: "a", name: "HDFC" },
+      { id: "m", name: "ICICI" },
+    ];
+    const colors = accountColors(all);
+    expect(colors.get("a")).toBe(ACCOUNT_COLORS[0]);
+    expect(colors.get("m")).toBe(ACCOUNT_COLORS[1]);
+    expect(colors.get("z")).toBe(ACCOUNT_COLORS[2]);
+    // adding an account later in the alphabet leaves the others as they were
+    expect(accountColors([...all, { id: "w", name: "Zoho card" }]).get("a")).toBe(colors.get("a"));
+  });
+
+  it("wraps round when there are more accounts than colours, and keeps the colours different", () => {
+    expect(new Set(ACCOUNT_COLORS).size).toBe(ACCOUNT_COLORS.length);
+    const many = Array.from({ length: 8 }, (_, i) => ({ id: `i${i}`, name: `Account ${i}` }));
+    expect(accountColors(many).get("i6")).toBe(ACCOUNT_COLORS[0]);
+  });
+
+  it("says whether an account spent more, less, the same, or is new compared with last month", () => {
+    expect(spendChange(5_000, 3_000)).toEqual({ kind: "up", paise: 2_000 });
+    expect(spendChange(1_000, 4_000)).toEqual({ kind: "down", paise: 3_000 });
+    expect(spendChange(2_000, 2_000)).toEqual({ kind: "same" });
+    expect(spendChange(2_000, 0)).toEqual({ kind: "new" });
+    expect(spendChange(0, 0)).toEqual({ kind: "same" });
   });
 });

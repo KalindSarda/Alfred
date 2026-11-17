@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Cashflow, CashflowRow } from "../web/src/api";
-import { buildFlow, collapseSmall, kindFromCategories, NEED_COLORS, SAVINGS_COLOR, WANT_COLORS } from "../web/src/cashflow";
+import { buildFlow, categoryStyles, collapseSmall, NEED_COLORS, OTHER_COLOR, SAVINGS_COLOR, WANT_COLORS } from "../web/src/cashflow";
 
 const row = (name: string, amountPaise: number, income = 100_000_00, key = name.toLowerCase()): CashflowRow => ({
   key,
@@ -93,30 +93,48 @@ describe("collapseSmall", () => {
 
 describe("colouring by purpose", () => {
   const cats = [
-    { id: "rent", essential: true },
-    { id: "bills", essential: true },
-    { id: "food", essential: false },
-    { id: "fun", essential: false },
+    { id: "rent", name: "Rent", essential: true },
+    { id: "bills", name: "Bills", essential: true },
+    { id: "food", name: "Food", essential: false },
+    { id: "fun", name: "Fun", essential: false },
+    { id: "pay", name: "Salary", essential: false, kind: "income" },
   ];
   const colorOf = (m: ReturnType<typeof buildFlow>, id: string) => m!.nodes.find((n) => n.id === id)?.color;
 
-  it("draws needs in blues and wants in warm colours, in order within each group", () => {
-    const m = buildFlow(data([row("Salary", 100_000_00)], [row("Rent", 30_000_00), row("Food", 10_000_00), row("Bills", 8_000_00), row("Fun", 6_000_00)]), kindFromCategories(cats));
-    expect(colorOf(m, "out:rent")).toBe(NEED_COLORS[0]);
-    expect(colorOf(m, "out:bills")).toBe(NEED_COLORS[1]);
+  it("draws needs and wants from their own palettes, by the category's place by name", () => {
+    const m = buildFlow(data([row("Salary", 100_000_00)], [row("Rent", 30_000_00), row("Food", 10_000_00), row("Bills", 8_000_00), row("Fun", 6_000_00)]), categoryStyles(cats));
+    // by name: Bills then Rent among needs, Food then Fun among wants
+    expect(colorOf(m, "out:bills")).toBe(NEED_COLORS[0]);
+    expect(colorOf(m, "out:rent")).toBe(NEED_COLORS[1]);
     expect(colorOf(m, "out:food")).toBe(WANT_COLORS[0]);
     expect(colorOf(m, "out:fun")).toBe(WANT_COLORS[1]);
     expect(colorOf(m, "savings")).toBe(SAVINGS_COLOR);
   });
 
-  it("leaves a row grey when it is neither a known need nor a want", () => {
-    const m = buildFlow(data([row("Salary", 100_000_00)], [row("Swiggy", 10_000_00, 100_000_00, "swiggy"), row("Rent", 30_000_00)]), kindFromCategories(cats));
-    expect(colorOf(m, "out:swiggy")).toBe("#8a8f9a");
-    expect(colorOf(m, "out:rent")).toBe(NEED_COLORS[0]);
+  it("gives a category the same colour whatever the amounts or which others appear", () => {
+    const styleOf = categoryStyles(cats);
+    const a = buildFlow(data([row("Salary", 100_000_00)], [row("Rent", 30_000_00), row("Food", 10_000_00)]), styleOf);
+    const b = buildFlow(data([row("Salary", 100_000_00)], [row("Food", 40_000_00), row("Fun", 5_000_00), row("Rent", 1_000_00)]), styleOf);
+    expect(colorOf(a, "out:rent")).toBe(colorOf(b, "out:rent"));
+    expect(colorOf(a, "out:food")).toBe(colorOf(b, "out:food"));
   });
 
-  it("keeps the old cycling colours when no classifier is given", () => {
+  it("leaves a row grey when it is not a known category", () => {
+    const m = buildFlow(data([row("Salary", 100_000_00)], [{ ...row("Swiggy", 10_000_00, 100_000_00, "swiggy"), categoryId: null }, row("Rent", 30_000_00)]), categoryStyles(cats));
+    expect(colorOf(m, "out:swiggy")).toBe(OTHER_COLOR);
+    expect(colorOf(m, "out:rent")).toBe(NEED_COLORS[1]);
+  });
+
+  it("keeps the old cycling colours when no lookup is given", () => {
     const m = buildFlow(data([row("Salary", 100_000_00)], [row("Rent", 30_000_00), row("Food", 10_000_00)]));
     expect(colorOf(m, "out:rent")).not.toBe(colorOf(m, "out:food"));
+  });
+
+  it("uses colours that are all different inside each palette and apart from grey and green", () => {
+    for (const palette of [NEED_COLORS, WANT_COLORS]) expect(new Set(palette).size).toBe(palette.length);
+    const all = [...NEED_COLORS, ...WANT_COLORS];
+    expect(new Set(all).size).toBe(all.length);
+    expect(all).not.toContain(OTHER_COLOR);
+    expect(all).not.toContain(SAVINGS_COLOR);
   });
 });

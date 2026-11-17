@@ -1,9 +1,9 @@
 import { useState } from "react";
 import type { Cashflow, CashflowRow } from "../api";
-import { showIncomeCard } from "../cashflow";
+import { categoryStyles, showIncomeCard } from "../cashflow";
 import { emptyFilters, transactionsLink, type TxnFilters } from "../filters";
 import { rupees } from "../format";
-import { useCashflow } from "../queries";
+import { useCashflow, useCategories } from "../queries";
 import { Link } from "../router";
 import { Card } from "./ui";
 
@@ -22,6 +22,8 @@ function List({ data, rows, type }: { data: Cashflow; rows: CashflowRow[]; type:
   const [all, setAll] = useState(false);
   const total = type === "income" ? data.incomePaise : data.expensePaise;
   const shown = all ? rows : rows.slice(0, COLLAPSED);
+  // A category keeps the colour it has on the chart, Budgets and Foundations; merchants take the plain cycle.
+  const styleOf = categoryStyles(useCategories().data ?? []);
 
   if (rows.length === 0) return <p className="text-sm text-soft">Nothing recorded in this period.</p>;
   return (
@@ -39,7 +41,10 @@ function List({ data, rows, type }: { data: Cashflow; rows: CashflowRow[]; type:
                 </span>
               </span>
               <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-sunk" aria-hidden="true">
-                <span className={`block h-full rounded-full ${BAR_COLORS[i % BAR_COLORS.length]}`} style={{ width: `${Math.max(2, share)}%` }} />
+                {(() => {
+                  const color = data.groupBy === "category" && type === "expense" ? styleOf(r)?.color : undefined;
+                  return <span className={`block h-full rounded-full ${color ? "" : BAR_COLORS[i % BAR_COLORS.length]}`} style={{ width: `${Math.max(2, share)}%`, ...(color ? { background: color } : {}) }} />;
+                })()}
               </span>
             </>
           );

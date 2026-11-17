@@ -1,5 +1,5 @@
 import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type CommitmentsView, type EntryHints, type EmergencyFund, type FireView, type InvestmentAccountsOverview, type LadderView, type MoneyHealth, type TransferView, type ProtectionView, type Runway, type HoldingKind, type HoldingsOverview, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type CommitmentsView, type EntryHints, type EmergencyFund, type FireView, type InvestmentAccountsOverview, type LadderView, type SpendByAccount, type MoneyHealth, type TransferView, type ProtectionView, type Runway, type HoldingKind, type HoldingsOverview, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -115,6 +115,9 @@ export const useEntryHints = () =>
 export const useHoldings = (status: "active" | "all" = "active") =>
   useQuery({ queryKey: ["holdings", status], queryFn: () => api.get<HoldingsOverview>(`/api/holdings?status=${status}`) });
 
+/** What each account spent this month so far, against the same days last month. */
+export const useSpendByAccount = () => useQuery({ queryKey: ["spend-by-account"], queryFn: () => api.get<SpendByAccount>("/api/dashboard/spend-by-account") });
+
 /** The person's broker accounts with what each holds. */
 export const useInvestmentAccounts = (includeArchived = false) =>
   useQuery({ queryKey: ["investment-accounts", includeArchived], queryFn: () => api.get<InvestmentAccountsOverview>(`/api/investment-accounts${includeArchived ? "?includeArchived=true" : ""}`) });
@@ -180,6 +183,7 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["emergency-fund"] }),
       client.invalidateQueries({ queryKey: ["fire"] }),
       client.invalidateQueries({ queryKey: ["investment-accounts"] }),
+      client.invalidateQueries({ queryKey: ["spend-by-account"] }),
       client.invalidateQueries({ queryKey: ["ladder"] }),
       client.invalidateQueries({ queryKey: ["transfer-suggestion"] }),
       client.invalidateQueries({ queryKey: ["loans"] }),

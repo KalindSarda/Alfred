@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { barSegments, buildFlow, kindFromCategories } from "../cashflow";
+import { barSegments, buildFlow, categoryStyles } from "../cashflow";
 import { rupeesCompact, shortDate } from "../format";
 import { useCashflow, useCategories } from "../queries";
 import { FlowLegend } from "./FlowLegend";
@@ -15,7 +15,7 @@ export function CashflowToday({ period }: { period: string }) {
   const query = useCashflow(period, "category");
   const [full, setFull] = useState(false);
   const categories = useCategories();
-  const model = useMemo(() => (query.data ? buildFlow(query.data, kindFromCategories(categories.data ?? [])) : null), [query.data, categories.data]);
+  const model = useMemo(() => (query.data ? buildFlow(query.data, categoryStyles(categories.data ?? [])) : null), [query.data, categories.data]);
   const segments = useMemo(() => (model ? barSegments(model) : []), [model]);
   const d = query.data;
 

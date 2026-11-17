@@ -834,3 +834,22 @@ export interface LoanScheduleRow {
   totalPaise: number;
   balancePaise: number;
 }
+
+/** What each account spent this month so far, against the same days last month. */
+export interface AccountSpend {
+  id: string;
+  name: string;
+  kind: "bank" | "card";
+  archived: boolean;
+  spentPaise: number;
+  previousPaise: number;
+  sharePct: number;
+}
+
+export interface SpendByAccount {
+  period: { from: string; to: string };
+  previousPeriod: { from: string; to: string };
+  totalPaise: number;
+  previousTotalPaise: number;
+  accounts: AccountSpend[];
+}

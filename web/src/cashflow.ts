@@ -27,12 +27,12 @@ export interface FlowModel {
 const SOURCE_COLORS = ["#1f8a5b", "#3fa476", "#6bbf94", "#92d1b0", "#b3e0c8", "#cdeadb"];
 const SINK_COLORS = ["#2b6cde", "#c9a96a", "#7a5ea8", "#d98a3d", "#3f8fa6", "#b3638a", "#6b8e23", "#8a6d3b", "#4c7fa8", "#a0522d"];
 /** Spending that cannot stop is drawn in blues, the rest in warm colours, so a colour says which group a category is in. */
-export const NEED_COLORS = ["#2f5fb3", "#5b8bd6", "#8fb3e8", "#1f3f7a", "#6f9be0"];
-export const WANT_COLORS = ["#e07a4f", "#e9b949", "#d9627d", "#f0a35e", "#c0573f"];
+export const NEED_COLORS = ["#2b6cde", "#0f8f6e", "#7a5ea8", "#4f8fd6", "#1f3f7a", "#6f86b8"];
+export const WANT_COLORS = ["#d98a1f", "#c2457a", "#e07a4f", "#e9b949", "#b3489e", "#c0573f"];
 export const SAVINGS_COLOR = "#1f8a5b";
 export const SHORTFALL_COLOR = "#b3372f";
 export const MIDDLE_COLOR = "#6b7280";
-const OTHER_COLOR = "#8a8f9a";
+export const OTHER_COLOR = "#6b7280";
 
 /**
  * Folds slivers into one "Other (n)" row so labels stay readable. Rows smaller than `threshold` of the total
@@ -52,10 +52,14 @@ export function collapseSmall(rows: CashflowRow[], totalPaise: number, threshold
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-/** Whether a spending row is a need or a want; undefined when it cannot be told (a merchant, or no category). */
-export type KindOf = (row: CashflowRow) => "need" | "want" | undefined;
+/** A category's group and its colour; undefined when it cannot be told (a merchant, or no category). */
+export interface CategoryStyle {
+  kind: "need" | "want";
+  color: string;
+}
+export type StyleOf = (row: { categoryId: string | null }) => CategoryStyle | undefined;
 
-export function buildFlow(data: Cashflow, kindOf?: KindOf): FlowModel | null {
+export function buildFlow(data: Cashflow, styleOf?: StyleOf): FlowModel | null {
   const { incomePaise, expensePaise, surplusPaise } = data;
   if (incomePaise === 0 && expensePaise === 0) return null;
 
@@ -88,14 +92,10 @@ export function buildFlow(data: Cashflow, kindOf?: KindOf): FlowModel | null {
     links.push({ source: "shortfall", target: "center", value: gap });
   }
 
-  const used = { need: 0, want: 0 };
   const sinkColor = (row: CashflowRow, i: number): string => {
     if (row.key === "other") return OTHER_COLOR;
-    if (!kindOf) return SINK_COLORS[i % SINK_COLORS.length] ?? OTHER_COLOR;
-    const kind = kindOf(row);
-    if (!kind) return OTHER_COLOR;
-    const palette = kind === "need" ? NEED_COLORS : WANT_COLORS;
-    return palette[used[kind]++ % palette.length] ?? OTHER_COLOR;
+    if (!styleOf) return SINK_COLORS[i % SINK_COLORS.length] ?? OTHER_COLOR;
+    return styleOf(row)?.color ?? OTHER_COLOR;
   };
   collapseSmall(data.expenses, totalPaise).forEach((row, i) => {
     const id = `out:${row.key}`;
@@ -151,8 +151,17 @@ export function barSegments(model: FlowModel, max = 5): BarSegment[] {
 /** On a phone the income card only shows when something came in; an empty one would just push spending down. */
 export const showIncomeCard = (data: Pick<Cashflow, "incomePaise">): boolean => data.incomePaise > 0;
 
-/** A `KindOf` from the person's categories: essential ones are needs, other categories are wants. */
-export function kindFromCategories(categories: { id: string; essential: boolean }[]): KindOf {
-  const essential = new Map(categories.map((c) => [c.id, c.essential]));
-  return (row) => (row.categoryId && essential.has(row.categoryId) ? (essential.get(row.categoryId) ? "need" : "want") : undefined);
+/**
+ * Each category's group and colour, the same on every screen: essential categories are needs (blue, teal, purple…), the rest
+ * wants (amber, pink, orange…), and a category's colour is its place among the categories of its group by name, so it does
+ * not change with the amounts or the month.
+ */
+export function categoryStyles(categories: { id: string; name: string; essential: boolean; kind?: string }[]): StyleOf {
+  const styles = new Map<string, CategoryStyle>();
+  for (const essential of [true, false]) {
+    const group = categories.filter((c) => c.kind !== "income" && c.essential === essential).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    const palette = essential ? NEED_COLORS : WANT_COLORS;
+    group.forEach((c, i) => styles.set(c.id, { kind: essential ? "need" : "want", color: palette[i % palette.length] ?? OTHER_COLOR }));
+  }
+  return (row) => (row.categoryId ? styles.get(row.categoryId) : undefined);
 }

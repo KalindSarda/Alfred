@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { NEED_COLORS, SAVINGS_COLOR, WANT_COLORS } from "../cashflow";
 import { type FormEvent, useState } from "react";
 import { type EmergencyFund, type FireView, type FoundationRow, type Flows, type FundTarget, type MoneyHealth, type Settings, type TransferView, api, describeError } from "../api";
 import { useToast } from "../components/toast";
@@ -35,18 +36,19 @@ function SplitBar({ h }: { h: MoneyHealth }) {
   const needs = Math.min(100, h.needsPct ?? 0);
   const wants = Math.min(100 - needs, h.wantsPct ?? 0);
   const saved = Math.max(0, 100 - needs - wants);
-  const seg = (pct: number, cls: string, label: string) => (pct > 0 ? <span className={`block h-full ${cls}`} style={{ width: `${pct}%` }} title={`${label} ${pct}%`} /> : null);
+  const seg = (pct: number, color: string, label: string) => (pct > 0 ? <span className="block h-full" style={{ width: `${pct}%`, background: color }} title={`${label} ${pct}%`} /> : null);
+  const dot = (color: string) => <span aria-hidden="true" className="mr-1.5 inline-block size-2 rounded-full" style={{ background: color }} />;
   return (
     <div className="mt-4">
       <div className="flex h-3 overflow-hidden rounded-full bg-sunk" role="img" aria-label={`Needs ${h.needsPct}%, wants ${h.wantsPct}%, saved ${h.savingsRatePct}% of income`}>
-        {seg(needs, "bg-brass", "Needs")}
-        {seg(wants, "bg-faint", "Wants")}
-        {seg(saved, "bg-good", "Saved")}
+        {seg(needs, NEED_COLORS[0] as string, "Needs")}
+        {seg(wants, WANT_COLORS[0] as string, "Wants")}
+        {seg(saved, SAVINGS_COLOR, "Saved")}
       </div>
       <p className="mt-1 flex justify-between text-xs text-soft">
-        <span>Needs {h.needsPct}%</span>
-        <span>Wants {h.wantsPct}%</span>
-        <span>Saved {h.savingsRatePct}%</span>
+        <span>{dot(NEED_COLORS[0] as string)}Needs {h.needsPct}%</span>
+        <span>{dot(WANT_COLORS[0] as string)}Wants {h.wantsPct}%</span>
+        <span>{dot(SAVINGS_COLOR)}Saved {h.savingsRatePct}%</span>
       </p>
       <p className="mt-1 text-xs text-faint">A common rule of thumb is 50% needs, 30% wants and 20% saved.</p>
     </div>

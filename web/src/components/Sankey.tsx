@@ -87,7 +87,7 @@ export function Sankey({ model }: { model: FlowModel }) {
               key={i}
               d={path(link) ?? ""}
               stroke={targetOf(link).side === "sink" ? targetOf(link).color : nodeOf(link).color}
-              strokeOpacity={0.38}
+              strokeOpacity={0.5}
               strokeWidth={Math.max(1, link.width ?? 1)}
             />
           ))}

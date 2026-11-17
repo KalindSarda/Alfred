@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { buildFlow, kindFromCategories } from "../cashflow";
+import { buildFlow, categoryStyles } from "../cashflow";
 import { useCashflow, useCategories } from "../queries";
 import { FlowLegend } from "./FlowLegend";
 import { Sankey } from "./Sankey";
@@ -9,7 +9,7 @@ import { Card, Empty } from "./ui";
 export function CashflowCard({ period }: { period: string }) {
   const query = useCashflow(period, "category");
   const categories = useCategories();
-  const model = useMemo(() => (query.data ? buildFlow(query.data, kindFromCategories(categories.data ?? [])) : null), [query.data, categories.data]);
+  const model = useMemo(() => (query.data ? buildFlow(query.data, categoryStyles(categories.data ?? [])) : null), [query.data, categories.data]);
 
   return (
     <Card>

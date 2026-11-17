@@ -6,6 +6,7 @@ import { AmountInput, Button, Card, Empty, ErrorText, Field, Sheet, Spinner, inp
 import { useToast } from "../components/toast";
 import { rupeesToPaise, transactionsLink } from "../filters";
 import { paiseToInput, rupees, shortDate } from "../format";
+import { categoryStyles } from "../cashflow";
 import { useBudgets, useCategories, useRefreshMoney } from "../queries";
 
 const barColor = { ok: "bg-brand", near: "bg-brass", over: "bg-bad" } as const;
@@ -16,7 +17,7 @@ function statusText(b: BudgetItem): string {
   return b.status === "near" ? `${left}, close to the limit` : left;
 }
 
-function BudgetRow({ item, from, to, onEdit }: { item: BudgetItem; from: string; to: string; onEdit: () => void }) {
+function BudgetRow({ item, from, to, color, onEdit }: { item: BudgetItem; from: string; to: string; color?: string; onEdit: () => void }) {
   const width = Math.min(100, item.pct);
   return (
     <li className="py-3">
@@ -25,6 +26,7 @@ function BudgetRow({ item, from, to, onEdit }: { item: BudgetItem; from: string;
           to={transactionsLink({ categories: [item.categoryId], type: "expense", from, to })}
           className="min-w-0 truncate font-medium hover:underline"
         >
+          {color && <span aria-hidden="true" className="mr-2 inline-block size-2.5 rounded-full" style={{ background: color }} />}
           {item.categoryName}
         </Link>
         <button type="button" onClick={onEdit} className="min-h-11 shrink-0 px-2 text-sm font-medium text-brand">
@@ -155,6 +157,7 @@ export function BudgetsView() {
 
   const { items, period, totalLimitPaise, totalSpentPaise } = budgets.data;
   const taken = new Set(items.map((i) => i.categoryId));
+  const styleOf = categoryStyles(categories.data);
   const available = categories.data.filter((c) => c.kind === "expense" && !c.archived && !taken.has(c.id));
   const totalPct = totalLimitPaise > 0 ? Math.min(100, (totalSpentPaise / totalLimitPaise) * 100) : 0;
 
@@ -190,6 +193,7 @@ export function BudgetsView() {
                 <BudgetRow
                   key={item.categoryId}
                   item={item}
+                  color={styleOf({ categoryId: item.categoryId })?.color}
                   from={period.from}
                   to={period.to}
                   onEdit={() => setSheet({ categoryId: item.categoryId, limitPaise: item.limitPaise })}

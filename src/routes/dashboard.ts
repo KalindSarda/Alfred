@@ -4,6 +4,7 @@ import type { AppEnv } from "../app";
 import { getCashflow } from "../services/cashflow";
 import { getSummary, reviewCounts } from "../services/dashboard";
 import { getNetWorthTrend } from "../services/networth";
+import { getSpendByAccount } from "../services/spendByAccount";
 import { requestToday } from "../utils/clock";
 import { parseQuery } from "../utils/validate";
 
@@ -23,6 +24,7 @@ export const dashboardRoutes = new Hono<AppEnv>()
     const { period, groupBy } = parseQuery(c, CashflowQuery);
     return c.json(await getCashflow(c.var.auth.db, c.var.userId, period, groupBy, requestToday(c.var.auth)));
   })
+  .get("/spend-by-account", async (c) => c.json(await getSpendByAccount(c.var.auth.db, c.var.userId, requestToday(c.var.auth))))
   .get("/networth", async (c) => {
     const { months } = parseQuery(c, NetWorthQuery);
     return c.json(await getNetWorthTrend(c.var.auth.db, c.var.userId, requestToday(c.var.auth), months));
