@@ -115,8 +115,8 @@ export const useEntryHints = () =>
 export const useHoldings = (status: "active" | "all" = "active") =>
   useQuery({ queryKey: ["holdings", status], queryFn: () => api.get<HoldingsOverview>(`/api/holdings?status=${status}`) });
 
-/** What each account spent this month so far, against the same days last month. */
-export const useSpendByAccount = () => useQuery({ queryKey: ["spend-by-account"], queryFn: () => api.get<SpendByAccount>("/api/dashboard/spend-by-account") });
+/** What each account spent in a period (the month so far by default), against the matching earlier stretch. */
+export const useSpendByAccount = (period = "cycle") => useQuery({ queryKey: ["spend-by-account", period], queryFn: () => api.get<SpendByAccount>(`/api/dashboard/spend-by-account?period=${period}`) });
 
 /** The person's broker accounts with what each holds. */
 export const useInvestmentAccounts = (includeArchived = false) =>

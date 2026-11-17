@@ -10,7 +10,7 @@ export const HUB_PATHS: Record<Hub, string> = { today: "/", activity: "/activity
 
 /** Which of the five a page belongs to, so its tab or rail item shows as current. */
 export function hubOf(path: string): Hub {
-  if (path === "/activity") return "activity";
+  if (path === "/activity" || path === "/trends") return "activity";
   if (path === "/money") return "money";
   if (path === "/plan") return "plan";
   if (path === "/you" || path === "/settings" || path === "/categories") return "you";

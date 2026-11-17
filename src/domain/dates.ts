@@ -132,3 +132,33 @@ export function resolvePeriod(key: PeriodKey, today: IstDate, cycleStartDay = 1)
       return cycleRange(today, cycleStartDay);
   }
 }
+
+/**
+ * The stretch to compare a dashboard period with. A month-start cycle (and this month) is compared with the same days of the
+ * one before; a rolling window with the window of the same length just before it; last month with the month before that; the
+ * year so far with the same dates a year earlier (29 February becomes 28 February).
+ */
+export function previousPeriodRange(key: PeriodKey, today: IstDate, cycleStartDay = 1): DateRange {
+  const { year, month, day } = parseIstDate(today);
+  switch (key) {
+    case "cycle":
+      return previousCycleSameDays(today, cycleStartDay);
+    case "7d":
+    case "30d":
+    case "90d": {
+      const now = resolvePeriod(key, today, cycleStartDay);
+      const length = Math.round((Date.parse(`${now.to}T00:00:00Z`) - Date.parse(`${now.from}T00:00:00Z`)) / 86_400_000) + 1;
+      return { from: addDays(now.from, -length), to: addDays(now.from, -1) };
+    }
+    case "this_month": {
+      const prev = shiftMonth(year, month, -1);
+      return { from: formatIstDate(prev.year, prev.month, 1), to: clampDay(prev.year, prev.month, day) };
+    }
+    case "last_month": {
+      const prev = shiftMonth(year, month, -2);
+      return monthRange(`${pad(prev.year, 4)}-${pad(prev.month)}`);
+    }
+    case "ytd":
+      return { from: formatIstDate(year - 1, 1, 1), to: clampDay(year - 1, month, day) };
+  }
+}

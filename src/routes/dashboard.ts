@@ -11,6 +11,8 @@ import { parseQuery } from "../utils/validate";
 const Period = z.enum(["7d", "30d", "90d", "this_month", "last_month", "ytd", "cycle"]).default("30d");
 
 export const PeriodQuery = z.object({ period: Period });
+/** Spending by account defaults to the person's month so far rather than a rolling 30 days. */
+export const SpendQuery = z.object({ period: Period.removeDefault().default("cycle") });
 export const CashflowQuery = z.object({ period: Period, groupBy: z.enum(["category", "merchant"]).default("category") });
 
 export const NetWorthQuery = z.object({ months: z.coerce.number().int().min(1).max(24).default(12) });
@@ -24,7 +26,10 @@ export const dashboardRoutes = new Hono<AppEnv>()
     const { period, groupBy } = parseQuery(c, CashflowQuery);
     return c.json(await getCashflow(c.var.auth.db, c.var.userId, period, groupBy, requestToday(c.var.auth)));
   })
-  .get("/spend-by-account", async (c) => c.json(await getSpendByAccount(c.var.auth.db, c.var.userId, requestToday(c.var.auth))))
+  .get("/spend-by-account", async (c) => {
+    const { period } = parseQuery(c, SpendQuery);
+    return c.json(await getSpendByAccount(c.var.auth.db, c.var.userId, requestToday(c.var.auth), period));
+  })
   .get("/networth", async (c) => {
     const { months } = parseQuery(c, NetWorthQuery);
     return c.json(await getNetWorthTrend(c.var.auth.db, c.var.userId, requestToday(c.var.auth), months));

@@ -1,7 +1,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { accounts, transactions } from "../db/schema";
-import { cycleRange, type DateRange, type IstDate, previousCycleSameDays } from "../domain/dates";
+import { cycleRange, type DateRange, type IstDate, type PeriodKey, previousPeriodRange, resolvePeriod } from "../domain/dates";
 import { getSettings } from "./settings";
 
 export interface AccountSpend {
@@ -45,15 +45,16 @@ async function totals(db: Db, userId: string, range: DateRange): Promise<Map<str
 }
 
 /**
- * What was spent from each account this month so far, against the same days last month. Only confirmed expenses count, on the
+ * What was spent from each account in a period (this month so far by default), against the matching earlier stretch. Only confirmed expenses count, on the
  * account they were paid from: a card's spending is on the card, and the bill payment from the bank that settles it is not an
  * expense, so nothing is counted twice. Refunds are not netted here.
  */
-export async function getSpendByAccount(db: Db, userId: string, today: IstDate): Promise<SpendByAccountDto> {
+export async function getSpendByAccount(db: Db, userId: string, today: IstDate, key: PeriodKey = "cycle"): Promise<SpendByAccountDto> {
   const { periodStartDay } = await getSettings(db, userId);
-  const cycle = cycleRange(today, periodStartDay);
-  const period: DateRange = { from: cycle.from, to: today < cycle.to ? today : cycle.to };
-  const previousPeriod = previousCycleSameDays(today, periodStartDay);
+  // The month so far stops at today; the other periods already do, or are over.
+  const whole = key === "cycle" ? cycleRange(today, periodStartDay) : resolvePeriod(key, today, periodStartDay);
+  const period: DateRange = { from: whole.from, to: today < whole.to ? today : whole.to };
+  const previousPeriod = previousPeriodRange(key, today, periodStartDay);
 
   const [current, previous, list] = await Promise.all([
     totals(db, userId, period),

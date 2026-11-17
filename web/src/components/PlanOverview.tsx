@@ -1,17 +1,12 @@
 import type { ReactNode } from "react";
-import type { FoundationRow } from "../api";
+import { BLUE, barColor, LONG_TERM } from "../palette";
 import { rupeesCompact } from "../format";
 import { planPath } from "../planView";
 import { useBudgets, useEmergencyFund, useFire, useGoals, useLadder, useProtection } from "../queries";
 import { Link } from "../router";
 import { Card, Icon } from "./ui";
 
-/** Done is green, in progress blue, needs attention amber; the long-term goal is purple. */
-const STATUS_COLOR: Record<FoundationRow["status"], string> = { ok: "#1f8a5b", building: "#2b6cde", attention: "#d98a1f" };
-const LONG_TERM = "#7a5ea8";
-const barColor = (r: FoundationRow): string => (r.key === "fire" && r.status !== "ok" ? LONG_TERM : STATUS_COLOR[r.status]);
-
-function Bar({ pct, color = "#2b6cde" }: { pct: number | null; color?: string }) {
+function Bar({ pct, color = BLUE }: { pct: number | null; color?: string }) {
   return (
     <span className="block h-1.5 overflow-hidden rounded-full bg-sunk" aria-hidden="true">
       <span className="block h-full rounded-full" style={{ background: color, width: `${Math.max(pct && pct > 0 ? 3 : 0, Math.min(100, pct ?? 0))}%` }} />
@@ -83,13 +78,13 @@ export function PlanOverview() {
       )}
 
       {fund && (
-        <Summary to={planPath("foundations")} title="Emergency fund" icon="shield" color="#2b6cde">
+        <Summary to={planPath("foundations")} title="Emergency fund" icon="shield" color={BLUE}>
           {target?.pct != null ? (
             <>
               <span className="block">
                 {rupeesCompact(target.fundedPaise)} of {rupeesCompact(target.totalPaise ?? 0)} for your lifestyle goal · {Math.round(target.pct)}%
               </span>
-              <Bar pct={target.pct} color="#2b6cde" />
+              <Bar pct={target.pct} color={BLUE} />
             </>
           ) : (
             <span className="block">Set a target to see how far along you are.</span>

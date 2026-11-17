@@ -1,5 +1,5 @@
-/** The colours the Plan overview uses, handed to accounts in turn. */
-export const ACCOUNT_COLORS = ["#2b6cde", "#0f8f6e", "#7a5ea8", "#d98a1f", "#c2457a", "#6b7280"];
+/** The Plan overview colours, then a few more, handed to accounts in turn so neighbours rarely share one. */
+export const ACCOUNT_COLORS = ["#2b6cde", "#0f8f6e", "#7a5ea8", "#d98a1f", "#c2457a", "#4f8fd6", "#e07a4f", "#1f3f7a", "#b3489e", "#6b7280"];
 
 /** A colour per account that stays the same: its place among all the person's accounts by name. */
 export function accountColors(accounts: { id: string; name: string }[]): Map<string, string> {

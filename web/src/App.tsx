@@ -12,6 +12,7 @@ import { You } from "./pages/You";
 import { Settings } from "./pages/Settings";
 import { Plan } from "./pages/Plan";
 import { Transactions } from "./pages/Transactions";
+import { Trends } from "./pages/Trends";
 import { inviteEmailFromHash } from "./invite";
 import { clearInviteHash } from "./inviteUrl";
 import { useMe, useReviewCounts } from "./queries";
@@ -31,6 +32,8 @@ function Page({ path }: { path: string }) {
   switch (path) {
     case "/activity":
       return <Transactions />;
+    case "/trends":
+      return <Trends />;
     case "/plan":
       return <Plan />;
     case "/money":

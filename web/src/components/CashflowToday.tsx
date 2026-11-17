@@ -77,9 +77,14 @@ export function CashflowToday({ period }: { period: string }) {
                 ))}
               </ul>
               <FlowLegend />
-              <button type="button" onClick={() => setFull(true)} className="mt-1 min-h-11 text-sm text-brand">
-                Full flow
-              </button>
+              <div className="mt-1 flex items-center justify-between">
+                <button type="button" onClick={() => setFull(true)} className="min-h-11 text-sm text-brand">
+                  Full flow
+                </button>
+                <Link to="/trends" className="flex min-h-11 items-center text-sm text-brand">
+                  More charts →
+                </Link>
+              </div>
             </>
           )}
         </>

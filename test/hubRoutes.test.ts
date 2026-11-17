@@ -6,6 +6,7 @@ describe("the five places", () => {
   it("puts each page under one of Today, Activity, Money, Plan or You", () => {
     expect(hubOf("/")).toBe("today");
     expect(hubOf("/activity")).toBe("activity");
+    expect(hubOf("/trends")).toBe("activity");
     expect(hubOf("/money")).toBe("money");
     expect(hubOf("/plan")).toBe("plan");
     for (const p of ["/you", "/settings", "/categories"]) expect(hubOf(p), p).toBe("you");
@@ -28,7 +29,7 @@ describe("old addresses", () => {
   });
 
   it("leave current addresses alone", () => {
-    for (const p of ["/", "/activity", "/money", "/plan", "/you", "/settings", "/categories", "/setup"]) expect(redirectFor(p, "", ""), p).toBeNull();
+    for (const p of ["/", "/activity", "/trends", "/money", "/plan", "/you", "/settings", "/categories", "/setup"]) expect(redirectFor(p, "", ""), p).toBeNull();
   });
 
   it("are never what the features list points at", () => {

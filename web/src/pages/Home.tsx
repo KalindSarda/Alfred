@@ -9,7 +9,6 @@ import { CommitmentsCard } from "../components/Commitments";
 import { NetWorthStrip } from "../components/NetWorth";
 import { NetWorthToday } from "../components/NetWorthToday";
 import { Shortcuts } from "../components/Shortcuts";
-import { SpendByAccount } from "../components/SpendByAccount";
 import { Card, Empty, Spinner } from "../components/ui";
 import { emptyFilters } from "../filters";
 import { rupees, rupeesCompact, shortDate, today } from "../format";
@@ -164,12 +163,10 @@ export function Home() {
         {panel}
         <CommitmentsCard />
         <CashflowToday period={period} />
-        <SpendByAccount />
         {overview.data && <NetWorthToday overview={overview.data} />}
         {overview.data && <Shortcuts overview={overview.data} />}
         {comingUp}
         {recentCard}
-        <Breakdown period={period} stacked />
       </div>
     );
   }
@@ -184,7 +181,6 @@ export function Home() {
       <CashflowTiles period={period} />
       {overview.data && <NetWorthStrip overview={overview.data} />}
       <CashflowCard period={period} />
-      <SpendByAccount />
       <Breakdown period={period} />
       <div className="grid items-start gap-6 lg:grid-cols-2">
         {comingUp}

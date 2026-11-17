@@ -3,6 +3,7 @@ import type { Cashflow, CashflowRow } from "../web/src/api";
 import { compactLines } from "../web/src/briefingCompact";
 import { barSegments, buildFlow } from "../web/src/cashflow";
 import { sparkline, trendWindow } from "../web/src/spark";
+import { barColor, BLUE, LONG_TERM, STATUS_COLOR } from "../web/src/palette";
 import { ACCOUNT_COLORS, accountColors, spendChange } from "../web/src/spend";
 
 const row = (key: string, amountPaise: number): CashflowRow => ({ key, categoryId: key, name: key, amountPaise, pctOfIncome: 0 });
@@ -91,8 +92,10 @@ describe("spending by account", () => {
 
   it("wraps round when there are more accounts than colours, and keeps the colours different", () => {
     expect(new Set(ACCOUNT_COLORS).size).toBe(ACCOUNT_COLORS.length);
-    const many = Array.from({ length: 8 }, (_, i) => ({ id: `i${i}`, name: `Account ${i}` }));
-    expect(accountColors(many).get("i6")).toBe(ACCOUNT_COLORS[0]);
+    const many = Array.from({ length: 12 }, (_, i) => ({ id: `i${String(i).padStart(2, "0")}`, name: `Account ${String(i).padStart(2, "0")}` }));
+    expect(accountColors(many).get("i10")).toBe(ACCOUNT_COLORS[0]);
+    // ten accounts all get a different colour
+    expect(new Set([...accountColors(many.slice(0, 10)).values()]).size).toBe(10);
   });
 
   it("says whether an account spent more, less, the same, or is new compared with last month", () => {
@@ -101,5 +104,15 @@ describe("spending by account", () => {
     expect(spendChange(2_000, 2_000)).toEqual({ kind: "same" });
     expect(spendChange(2_000, 0)).toEqual({ kind: "new" });
     expect(spendChange(0, 0)).toEqual({ kind: "same" });
+  });
+});
+
+describe("the shared status colours", () => {
+  it("colours a foundation by status, with the long-term goal purple while it is in progress", () => {
+    expect(barColor({ key: "starter", status: "ok" })).toBe(STATUS_COLOR.ok);
+    expect(barColor({ key: "lifestyle", status: "building" })).toBe(BLUE);
+    expect(barColor({ key: "cover", status: "attention" })).toBe(STATUS_COLOR.attention);
+    expect(barColor({ key: "fire", status: "building" })).toBe(LONG_TERM);
+    expect(barColor({ key: "fire", status: "ok" })).toBe(STATUS_COLOR.ok);
   });
 });

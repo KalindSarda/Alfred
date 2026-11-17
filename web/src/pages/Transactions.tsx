@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Account, Category, Transaction } from "../api";
+import { ActivityTabs } from "../components/ActivityTabs";
 import { FilterSheet } from "../components/FilterSheet";
 import { TxnForm } from "../components/TxnForm";
 import { Button, Card, Empty, inputClass, Sheet, Spinner } from "../components/ui";
@@ -124,7 +125,8 @@ export function Transactions() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-3xl">Transactions</h1>
+      <h1 className="text-3xl">Activity</h1>
+      <ActivityTabs current="entries" />
 
       <div className="space-y-3">
         <input

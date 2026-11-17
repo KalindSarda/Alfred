@@ -258,3 +258,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-12-01: slice 43 noted: Plan overview, Money tab figures, list and detail side by side from 1100 px (`DetailPanel`); the top bar option removed, the sidebar kept.
 - 2026-12-02: slice 43 follow-up noted: side panel removed, chart colours by purpose (needs blue, wants warm, saved green), Foundations without the month toggle.
 - 2026-12-03: slice 44 noted: category colours shared across screens (categoryStyles), spend-by-account service and card.
+- 2026-12-04: slice 45 noted: Trends page under Activity, period-aware spend-by-account, shared palette (palette.ts).

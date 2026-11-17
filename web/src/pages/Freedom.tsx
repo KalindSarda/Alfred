@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { BLUE, barColor, LONG_TERM } from "../palette";
 import { NEED_COLORS, SAVINGS_COLOR, WANT_COLORS } from "../cashflow";
 import { type FormEvent, useState } from "react";
 import { type EmergencyFund, type FireView, type FoundationRow, type Flows, type FundTarget, type MoneyHealth, type Settings, type TransferView, api, describeError } from "../api";
@@ -175,7 +176,7 @@ function TargetBar({ title, hint, t }: { title: string; hint: string; t: FundTar
         </p>
       </div>
       <div className="h-3 overflow-hidden rounded-full bg-sunk" role="img" aria-label={`${title}: ${t.pct}% done`}>
-        <span className="block h-full bg-good" style={{ width: `${t.pct}%` }} />
+        <span className="block h-full" style={{ width: `${t.pct}%`, background: BLUE }} />
       </div>
       {time && (
         <p className="text-base leading-snug">
@@ -282,9 +283,6 @@ function EmergencyCard() {
   );
 }
 
-/** The bar colour for a row: tagged rows stand out, finished ones are green. */
-const BAR: Record<FoundationRow["status"], string> = { ok: "bg-good", building: "bg-brand", attention: "bg-warn-ink" };
-
 const WHY_NOT: Record<NonNullable<TransferView["none"]>, string> = {
   no_target: "Once there are about two weeks of entries, or a target of your own, Alfred can say how much to move.",
   fund_complete: "Your emergency fund is full. Nothing to move.",
@@ -359,11 +357,11 @@ function FoundationRowView({ r }: { r: FoundationRow }) {
           {r.title}
           {r.status === "attention" && <span className="ml-2 rounded-full bg-warn-bg px-2 py-0.5 text-xs font-medium text-warn-ink">Needs attention</span>}
         </p>
-        <p className="shrink-0 text-sm tabular-nums">{r.pct !== null ? <span className={r.status === "ok" ? "font-medium text-good" : "font-medium"}>{r.pct}%</span> : <span className={r.status === "ok" ? "font-medium text-good" : "text-soft"}>{r.status === "ok" ? "In place" : "See below"}</span>}</p>
+        <p className="shrink-0 text-sm tabular-nums">{r.pct !== null ? <span className="font-medium" style={{ color: barColor(r) }}>{r.pct}%</span> : <span className={r.status === "ok" ? "font-medium text-good" : "text-soft"}>{r.status === "ok" ? "In place" : "See below"}</span>}</p>
       </div>
       {r.pct !== null && (
         <div className="h-2 overflow-hidden rounded-full bg-sunk" role="img" aria-label={`${r.title}: ${r.pct}% done`}>
-          <span className={`block h-full ${BAR[r.status]}`} style={{ width: `${r.pct}%` }} />
+          <span className="block h-full" style={{ width: `${r.pct}%`, background: barColor(r) }} />
         </div>
       )}
       <p className="text-xs text-faint">{r.ideal}</p>
@@ -572,7 +570,7 @@ function FireCard() {
             </p>
           </div>
           <div className="h-3 overflow-hidden rounded-full bg-sunk" role="img" aria-label={`${f.progressPct}% of the way`}>
-            <span className="block h-full bg-good" style={{ width: `${f.progressPct ?? 0}%` }} />
+            <span className="block h-full" style={{ width: `${f.progressPct ?? 0}%`, background: LONG_TERM }} />
           </div>
           <p className="text-sm">
             You have <span className="font-medium">{rupees(f.corpus.totalPaise)}</span> counted, {f.progressPct ?? 0}% of the way.

@@ -90,4 +90,24 @@ describe("GET /api/dashboard/spend-by-account", () => {
     const anon = await makeApp().call("GET", "/api/dashboard/spend-by-account", {});
     expect(anon.status).toBe(401);
   });
+
+  it("covers other periods against the matching earlier stretch", async () => {
+    const { api } = await seeded();
+    const rolling = await api("GET", "/api/dashboard/spend-by-account?period=30d");
+    expect(rolling.json.period).toEqual({ from: "2026-09-28", to: "2026-10-27" });
+    expect(rolling.json.previousPeriod).toEqual({ from: "2026-08-29", to: "2026-09-27" });
+    // this month's 10,000 plus the 9,000 on 29 Sep; the earlier window holds the 4,000 and 1,000
+    expect(rolling.json.totalPaise).toBe(19_000_00);
+    expect(rolling.json.previousTotalPaise).toBe(5_000_00);
+
+    const year = await api("GET", "/api/dashboard/spend-by-account?period=ytd");
+    expect(year.json.period).toEqual({ from: "2026-01-01", to: "2026-10-27" });
+    expect(year.json.totalPaise).toBe(24_000_00);
+    expect(year.json.previousTotalPaise).toBe(0);
+  });
+
+  it("refuses a period it does not know", async () => {
+    const { api } = await seeded();
+    expect((await api("GET", "/api/dashboard/spend-by-account?period=forever")).status).toBe(422);
+  });
 });

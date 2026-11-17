@@ -5,7 +5,6 @@ import { AccountForm } from "../components/AccountForm";
 import { BalanceCheckSheet } from "../components/BalanceCheck";
 import { BestCard, StatementCheckSheet } from "../components/CardTools";
 import { BlockedFunds } from "../components/BlockedFunds";
-import { NetWorthTrend } from "../components/NetWorthTrend";
 import { SpendByAccount } from "../components/SpendByAccount";
 import { EmiPlans } from "../components/EmiPlans";
 import { Investments } from "../components/Investments";
@@ -135,7 +134,6 @@ export function Accounts() {
         ) : (
         <>
           {overview.data && <NetWorthCard overview={overview.data} />}
-          <NetWorthTrend />
           <SpendByAccount />
           {overview.data && (overview.data.blockedPaise > 0 || overview.data.emiToComePaise > 0 || overview.data.owedToYouPaise > 0 || overview.data.youOwePaise > 0) && (
             <Link to={accountsPath("commitments")} className="flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-line bg-card px-4 py-3 text-sm hover:bg-hover">
