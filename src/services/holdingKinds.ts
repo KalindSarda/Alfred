@@ -36,6 +36,7 @@ const toDto = (row: HoldingKindRow, usage?: Usage): HoldingKindDto => ({
   ratePer: row.ratePer,
   archived: row.archivedAt !== null,
   isSystem: row.isSystem,
+  brokerUse: row.brokerUse,
   holdingCount: usage?.count ?? 0,
   locked: (usage?.counted ?? 0) > 0,
 });
@@ -56,7 +57,7 @@ export async function createKind(db: Db, userId: string, input: CreateHoldingKin
   await requireFreeName(db, userId, input.name);
   const [row] = await db
     .insert(holdingKinds)
-    .values({ id: newId(), userId, key: newId(), name: input.name.trim().replace(/\s+/g, " "), unit, ratePer: unit ? (input.ratePer ?? 1) : 1, isSystem: false, createdAt: nowIso() })
+    .values({ id: newId(), userId, key: newId(), name: input.name.trim().replace(/\s+/g, " "), unit, ratePer: unit ? (input.ratePer ?? 1) : 1, isSystem: false, brokerUse: input.brokerUse ?? "never", createdAt: nowIso() })
     .returning();
   if (!row) throw new Error("Holding kind insert returned no row");
   return toDto(row);
@@ -85,6 +86,8 @@ export async function updateKind(db: Db, userId: string, id: string, patch: Upda
     set.unit = nextUnit;
     set.ratePer = nextRatePer;
   }
+
+  if (patch.brokerUse !== undefined && patch.brokerUse !== row.brokerUse) set.brokerUse = patch.brokerUse;
 
   if (patch.archived !== undefined) {
     if (patch.archived && row.isSystem) throw new ConflictError("Built-in kinds cannot be archived");

@@ -606,6 +606,8 @@ export const holdingKinds = sqliteTable(
     ratePer: integer("rate_per").notNull().default(1),
     /** Stock (what an IPO allotment creates) and Other (the fallback) cannot be deleted, merged away or archived. */
     isSystem: integer("is_system", { mode: "boolean" }).notNull().default(false),
+    /** Whether a holding of this kind is held through a broker account: required (stocks, funds, crypto), optional (a gold ETF), or not used (gold coins, silver). */
+    brokerUse: text("broker_use", { enum: ["required", "optional", "never"] }).notNull().default("never"),
     archivedAt: text("archived_at"),
     createdAt: text("created_at").notNull(),
   },

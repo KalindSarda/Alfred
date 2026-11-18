@@ -7,13 +7,19 @@ import { useToast } from "./toast";
 import { Button, ErrorText, Field, Sheet, inputClass } from "./ui";
 
 /** The account choice on a holding or an allotment: none, or one of the person's broker accounts. */
-export function AccountSelect({ value, onChange, label = "Broker account" }: { value: string; onChange: (id: string) => void; label?: string }) {
+/**
+ * Where an investment is held. `use` follows the kind: "required" has no "not in an account" choice, "optional" is as it always
+ * was, and "never" is hidden (unless it already has an account, so that can be cleared).
+ */
+export function AccountSelect({ value, onChange, label = "Broker account", use = "optional" }: { value: string; onChange: (id: string) => void; label?: string; use?: "required" | "optional" | "never" }) {
   const accounts = useInvestmentAccounts().data?.accounts ?? [];
   if (accounts.length === 0) return null;
+  if (use === "never" && !value) return null;
+  const hint = use === "required" ? "Required: this kind is held through a broker or demat account." : use === "never" ? "This kind is not normally held in a broker account. Choose none to take it out." : "Where this is held, such as your demat account. Optional.";
   return (
-    <Field label={label} hint="Where this is held, such as your demat account. Optional.">
+    <Field label={label} hint={hint}>
       <select className={inputClass} value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">Not in an account</option>
+        <option value="">{use === "required" ? "Choose an account" : "Not in an account"}</option>
         {accounts.map((a) => (
           <option key={a.id} value={a.id}>
             {a.name}

@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { world } from "./bot/harness";
+import { world as baseWorld } from "./bot/harness";
 
-type W = Awaited<ReturnType<typeof world>>;
+type W = Awaited<ReturnType<typeof baseWorld>>;
 type Json = Record<string, any>;
+
+// These tests are about accounts and moving holdings, so stocks and funds may sit in an account or not; the broker rule per kind has its own tests.
+const world = async (...args: Parameters<typeof baseWorld>) => {
+  const w = await baseWorld(...args);
+  const kinds = (await w.api("GET", "/api/holding-kinds")).json.items as Json[];
+  for (const k of kinds.filter((x) => x.key === "stock" || x.key === "fund")) await w.api("PATCH", `/api/holding-kinds/${k.id}`, { brokerUse: "optional" });
+  return w;
+};
 
 // The test clock is 2026-10-27.
 const account = (w: W, name: string, purpose?: string) => w.api("POST", "/api/investment-accounts", { name, ...(purpose !== undefined && { purpose }) });

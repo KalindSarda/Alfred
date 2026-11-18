@@ -3,13 +3,13 @@ import { ConflictError, NotFoundError, ValidationError } from "../config/errors"
 import type { Db } from "../db/client";
 import { getAccount } from "../db/accounts";
 import { getHoldingRow, type HoldingRow } from "../db/holdings";
-import { getKindByKey, type HoldingKindRow, kindsByKey } from "../db/holdingKinds";
+import { getKindByKey, getKindRow, type HoldingKindRow, kindsByKey } from "../db/holdingKinds";
 import { accounts, holdingLots, holdings, holdingValues, investmentAccounts, transactions } from "../db/schema";
 import { type IstDate, isValidIstDate } from "../domain/dates";
 import { avgCostPaise, gainPaise, gainPct, type HoldingFacts, investedPaise, latestRate, latestValue, soldPaise, staleDays, unitOne, unitsHeldE4, valueAtRate, valuePaise } from "../domain/holdings";
 import type { AddLotData, BuyHoldingData, ConvertHoldingData, CreateHoldingData, SellHoldingData, SetHoldingRateData, SetHoldingValueData, UpdateHoldingData } from "../schemas/holding";
 import { newId, nowIso } from "../utils/id";
-import { requireUsableInvestmentAccount } from "./investmentAccounts";
+import { checkBrokerRule, requireUsableInvestmentAccount } from "./investmentAccounts";
 
 export interface HoldingEntryDto {
   id: string;
@@ -272,6 +272,7 @@ export async function createHolding(db: Db, userId: string, input: CreateHolding
   if (counted && input.valuePaise !== undefined) throw invalid("valuePaise", "Counted by quantity, the worth comes from the rate");
   const accountId = input.investmentAccountId ?? null;
   if (accountId !== null) await requireUsableInvestmentAccount(db, userId, accountId);
+  await checkBrokerRule(db, userId, kind, tidy(input.name), accountId);
   await requireFreeName(db, userId, input.name, accountId);
   const id = newId();
   const held = counted ? (input.unitsE4 ?? 0) : 0;
@@ -287,6 +288,11 @@ export async function updateHolding(db: Db, userId: string, id: string, patch: U
   const accountId = patch.investmentAccountId === undefined ? row.investmentAccountId : patch.investmentAccountId;
   if (patch.investmentAccountId !== undefined && accountId !== null && accountId !== row.investmentAccountId) await requireUsableInvestmentAccount(db, userId, accountId);
   if (row.status === "active" && (patch.name !== undefined || accountId !== row.investmentAccountId)) await requireFreeName(db, userId, patch.name ?? row.name, accountId, id);
+  // The kind's broker rule is checked when the kind or the account changes; an edit that touches neither is never held up by it.
+  if ((patch.kind !== undefined && patch.kind !== row.kind) || accountId !== row.investmentAccountId) {
+    const nextKind = await requireKind(db, userId, patch.kind ?? row.kind);
+    await checkBrokerRule(db, userId, nextKind, patch.name === undefined ? row.name : tidy(patch.name), accountId);
+  }
   if (patch.kind !== undefined && patch.kind !== row.kind) {
     const next = await requireKind(db, userId, patch.kind);
     if (row.tracking === "units") {
@@ -334,6 +340,26 @@ export async function setRate(db: Db, userId: string, id: string, input: SetHold
   const f = facts.get(id) as HoldingFacts;
   await putRate(db, userId, id, date, input.ratePaise, f.units ? unitsHeldE4(f.units, date) : 0, (await getKindByKey(db, userId, row.kind))?.ratePer ?? 1);
   return getHolding(db, userId, id, today);
+}
+
+/**
+ * One rate for a kind: gold or silver quoted once. It is put on every active holding of the kind that is counted by quantity and
+ * is not in a broker account, so a gold ETF in a demat account keeps its own price.
+ */
+export async function setKindRate(db: Db, userId: string, kindId: string, input: SetHoldingRateData, today: IstDate): Promise<{ updated: number }> {
+  const kind = await getKindRow(db, userId, kindId);
+  if (!kind) throw new NotFoundError("Investment kind not found");
+  if (!kind.unit) throw invalid("kind", `${kind.name} is valued by typing what it is worth, so it has no rate`);
+  const date = input.date ?? today;
+  checkDate("date", date, today);
+  const { rows, facts } = await loadHoldings(db, userId);
+  const targets = rows.filter((h) => h.kind === kind.key && h.status === "active" && h.tracking === "units" && h.investmentAccountId === null);
+  if (targets.length === 0) throw invalid("kind", `You have no ${kind.name} counted by quantity outside a broker account`);
+  for (const h of targets) {
+    const f = facts.get(h.id) as HoldingFacts;
+    await putRate(db, userId, h.id, date, input.ratePaise, f.units ? unitsHeldE4(f.units, date) : 0, kind.ratePer);
+  }
+  return { updated: targets.length };
 }
 
 /** A purchase from before tracking, with no bank entry: its quantity, cost and day. */

@@ -3,6 +3,7 @@ import { type Holding, type HoldingKind, api, describeError } from "../api";
 import { rupeesToPaise } from "../filters";
 import { e4ToQty, paiseToInput, qtyToE4, rupees, shortDate, today } from "../format";
 import { useAccounts, useHoldingKinds, useHoldings, useInvestmentAccounts, useRefreshMoney } from "../queries";
+import { looseByKind, type KindSummary } from "../investmentKinds";
 import { NewKindSheet } from "./InvestmentKinds";
 import { AccountSelect, AccountsSheet, MoveSheet } from "./InvestmentAccounts";
 import { useToast } from "./toast";
@@ -78,6 +79,8 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
   const [emergency, setEmergency] = useState(holding?.isEmergency ?? false);
   const [forFire, setForFire] = useState(holding?.countsForFire ?? true);
   const [brokerId, setBrokerId] = useState(holding?.investmentAccountId ?? "");
+  const brokers = useInvestmentAccounts().data?.accounts ?? [];
+  const brokerUse = kinds.find((k) => k.key === kind)?.brokerUse ?? "optional";
   const unit = unitOfKind(kinds.find((k) => k.key === kind));
   const counted = !holding && !!unit && !typed;
   const key = name.trim().replace(/\s+/g, " ").toLowerCase();
@@ -85,6 +88,7 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
 
   const save = () => {
     if (!name.trim()) return setError("Name it, such as Gold coins or Tata Technologies.");
+    if (brokerUse === "required" && brokers.length > 0 && !brokerId) return setError("Choose the broker account this is held in.");
     if (holding) return void run(() => api.patch(`/api/holdings/${holding.id}`, { name: name.trim(), kind, isEmergency: emergency, countsForFire: forFire, investmentAccountId: brokerId || null }), "Saved.");
     if (dupe) return setError(`You already have ${dupe.name}. Add a purchase to it instead.`);
     const put = invested.trim() ? rupeesToPaise(invested) : 0;
@@ -123,7 +127,11 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
             value={kind}
             onChange={(e) => {
               if (e.target.value === NEW_KIND) setAddingKind(true);
-              else setKind(e.target.value);
+              else {
+                setKind(e.target.value);
+                // A kind that is not held in a broker account cannot keep one.
+                if (kinds.find((k) => k.key === e.target.value)?.brokerUse === "never") setBrokerId("");
+              }
             }}
           >
             {options.map((k) => (
@@ -134,7 +142,7 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
             <option value={NEW_KIND}>+ New kind…</option>
           </select>
         </Field>
-        <AccountSelect value={brokerId} onChange={setBrokerId} />
+        <AccountSelect value={brokerId} onChange={setBrokerId} use={brokerUse} />
         {holding && (
           <label className="flex min-h-11 items-start gap-3 text-sm">
             <input type="checkbox" className="mt-1 size-5 accent-brand" checked={emergency} onChange={(e) => setEmergency(e.target.checked)} />
@@ -599,6 +607,149 @@ const SORTS: { key: Sort; label: string }[] = [
 const sortHoldings = (items: Holding[], by: Sort): Holding[] =>
   [...items].sort((a, b) => (by === "name" ? a.name.localeCompare(b.name) : by === "gain" ? b.gainPaise - a.gainPaise : b.valuePaise - a.valuePaise) || a.name.localeCompare(b.name));
 
+/** One rate for the whole kind, such as the gold rate: set on every holding of it counted by quantity and not in a broker account. */
+function KindRateSheet({ summary, onClose }: { summary: KindSummary; onClose: () => void }) {
+  const kind = (useHoldingKinds().data ?? []).find((k) => k.key === summary.kindKey);
+  const { run, error, setError, busy } = useAction(onClose);
+  const first = summary.holdings.find((h) => h.tracking === "units");
+  const unit = summary.rate ? { one: summary.rate.unitOne, per: summary.rate.per } : { one: first?.unitOne ?? first?.unitLabel ?? "unit", per: first?.ratePer ?? 1 };
+  const [amount, setAmount] = useState(summary.rate ? paiseToInput(summary.rate.paise) : "");
+  const [date, setDate] = useState(today());
+  const paise = rupeesToPaise(amount);
+  const counted = summary.holdings.filter((h) => h.tracking === "units");
+  const preview = paise ? counted.reduce((s, h) => s + Math.round((h.unitsHeldE4 * paise) / (10_000 * h.ratePer)), 0) : null;
+
+  const save = () => {
+    if (!kind) return;
+    if (!paise) return setError(`Enter the rate ${rateWord(unit)}, such as 130000.`);
+    void run(() => api.post(`/api/holding-kinds/${kind.id}/rate`, { ratePaise: paise, date }), `${summary.kindName}: ${rupees(paise)} ${rateWord(unit)}.`);
+  };
+
+  return (
+    <Sheet title={`${summary.kindName}: today's rate`} onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
+        <p className="text-sm text-soft">
+          One rate for {counted.length === 1 ? "your" : `all ${counted.length}`} {summary.kindName} {counted.length === 1 ? "holding" : "holdings"} outside a broker account. {summary.rate ? `Last rate ${rupees(summary.rate.paise)} ${rateWord(unit)}${summary.rate.date ? ` on ${shortDate(summary.rate.date)}` : ""}.` : "No rate typed yet."}
+        </p>
+        <Field label={`Rate (₹ ${rateWord(unit)})`}>
+          <AmountInput className={inputClass} autoComplete="off" autoFocus placeholder="130000" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </Field>
+        {preview !== null && <p className="text-sm">Together worth {rupees(preview)}.</p>}
+        <Field label="As of">
+          <input className={inputClass} type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <ErrorText>{error}</ErrorText>
+        <Button type="submit" className="w-full" disabled={busy}>
+          Save
+        </Button>
+      </form>
+    </Sheet>
+  );
+}
+
+/** Purchases shown at first in a kind; the rest open in place. */
+const PURCHASES = 8;
+
+/**
+ * Investments outside any broker account, one card per kind (Gold, Silver…): what you hold in total, what it is worth, the
+ * gain and the latest rate; opened, the holdings with their actions and every purchase with its date, quantity, cost and
+ * the account it was paid from.
+ */
+function KindCard({ summary: s, sort, open, onToggle, onAct, onRate, onAssign }: { summary: KindSummary; sort: Sort; open: boolean; onToggle: () => void; onAct: (h: Holding) => (what: Act) => void; onRate: () => void; onAssign?: () => void }) {
+  const [all, setAll] = useState(false);
+  const label = s.unitLabel ?? "";
+  const quantity = s.unitsE4 !== null ? `${e4ToQty(s.unitsE4)} ${label}`.trim() : null;
+  const shown = all ? s.purchases : s.purchases.slice(0, PURCHASES);
+  const many = s.holdings.length > 1;
+  const rate = s.rate;
+  return (
+    <Card pad="p-0">
+      <button type="button" className="flex min-h-14 w-full items-start justify-between gap-3 px-4 py-3 text-left" onClick={onToggle} aria-expanded={open}>
+        <span className="min-w-0">
+          <span className="block font-medium">{s.kindName}</span>
+          <span className="block text-xs text-soft">
+            {s.holdings.length} {s.holdings.length === 1 ? "holding" : "holdings"}
+            {quantity ? ` · ${quantity}` : ""}
+          </span>
+          {rate && (
+            <span className="block text-xs text-soft">
+              Rate {rupees(rate.paise)} {rateWord({ one: rate.unitOne, per: rate.per })}
+              {rate.date ? `, ${shortDate(rate.date)}` : ""}
+            </span>
+          )}
+        </span>
+        <span className="shrink-0 text-right">
+          <span className="block font-semibold tabular-nums">
+            <Amount paise={s.valuePaise} />
+          </span>
+          <span className={`block text-xs ${tone(s.gainPaise)}`}>
+            {signed(s.gainPaise)}
+            {s.gainPct !== null && ` (${s.gainPct}%)`}
+          </span>
+        </span>
+        <Chevron open={open} className="mt-1.5 text-soft" />
+      </button>
+      {open && (
+        <>
+          {(s.counted || onAssign) && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2">
+              {s.counted && (
+                <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={onRate}>
+                  Set today&apos;s rate
+                </Button>
+              )}
+              {onAssign && (
+                <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={onAssign}>
+                  Assign to a broker account
+                </Button>
+              )}
+            </div>
+          )}
+          <ul className="divide-y divide-line border-t border-line">
+            {sortHoldings(s.holdings, sort).map((h) => (
+              <Row key={h.id} h={h} onAct={onAct(h)} />
+            ))}
+          </ul>
+          {s.purchases.length > 0 && (
+            <div className="border-t border-line px-4 py-3">
+              <h3 className="text-xs tracking-wide text-soft uppercase">Purchases</h3>
+              <ul className="mt-2 space-y-2.5 text-sm">
+                {shown.map((p) => (
+                  <li key={p.key} className="flex items-start justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="block">
+                        {shortDate(p.date)}
+                        {p.unitsE4 !== null && p.unitsE4 > 0 ? ` · ${e4ToQty(p.unitsE4)} ${label}`.trimEnd() : ""}
+                      </span>
+                      <span className="block text-xs text-soft">
+                        {p.kind === "sell" ? "Sold" : p.kind === "lot" ? "Before tracking" : "Bought"}
+                        {p.accountName ? ` · ${p.kind === "sell" ? "into" : "from"} ${p.accountName}` : ""}
+                        {many ? ` · ${p.holdingName}` : ""}
+                      </span>
+                    </span>
+                    <span className={`shrink-0 tabular-nums ${p.kind === "sell" ? "text-good" : ""}`}>{p.kind === "sell" ? "+" : ""}{rupees(p.amountPaise)}</span>
+                  </li>
+                ))}
+              </ul>
+              {s.purchases.length > PURCHASES && (
+                <button type="button" className="mt-2 min-h-11 text-sm text-brand" onClick={() => setAll((v) => !v)}>
+                  {all ? "Show fewer" : `Show all ${s.purchases.length}`}
+                </button>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
 /** Rows shown at first in an account; the rest open in place. */
 const TOP = 5;
 
@@ -654,8 +805,10 @@ function Group({ title, note, holdings, sort, open, onToggle, onAct, actions }: 
 export function Investments() {
   const query = useHoldings("all");
   const brokers = useInvestmentAccounts();
+  const kindsList = useHoldingKinds().data ?? [];
   const [sheet, setSheet] = useState<SheetState>(null);
   const [manage, setManage] = useState<"accounts" | "move" | null>(null);
+  const [rateKind, setRateKind] = useState<KindSummary | null>(null);
   const [sort, setSort] = useState<Sort>("value");
   const [shut, setShut] = useState<Set<string>>(new Set());
 
@@ -752,15 +905,20 @@ export function Investments() {
           ))}
           {/* Investments that are in no broker account (gold coins, a property) are simply listed, with no card to open. */}
           {loose.length > 0 && (
-            <div className="space-y-1">
+            <div className="space-y-2">
               {accounts.length > 0 && <p className="px-1 text-xs tracking-wide text-soft uppercase">Other investments</p>}
-              <Card pad="p-0">
-                <ul className="divide-y divide-line">
-                  {sortHoldings(loose, sort).map((h) => (
-                    <Row key={h.id} h={h} onAct={act(h)} />
-                  ))}
-                </ul>
-              </Card>
+              {looseByKind(active, known).map((k) => (
+                <KindCard
+                  key={k.kindKey}
+                  summary={k}
+                  sort={sort}
+                  open={!shut.has(`kind:${k.kindKey}`)}
+                  onToggle={() => toggle(`kind:${k.kindKey}`)}
+                  onAct={act}
+                  onRate={() => setRateKind(k)}
+                  {...(accounts.length > 0 && kindsList.find((x) => x.key === k.kindKey)?.brokerUse === "required" ? { onAssign: () => setManage("move") } : {})}
+                />
+              ))}
             </div>
           )}
         </>
@@ -779,6 +937,7 @@ export function Investments() {
         </details>
       )}
 
+      {rateKind && <KindRateSheet summary={rateKind} onClose={() => setRateKind(null)} />}
       {manage === "accounts" && <AccountsSheet onClose={() => setManage(null)} />}
       {manage === "move" && <MoveSheet holdings={active} onClose={() => setManage(null)} />}
       {sheet?.kind === "edit" && <HoldingSheet holding={sheet.holding} all={holdings} onBuyInstead={(h) => setSheet({ kind: "buy", holding: h })} onClose={() => setSheet(null)} />}

@@ -44,6 +44,27 @@ function UnitFields({ counted, setCounted, unit, setUnit, ratePer, setRatePer, d
   );
 }
 
+const BROKER_USE = [
+  { value: "required", label: "Required (stocks, funds, crypto)" },
+  { value: "optional", label: "Optional (a gold ETF, digital gold)" },
+  { value: "never", label: "Not used (coins, bars, schemes)" },
+] as const;
+
+/** Whether investments of a kind are held through a broker or demat account. */
+function BrokerUseField({ value, onChange }: { value: HoldingKind["brokerUse"]; onChange: (v: HoldingKind["brokerUse"]) => void }) {
+  return (
+    <Field label="Held through a broker account" hint="Required makes you choose the account when adding one; Not used hides the choice.">
+      <select className={inputClass} value={value} onChange={(e) => onChange(e.target.value as HoldingKind["brokerUse"])}>
+        {BROKER_USE.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
 /** Adds a kind of investment; calls back with it so a form can select it at once. */
 export function NewKindSheet({ onCreated, onClose }: { onCreated?: (kind: HoldingKind) => void; onClose: () => void }) {
   const refresh = useRefreshMoney();
@@ -52,6 +73,7 @@ export function NewKindSheet({ onCreated, onClose }: { onCreated?: (kind: Holdin
   const [counted, setCounted] = useState(true);
   const [unit, setUnit] = useState("g");
   const [ratePer, setRatePer] = useState(1);
+  const [brokerUse, setBrokerUse] = useState<HoldingKind["brokerUse"]>("never");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -61,7 +83,7 @@ export function NewKindSheet({ onCreated, onClose }: { onCreated?: (kind: Holdin
     setBusy(true);
     setError("");
     try {
-      const kind = await api.post<HoldingKind>("/api/holding-kinds", { name: name.trim(), ...(counted ? { unit: unit.trim(), ratePer } : {}) });
+      const kind = await api.post<HoldingKind>("/api/holding-kinds", { name: name.trim(), brokerUse, ...(counted ? { unit: unit.trim(), ratePer } : {}) });
       await refresh();
       toast.show(`${kind.name} added.`);
       onCreated?.(kind);
@@ -85,6 +107,7 @@ export function NewKindSheet({ onCreated, onClose }: { onCreated?: (kind: Holdin
           <input className={inputClass} maxLength={40} autoComplete="off" autoFocus placeholder="Silver" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <UnitFields counted={counted} setCounted={setCounted} unit={unit} setUnit={setUnit} ratePer={ratePer} setRatePer={setRatePer} />
+        <BrokerUseField value={brokerUse} onChange={setBrokerUse} />
         <ErrorText>{error}</ErrorText>
         <Button type="submit" className="w-full" disabled={busy}>
           Add
@@ -101,6 +124,7 @@ function EditKindSheet({ kind, others, onClose }: { kind: HoldingKind; others: H
   const [counted, setCounted] = useState(kind.unit !== null);
   const [unit, setUnit] = useState(kind.unit ?? "g");
   const [ratePer, setRatePer] = useState<number>(kind.ratePer);
+  const [brokerUse, setBrokerUse] = useState<HoldingKind["brokerUse"]>(kind.brokerUse);
   const [target, setTarget] = useState("");
   const [merging, setMerging] = useState(false);
   const [error, setError] = useState("");
@@ -108,7 +132,7 @@ function EditKindSheet({ kind, others, onClose }: { kind: HoldingKind; others: H
   const url = `/api/holding-kinds/${kind.id}`;
   const into = others.find((o) => o.id === target);
   const mergeable = others.filter((o) => (o.unit ?? null) === (kind.unit ?? null) && o.ratePer === kind.ratePer);
-  const changed = name.trim() !== kind.name || (!kind.locked && (counted ? unit.trim() !== (kind.unit ?? "") || ratePer !== kind.ratePer : kind.unit !== null));
+  const changed = name.trim() !== kind.name || brokerUse !== kind.brokerUse || (!kind.locked && (counted ? unit.trim() !== (kind.unit ?? "") || ratePer !== kind.ratePer : kind.unit !== null));
 
   const run = async (work: () => Promise<unknown>, done: string) => {
     setBusy(true);
@@ -137,7 +161,7 @@ function EditKindSheet({ kind, others, onClose }: { kind: HoldingKind; others: H
             e.preventDefault();
             if (!name.trim()) return setError("The name cannot be empty.");
             if (counted && !unit.trim()) return setError("Give the unit, such as g.");
-            const body = kind.locked ? { name: name.trim() } : { name: name.trim(), unit: counted ? unit.trim() : null, ...(counted ? { ratePer } : {}) };
+            const body = kind.locked ? { name: name.trim(), brokerUse } : { name: name.trim(), brokerUse, unit: counted ? unit.trim() : null, ...(counted ? { ratePer } : {}) };
             void run(() => api.patch(url, body), "Saved.");
           }}
         >
@@ -145,6 +169,7 @@ function EditKindSheet({ kind, others, onClose }: { kind: HoldingKind; others: H
             <input className={inputClass} maxLength={40} autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
           <UnitFields counted={counted} setCounted={setCounted} unit={unit} setUnit={setUnit} ratePer={ratePer} setRatePer={setRatePer} disabled={kind.locked} />
+          <BrokerUseField value={brokerUse} onChange={setBrokerUse} />
           {kind.locked && <p className="text-xs text-soft">Its unit and rate are fixed because something is counted by quantity in it. Changing them would change every value. Add a new kind instead.</p>}
           <Button type="submit" variant="secondary" disabled={busy || !changed}>
             Save

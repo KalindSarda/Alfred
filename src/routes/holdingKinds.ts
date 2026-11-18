@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
+import { SetHoldingRate } from "../schemas/holding";
 import { CreateHoldingKind, MergeHoldingKind, UpdateHoldingKind } from "../schemas/holdingKind";
+import { setKindRate } from "../services/holdings";
 import { createKind, deleteKind, listKinds, mergeKind, updateKind } from "../services/holdingKinds";
+import { requestToday } from "../utils/clock";
 import { parseJson } from "../utils/validate";
 
 export const holdingKindRoutes = new Hono<AppEnv>()
@@ -15,4 +18,5 @@ export const holdingKindRoutes = new Hono<AppEnv>()
   .post("/:id/merge", async (c) => {
     const { intoId } = await parseJson(c, MergeHoldingKind);
     return c.json(await mergeKind(c.var.auth.db, c.var.userId, c.req.param("id"), intoId));
-  });
+  })
+  .post("/:id/rate", async (c) => c.json(await setKindRate(c.var.auth.db, c.var.userId, c.req.param("id"), await parseJson(c, SetHoldingRate), requestToday(c.var.auth))));

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { type Hold, api, describeError } from "../api";
 import { rupeesToPaise } from "../filters";
 import { paiseToInput, rupees, shortDate, today } from "../format";
-import { useAccounts, useHolds, useRefreshMoney } from "../queries";
+import { useAccounts, useHolds, useInvestmentAccounts, useRefreshMoney } from "../queries";
 import { AccountSelect } from "./InvestmentAccounts";
 import { useToast } from "./toast";
 import { AmountInput, Button, Card, ErrorText, Field, Sheet, inputClass } from "./ui";
@@ -110,12 +110,14 @@ function AllotSheet({ hold, onClose }: { hold: Hold; onClose: () => void }) {
   const [amount, setAmount] = useState(paiseToInput(hold.amountPaise));
   const [date, setDate] = useState(today());
   const [brokerId, setBrokerId] = useState("");
+  const brokers = useInvestmentAccounts().data?.accounts ?? [];
   const paise = rupeesToPaise(amount);
   const released = paise !== null && paise > 0 && paise <= hold.amountPaise ? hold.amountPaise - paise : 0;
 
   const save = () => {
     if (!paise) return setError("Enter the amount that was debited.");
     if (paise > hold.amountPaise) return setError(`That is more than the ${rupees(hold.amountPaise)} that was blocked.`);
+    if (brokers.length > 0 && !brokerId) return setError("Choose the broker account the shares went into.");
     void run(() => api.post(`/api/holds/${hold.id}/allot`, { amountPaise: paise, date, ...(brokerId ? { investmentAccountId: brokerId } : {}) }), "Allotment recorded.");
   };
 
@@ -137,7 +139,7 @@ function AllotSheet({ hold, onClose }: { hold: Hold; onClose: () => void }) {
         <Field label="Debited on">
           <input className={inputClass} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
-        <AccountSelect value={brokerId} onChange={setBrokerId} label="Held in" />
+        <AccountSelect value={brokerId} onChange={setBrokerId} label="Held in" use="required" />
         {released > 0 && <p className="rounded-lg bg-sunk px-3 py-2 text-sm">{rupees(released)} of the block is released.</p>}
         <ErrorText>{error}</ErrorText>
         <Button type="submit" className="w-full" disabled={busy}>

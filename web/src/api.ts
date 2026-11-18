@@ -540,6 +540,8 @@ export interface HoldingKind {
   ratePer: 1 | 10 | 100 | 1000;
   archived: boolean;
   isSystem: boolean;
+  /** Held through a broker account: required, optional, or never. */
+  brokerUse: "required" | "optional" | "never";
   holdingCount: number;
   locked: boolean;
 }

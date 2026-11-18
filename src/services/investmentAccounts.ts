@@ -1,6 +1,7 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
+import { kindsByKey } from "../db/holdingKinds";
 import { holdings, investmentAccounts } from "../db/schema";
 import type { IstDate } from "../domain/dates";
 import type { CreateInvestmentAccountData, MoveHoldingsData, UpdateInvestmentAccountData } from "../schemas/investmentAccount";
@@ -46,6 +47,19 @@ export async function requireUsableInvestmentAccount(db: Db, userId: string, id:
   const row = await requireRow(db, userId, id);
   if (row.archivedAt) throw invalid("investmentAccountId", `${row.name} is archived. Restore it or choose another account.`);
   return row;
+}
+
+/**
+ * Whether a holding of a kind may be in (or out of) a broker account: a kind marked "never" refuses one; a kind marked
+ * "required" must have one, but only once the person has an active broker account to choose, so nobody is stuck before they
+ * have added their first. "Optional" leaves the choice open.
+ */
+export async function checkBrokerRule(db: Db, userId: string, kind: { name: string; brokerUse: "required" | "optional" | "never" }, holdingName: string, accountId: string | null): Promise<void> {
+  if (kind.brokerUse === "never" && accountId !== null) throw invalid("investmentAccountId", `${kind.name} is not held in a broker account. Change that kind's setting if it is.`);
+  if (kind.brokerUse === "required" && accountId === null) {
+    const [any] = await db.select({ id: investmentAccounts.id }).from(investmentAccounts).where(and(eq(investmentAccounts.userId, userId), isNull(investmentAccounts.archivedAt))).limit(1);
+    if (any) throw invalid("investmentAccountId", `${holdingName} is a ${kind.name} and needs a broker account: choose where it is held.`);
+  }
 }
 
 async function requireFreeName(db: Db, userId: string, name: string, exceptId?: string): Promise<void> {
@@ -110,6 +124,13 @@ export async function moveHoldings(db: Db, userId: string, input: MoveHoldingsDa
   const ids = [...new Set(input.ids)];
   const rows = await db.select().from(holdings).where(and(eq(holdings.userId, userId), inArray(holdings.id, ids)));
   if (rows.length !== ids.length) throw new NotFoundError("Holding not found");
+  // Each holding's kind decides whether the account it is moving to (or out of) is allowed.
+  const kinds = await kindsByKey(db, userId);
+  for (const r of rows) {
+    if (r.investmentAccountId === input.investmentAccountId) continue;
+    const kind = kinds.get(r.kind);
+    if (kind) await checkBrokerRule(db, userId, kind, r.name, input.investmentAccountId);
+  }
 
   // The names that would meet in the target account: those already there, and those moving in.
   const active = await db.select({ id: holdings.id, name: holdings.name, account: holdings.investmentAccountId }).from(holdings).where(and(eq(holdings.userId, userId), eq(holdings.status, "active")));

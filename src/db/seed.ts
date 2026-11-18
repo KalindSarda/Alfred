@@ -39,7 +39,7 @@ export async function seedDefaultHoldingKinds(db: Db, userId: string): Promise<v
   const createdAt = nowIso();
   await db
     .insert(holdingKinds)
-    .values(DEFAULT_HOLDING_KINDS.map((k) => ({ id: newId(), userId, key: k.key, name: k.name, unit: k.unit, ratePer: k.ratePer, isSystem: k.isSystem, createdAt })))
+    .values(DEFAULT_HOLDING_KINDS.map((k) => ({ id: newId(), userId, key: k.key, name: k.name, unit: k.unit, ratePer: k.ratePer, isSystem: k.isSystem, brokerUse: k.brokerUse, createdAt })))
     .onConflictDoNothing();
 }
 
