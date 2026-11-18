@@ -72,6 +72,8 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
   const [kind, setKind] = useState<string>(holding?.kind ?? "gold");
   const [addingKind, setAddingKind] = useState(false);
   const [invested, setInvested] = useState("");
+  // Editing something valued by typing: the total put in, so contributions with no bank entry (an EPF passbook) can be kept in step.
+  const [putIn, setPutIn] = useState(holding && holding.tracking === "value" ? paiseToInput(holding.investedPaise) : "");
   const [value, setValue] = useState("");
   const [qty, setQty] = useState("");
   const [rate, setRate] = useState("");
@@ -89,7 +91,12 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
   const save = () => {
     if (!name.trim()) return setError("Name it, such as Gold coins or Tata Technologies.");
     if (brokerUse === "required" && brokers.length > 0 && !brokerId) return setError("Choose the broker account this is held in.");
-    if (holding) return void run(() => api.patch(`/api/holdings/${holding.id}`, { name: name.trim(), kind, isEmergency: emergency, countsForFire: forFire, investmentAccountId: brokerId || null }), "Saved.");
+    if (holding) {
+      const total = putIn.trim() ? rupeesToPaise(putIn) : 0;
+      if (holding.tracking === "value" && putIn.trim() && total === null) return setError("The total put in looks wrong. Use an amount such as 16399.");
+      const changedTotal = holding.tracking === "value" && total !== null && total !== holding.investedPaise;
+      return void run(() => api.patch(`/api/holdings/${holding.id}`, { name: name.trim(), kind, isEmergency: emergency, countsForFire: forFire, investmentAccountId: brokerId || null, ...(changedTotal ? { investedPaise: total } : {}) }), "Saved.");
+    }
     if (dupe) return setError(`You already have ${dupe.name}. Add a purchase to it instead.`);
     const put = invested.trim() ? rupeesToPaise(invested) : 0;
     if (invested.trim() && put === null) return setError("What you paid looks wrong. Leave it empty if nothing yet.");
@@ -143,6 +150,11 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
           </select>
         </Field>
         <AccountSelect value={brokerId} onChange={setBrokerId} use={brokerUse} />
+        {holding && holding.tracking === "value" && (
+          <Field label="Total put in (₹)" hint="Everything you have put in, such as the contributions on your EPF passbook. Interest then shows as the gain.">
+            <AmountInput className={inputClass} autoComplete="off" placeholder="16399" value={putIn} onChange={(e) => setPutIn(e.target.value)} />
+          </Field>
+        )}
         {holding && (
           <label className="flex min-h-11 items-start gap-3 text-sm">
             <input type="checkbox" className="mt-1 size-5 accent-brand" checked={emergency} onChange={(e) => setEmergency(e.target.checked)} />

@@ -34,7 +34,8 @@ export const CreateHolding = z
   .strict();
 export type CreateHoldingData = z.output<typeof CreateHolding>;
 
-export const UpdateHolding = z.object({ name: Name, kind: HoldingKind, isEmergency: z.boolean(), countsForFire: z.boolean(), investmentAccountId: Id.nullable() }).partial().strict();
+/** `investedPaise` is the total put in, for an investment valued by typing (such as the contributions on an EPF passbook). */
+export const UpdateHolding = z.object({ name: Name, kind: HoldingKind, isEmergency: z.boolean(), countsForFire: z.boolean(), investmentAccountId: Id.nullable(), investedPaise: Money }).partial().strict();
 export type UpdateHoldingData = z.output<typeof UpdateHolding>;
 
 export const SetHoldingValue = z.object({ valuePaise: Money, date: IstDateString.optional() }).strict();

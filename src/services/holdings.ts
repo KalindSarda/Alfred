@@ -6,6 +6,7 @@ import { getHoldingRow, type HoldingRow } from "../db/holdings";
 import { getKindByKey, getKindRow, type HoldingKindRow, kindsByKey } from "../db/holdingKinds";
 import { accounts, holdingLots, holdings, holdingValues, investmentAccounts, transactions } from "../db/schema";
 import { type IstDate, isValidIstDate } from "../domain/dates";
+import { formatRupees } from "../domain/money";
 import { avgCostPaise, gainPaise, gainPct, type HoldingFacts, investedPaise, latestRate, latestValue, soldPaise, staleDays, unitOne, unitsHeldE4, valueAtRate, valuePaise } from "../domain/holdings";
 import type { AddLotData, BuyHoldingData, ConvertHoldingData, CreateHoldingData, SellHoldingData, SetHoldingRateData, SetHoldingValueData, UpdateHoldingData } from "../schemas/holding";
 import { newId, nowIso } from "../utils/id";
@@ -300,9 +301,18 @@ export async function updateHolding(db: Db, userId: string, id: string, patch: U
       if ((current?.unit ?? null) !== next.unit || (current?.ratePer ?? 1) !== next.ratePer) throw invalid("kind", "Counted by quantity, it can only move to a kind with the same unit and rate");
     }
   }
+  // The total put in: what bank purchases already show stays, and the rest is what was put in before (such as EPF contributions with no bank entry).
+  let openingInvested = row.openingInvestedPaise;
+  if (patch.investedPaise !== undefined) {
+    if (row.tracking !== "value") throw invalid("investedPaise", "Counted by quantity, what was put in comes from its purchases");
+    const { facts } = await loadHoldings(db, userId);
+    const bought = (facts.get(id)?.purchases ?? []).reduce((sum, p) => sum + p.amountPaise, 0);
+    if (patch.investedPaise < bought) throw invalid("investedPaise", `That is less than the ${formatRupees(bought)} your bank entries already show`);
+    openingInvested = patch.investedPaise - bought;
+  }
   await db
     .update(holdings)
-    .set({ name: patch.name === undefined ? row.name : tidy(patch.name), kind: patch.kind ?? row.kind, isEmergency: patch.isEmergency ?? row.isEmergency, countsForFire: patch.countsForFire ?? row.countsForFire, investmentAccountId: accountId })
+    .set({ name: patch.name === undefined ? row.name : tidy(patch.name), kind: patch.kind ?? row.kind, isEmergency: patch.isEmergency ?? row.isEmergency, countsForFire: patch.countsForFire ?? row.countsForFire, investmentAccountId: accountId, openingInvestedPaise: openingInvested })
     .where(and(eq(holdings.id, id), eq(holdings.userId, userId)));
   return getHolding(db, userId, id, today);
 }
