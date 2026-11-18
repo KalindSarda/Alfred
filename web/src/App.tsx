@@ -125,7 +125,7 @@ export function App() {
 
   return (
     <div className="min-h-dvh md:flex">
-      <aside className="hidden w-16 shrink-0 flex-col gap-1 border-r border-line p-2 md:flex min-[1100px]:w-64 min-[1100px]:p-4">
+      <aside className="hidden w-16 shrink-0 flex-col gap-1 border-r border-line p-2 md:sticky md:top-0 md:flex md:h-dvh md:self-start min-[1100px]:w-64 min-[1100px]:p-4">
         <p className="mb-4 px-3 font-display text-3xl tracking-tight max-[1099px]:text-center max-[1099px]:px-0 max-[1099px]:text-2xl">
           <span className="min-[1100px]:hidden">A</span>
           <span className="hidden min-[1100px]:inline">Alfred</span>
@@ -150,7 +150,9 @@ export function App() {
           <span className="hidden min-[1100px]:inline">Find anything</span>
           <kbd className="ml-auto hidden rounded bg-sunk px-1.5 py-0.5 text-xs min-[1100px]:inline">/</kbd>
         </button>
-        <SideNav path={path} search={search} reviewCount={reviewTotal} />
+        <div className="hidden min-h-0 flex-1 overflow-y-auto overscroll-contain min-[1100px]:block">
+          <SideNav path={path} search={search} reviewCount={reviewTotal} />
+        </div>
         {HUBS.map((item) => (
           <Link
             key={item.hub}

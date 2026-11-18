@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isActiveItem, NAV, sectionOf } from "../web/src/nav";
+import { isActiveItem, NAV, screenTitle, sectionOf } from "../web/src/nav";
 import { HUB_PATHS, redirectFor } from "../web/src/routes";
 
 const items = NAV.flatMap((s) => s.items);
@@ -46,5 +46,15 @@ describe("the navigation tree", () => {
     expect(sectionOf("/categories").hub).toBe("you");
     expect(sectionOf("/plan").hub).toBe("plan");
     expect(sectionOf("/something-else").hub).toBe("today");
+  });
+
+  it("names the screen showing by its own label, with a fallback for an address not in the tree", () => {
+    for (const i of items) {
+      const { path, search } = split(i.to);
+      expect(screenTitle(path, search, "?"), i.to).toBe(i.label);
+    }
+    expect(screenTitle("/plan", "?view=goals", "Plan")).toBe("Goals");
+    expect(screenTitle("/money", "?view=bogus", "Money")).toBe("Accounts");
+    expect(screenTitle("/nowhere", "", "Fallback")).toBe("Fallback");
   });
 });

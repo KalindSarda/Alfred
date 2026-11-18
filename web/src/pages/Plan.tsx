@@ -2,7 +2,9 @@ import { Goals } from "../components/Goals";
 import { PlanOverview } from "../components/PlanOverview";
 import { Recurring } from "../components/Recurring";
 import { type PlanView, searchForView, viewFromSearch } from "../planView";
-import { replaceSearch, useSearch } from "../router";
+import { screenTitle } from "../nav";
+import { replaceSearch, usePath, useSearch } from "../router";
+import { useSidebar } from "../useWide";
 import { BudgetsView } from "./Budgets";
 import { Freedom } from "./Freedom";
 import { Protection } from "./Protection";
@@ -18,11 +20,14 @@ const VIEWS: { value: PlanView; label: string }[] = [
 
 /** Where you stand and what you set up ahead of time: an overview first, then budgets, what repeats, goals, the foundations and cover. */
 export function Plan() {
-  const view = viewFromSearch(useSearch());
+  const search = useSearch();
+  const view = viewFromSearch(search);
+  const sidebar = useSidebar();
+  const path = usePath();
   return (
     <div className="space-y-4">
-      <h1 className="text-3xl">Plan</h1>
-      <div role="tablist" aria-label="View" className="flex gap-1 overflow-x-auto rounded-xl bg-sunk p-1">
+      <h1 className="text-3xl">{sidebar ? screenTitle(path, search, "Plan") : "Plan"}</h1>
+      <div role="tablist" aria-label="View" className={`flex gap-1 overflow-x-auto rounded-xl bg-sunk p-1 ${sidebar ? "hidden" : ""}`}>
         {VIEWS.map((v) => (
           <button
             key={v.value}

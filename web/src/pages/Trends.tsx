@@ -4,7 +4,7 @@ import { Breakdown } from "../components/Breakdown";
 import { CashflowCard } from "../components/CashflowCard";
 import { NetWorthTrend } from "../components/NetWorthTrend";
 import { SpendByAccount } from "../components/SpendByAccount";
-import { useWide } from "../useWide";
+import { useSidebar, useWide } from "../useWide";
 
 const PERIODS = [
   { key: "cycle", label: "This month" },
@@ -17,11 +17,12 @@ const PERIODS = [
 export function Trends() {
   const [period, setPeriod] = useState<(typeof PERIODS)[number]["key"]>("cycle");
   const wide = useWide();
+  const sidebar = useSidebar();
 
   return (
     <div className="space-y-4">
-      <h1 className="text-3xl">Activity</h1>
-      <ActivityTabs current="trends" />
+      <h1 className="text-3xl">{sidebar ? "Trends" : "Activity"}</h1>
+      {!sidebar && <ActivityTabs current="trends" />}
 
       <div role="group" aria-label="Period" className="flex gap-1 overflow-x-auto pb-1">
         {PERIODS.map((p) => (

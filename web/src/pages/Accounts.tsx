@@ -14,7 +14,9 @@ import { Button, Card, Empty, Sheet, Spinner } from "../components/ui";
 import { rupees, rupeesCompact, shortDate } from "../format";
 import { NetWorthCard } from "../components/NetWorth";
 import { useAccounts, useBalanceOverview } from "../queries";
-import { Link, replaceSearch, useSearch } from "../router";
+import { screenTitle } from "../nav";
+import { Link, replaceSearch, usePath, useSearch } from "../router";
+import { useSidebar } from "../useWide";
 
 function CardRow({ card, onOpen }: { card: CardAccount; onOpen: () => void }) {
   const pct = Math.min(100, Math.max(0, card.utilizationPct));
@@ -62,7 +64,10 @@ const VIEWS: { value: AccountsView; label: string }[] = [
 ];
 
 export function Accounts() {
-  const view = viewFromSearch(useSearch());
+  const search = useSearch();
+  const view = viewFromSearch(search);
+  const sidebar = useSidebar();
+  const path = usePath();
   const [showArchived, setShowArchived] = useState(false);
   const accounts = useAccounts(showArchived);
   const overview = useBalanceOverview();
@@ -85,11 +90,14 @@ export function Accounts() {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl">Money</h1>
+        <div>
+          <h1 className="text-3xl">{sidebar ? screenTitle(path, search, "Money") : "Money"}</h1>
+          {sidebar && figure(view) && <p className="text-sm text-soft">{figure(view)}</p>}
+        </div>
         {view === "accounts" && <Button onClick={() => setEditing("new")}>Add</Button>}
       </div>
 
-      <div role="tablist" aria-label="View" className="grid grid-cols-3 gap-1 rounded-xl bg-sunk p-1">
+      <div role="tablist" aria-label="View" className={`grid grid-cols-3 gap-1 rounded-xl bg-sunk p-1 ${sidebar ? "hidden" : ""}`}>
         {VIEWS.map((v) => (
           <button
             key={v.value}

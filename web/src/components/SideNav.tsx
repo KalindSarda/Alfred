@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { isActiveItem, NAV, type NavSection, sectionOf } from "../nav";
 import { Link } from "../router";
 import { Chevron, Icon } from "./ui";
@@ -9,8 +9,10 @@ import { Chevron, Icon } from "./ui";
  */
 export function SideNav({ path, search, reviewCount }: { path: string; search: string; reviewCount: number }) {
   const current = sectionOf(path).hub;
-  // What the person opened or closed by hand; anything not touched follows the page they are on.
-  const [override, setOverride] = useState<Partial<Record<NavSection["hub"], boolean>>>({});
+  // One section is open at a time: the one the person last opened or closed by hand, otherwise the one they are on. Moving to
+  // another section by a link hands the choice back to the page.
+  const [chosen, setChosen] = useState<NavSection["hub"] | null | undefined>(undefined);
+  useEffect(() => setChosen(undefined), [current]);
 
   return (
     <nav aria-label="Sections" className="hidden space-y-1 min-[1100px]:block">
@@ -26,13 +28,13 @@ export function SideNav({ path, search, reviewCount }: { path: string; search: s
             </Link>
           );
         }
-        const open = override[section.hub] ?? on;
+        const open = chosen === undefined ? on : chosen === section.hub;
         return (
           <div key={section.hub}>
             <button
               type="button"
               aria-expanded={open}
-              onClick={() => setOverride((o) => ({ ...o, [section.hub]: !open }))}
+              onClick={() => setChosen(open ? null : section.hub)}
               className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium ${on ? "text-brand" : "text-soft hover:bg-hover"}`}
             >
               <Icon name={section.icon} className="size-5" />

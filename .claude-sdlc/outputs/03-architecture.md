@@ -260,3 +260,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-12-03: slice 44 noted: category colours shared across screens (categoryStyles), spend-by-account service and card.
 - 2026-12-04: slice 45 noted: Trends page under Activity, period-aware spend-by-account, shared palette (palette.ts).
 - 2026-12-05: slice 46 noted: one navigation tree (nav.ts), grouped sidebar from 1100 px, phone Menu sheet.
+- 2026-12-06: slice 46 follow-up noted: no tabs on desktop, accordion sidebar, independent sidebar scroll.

@@ -16,3 +16,6 @@ export function useMinWidth(px: number): boolean {
 
 /** Tablet width and up. */
 export const useWide = (): boolean => useMinWidth(768);
+
+/** Wide enough for the grouped sidebar, which lists every screen, so a page needs no tabs of its own. */
+export const useSidebar = (): boolean => useMinWidth(1100);

@@ -76,5 +76,10 @@ export function isActiveItem(item: NavItem, path: string, search: string): boole
   return (item.view.of === "plan" ? planView(search) : moneyView(search)) === item.view.is;
 }
 
+/** The name of the screen showing (its sidebar label), or `fallback` when the address is not in the tree. */
+export function screenTitle(path: string, search: string, fallback: string): string {
+  return NAV.flatMap((s) => s.items).find((i) => isActiveItem(i, path, search))?.label ?? fallback;
+}
+
 /** The section a page belongs to. */
 export const sectionOf = (path: string): NavSection => NAV.find((s) => s.hub === hubOf(path)) ?? (NAV[0] as NavSection);

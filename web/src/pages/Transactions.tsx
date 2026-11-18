@@ -9,6 +9,7 @@ import { longDate, rupees, shortDate } from "../format";
 import { useAccounts, useCategories, useTransactions } from "../queries";
 import { Link, navigate, replaceSearch, useSearch } from "../router";
 import { amountSign, amountTone, describeTxn, managedAt, needsCategory } from "../txn";
+import { useSidebar } from "../useWide";
 
 const TYPE_FILTERS = [
   { value: "", label: "All" },
@@ -84,6 +85,7 @@ export function Transactions() {
 
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [filtering, setFiltering] = useState(false);
+  const sidebar = useSidebar();
 
   const accountsQuery = useAccounts(true);
   const categoriesQuery = useCategories();
@@ -125,8 +127,8 @@ export function Transactions() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-3xl">Activity</h1>
-      <ActivityTabs current="entries" />
+      <h1 className="text-3xl">{sidebar ? "Entries" : "Activity"}</h1>
+      {!sidebar && <ActivityTabs current="entries" />}
 
       <div className="space-y-3">
         <input
