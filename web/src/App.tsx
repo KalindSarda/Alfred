@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { InviteSwitch } from "./components/InviteSwitch";
 import { JumpSearch } from "./components/JumpSearch";
+import { MoreMenu } from "./components/MoreMenu";
 import { QuickAddSheet } from "./components/QuickAddSheet";
+import { SideNav } from "./components/SideNav";
 import { Icon, Spinner } from "./components/ui";
 import { Accounts } from "./pages/Accounts";
 import { Categories } from "./pages/Categories";
@@ -56,6 +58,7 @@ export function App() {
   useScrollToHash(path, search);
   const [adding, setAdding] = useState(false);
   const [finding, setFinding] = useState(false);
+  const [menu, setMenu] = useState(false);
   // Ctrl or Cmd + K, or a bare "/" outside a text box, opens the search.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -147,6 +150,7 @@ export function App() {
           <span className="hidden min-[1100px]:inline">Find anything</span>
           <kbd className="ml-auto hidden rounded bg-sunk px-1.5 py-0.5 text-xs min-[1100px]:inline">/</kbd>
         </button>
+        <SideNav path={path} search={search} reviewCount={reviewTotal} />
         {HUBS.map((item) => (
           <Link
             key={item.hub}
@@ -154,7 +158,7 @@ export function App() {
             aria-current={current === item.hub ? "page" : undefined}
             aria-label={item.label}
             title={item.label}
-            className={`relative flex min-h-11 items-center justify-center gap-3 rounded-xl px-3 text-sm font-medium min-[1100px]:justify-start ${
+            className={`relative flex min-h-11 items-center justify-center gap-3 rounded-xl px-3 text-sm font-medium min-[1100px]:hidden ${
               current === item.hub ? "bg-sunk text-brand" : "text-soft hover:bg-hover"
             }`}
           >
@@ -174,19 +178,17 @@ export function App() {
 
       <main className="mx-auto w-full min-w-0 max-w-5xl flex-1 px-4 pb-28 md:p-8 md:pb-8">
         <header className="sticky top-0 z-30 -mx-4 mb-2 flex items-center justify-between bg-paper px-4 pt-[env(safe-area-inset-top)] md:hidden">
-          <p className="font-display text-2xl tracking-tight">Alfred</p>
+          <Link to="/" aria-label="Alfred, go to Today" className="flex min-h-11 items-center font-display text-2xl tracking-tight">
+            Alfred
+          </Link>
           <div className="flex items-center">
             <button type="button" onClick={() => setFinding(true)} aria-label="Find anything" className="flex size-11 items-center justify-center rounded-xl text-soft hover:bg-hover">
               <Icon name="search" className="size-5" />
             </button>
-            <Link
-              to={HUB_PATHS.you}
-              aria-label="You"
-              aria-current={current === "you" ? "page" : undefined}
-              className={`flex size-11 items-center justify-center rounded-xl hover:bg-hover ${current === "you" ? "text-brand" : "text-soft"}`}
-            >
+            <button type="button" onClick={() => setMenu(true)} aria-label="Menu" aria-haspopup="dialog" className="relative flex size-11 items-center justify-center rounded-xl text-soft hover:bg-hover">
               <Icon name="grid" className="size-5" />
-            </Link>
+              {reviewTotal > 0 && <span aria-hidden="true" className="absolute top-2 right-2 size-2 rounded-full bg-brass" />}
+            </button>
           </div>
         </header>
         <div className={current === "today" ? "" : "max-w-3xl"}>
@@ -213,6 +215,7 @@ export function App() {
 
       {adding && <QuickAddSheet onClose={() => setAdding(false)} />}
       {finding && <JumpSearch onClose={() => setFinding(false)} />}
+      {menu && <MoreMenu path={path} search={search} reviewCount={reviewTotal} onClose={() => setMenu(false)} />}
     </div>
   );
 }
