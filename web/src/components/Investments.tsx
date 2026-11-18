@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { type Holding, type HoldingContribution, type HoldingEntry, type HoldingKind, type HoldingLot, api, describeError } from "../api";
 import { rupeesToPaise } from "../filters";
-import { e4ToQty, paiseToInput, qtyToE4, rupees, shortDate, today } from "../format";
+import { e4ToQty, paiseToInput, qtyToE4, rupees, rupeesCompact, shortDate, today } from "../format";
 import { useAccounts, useHoldingKinds, useHoldings, useInvestmentAccounts, useRefreshMoney } from "../queries";
-import { byNewest, type KindPurchase, type KindSummary, looseByKind, purchasesOf } from "../investmentKinds";
+import { byNewest, type KindPurchase, type KindSummary, looseByKind, purchasesOf, type WorthSegment, worthSegments } from "../investmentKinds";
 import { NewKindSheet } from "./InvestmentKinds";
 import { AccountSelect, AccountsSheet, MoveSheet } from "./InvestmentAccounts";
 import { useToast } from "./toast";
@@ -880,6 +880,31 @@ function HoldingButtons({ h, onAct }: { h: Holding; onAct: (what: Act) => void }
   );
 }
 
+/** What you hold as one stacked bar: a segment for each broker account and each kind outside a broker, with a legend. */
+function WorthBar({ segments }: { segments: WorthSegment[] }) {
+  const description = segments.map((s) => `${s.label} ${s.pct}%`).join(", ");
+  return (
+    <div className="mt-3">
+      <div className="flex h-3 w-full gap-px overflow-hidden rounded-full bg-sunk" role="img" aria-label={`What you hold: ${description}`}>
+        {segments.map((s) => (
+          <span key={s.key} className="block h-full" style={{ width: `${s.pct}%`, minWidth: "4px", background: s.color }} title={`${s.label}: ${s.pct}%`} />
+        ))}
+      </div>
+      <ul className="mt-2.5 grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+        {segments.map((s) => (
+          <li key={s.key} className="flex min-w-0 items-center gap-2">
+            <span aria-hidden="true" className="size-2.5 shrink-0 rounded-full" style={{ background: s.color }} />
+            <span className="min-w-0 flex-1 truncate">{s.label}</span>
+            <span className="shrink-0 text-soft tabular-nums">
+              {rupeesCompact(s.valuePaise)} · {s.pct}%
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** Purchases shown at first in a list; the rest open in place. */
 const PURCHASES = 8;
 
@@ -1227,6 +1252,7 @@ export function Investments() {
   const pct = totalInvestedPaise > 0 ? Math.round((gainPaise / totalInvestedPaise) * 1000) / 10 : null;
   const accounts = brokers.data?.accounts ?? [];
   const known = new Set(accounts.map((a) => a.id));
+  const segments = worthSegments(accounts, looseByKind(active, known));
   const inAccount = (id: string) => active.filter((h) => h.investmentAccountId === id);
   const loose = active.filter((h) => !h.investmentAccountId || !known.has(h.investmentAccountId));
   const toggle = (key: string) =>
@@ -1262,21 +1288,7 @@ export function Investments() {
               {pct !== null && ` (${pct}%)`}
             </span>
           </p>
-          {accounts.length > 0 && totalValuePaise > 0 && (
-            <div className="mt-3 space-y-1.5">
-              {accounts.filter((a) => a.valuePaise > 0).map((a) => (
-                <div key={a.id}>
-                  <div className="flex justify-between text-xs text-soft">
-                    <span>{a.name}</span>
-                    <span>{a.sharePct}%</span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-sunk">
-                    <span className="block h-full bg-brand" style={{ width: `${a.sharePct ?? 0}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          {segments.length >= 2 && <WorthBar segments={segments} />}
         </Card>
       )}
 

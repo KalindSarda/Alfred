@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Holding } from "../web/src/api";
-import { kindSummary, looseByKind, purchasesOf } from "../web/src/investmentKinds";
+import { BROKER_COLORS, EXTRA_KIND_COLORS, KIND_COLORS, kindSummary, looseByKind, purchasesOf, worthSegments } from "../web/src/investmentKinds";
 
 const E4 = 10_000;
 
@@ -246,5 +246,67 @@ describe("what each line can do", () => {
   it("lets a lot be corrected and taken out", () => {
     const withLot = holding({ id: "g", lots: [{ id: "l1", date: "2025-01-01", unitsE4: E4, costPaise: 100_00, note: null }], unitsHeldE4: E4 });
     expect(purchasesOf(withLot).find((p) => p.key === "ll1")).toMatchObject({ editable: true, removable: true, lotId: "l1" });
+  });
+});
+
+describe("the stacked bar of what you hold", () => {
+  const retirement = holding({ id: "r1", name: "EPF", kind: "retirement", kindName: "Retirement", tracking: "value", unitLabel: null, unitOne: null, ratePer: 1, valuePaise: 16_399_00 });
+  const retirement2 = holding({ id: "r2", name: "EPS pension", kind: "retirement", kindName: "Retirement", tracking: "value", unitLabel: null, unitOne: null, ratePer: 1, valuePaise: 8_721_00 });
+  const silver = holding({ id: "s1", name: "brick", kind: "silver", kindName: "Silver", valuePaise: 22_000_00 });
+  const gold = holding({ id: "g1", name: "Coins", kind: "gold", kindName: "Gold", valuePaise: 2_62_600_00 });
+  const accounts = [
+    { id: "gw", name: "Groww", valuePaise: 66_977_00 },
+    { id: "ic", name: "ICICI Direct", valuePaise: 0 },
+  ];
+  const loose = looseByKind([retirement, retirement2, silver, gold], new Set(["gw", "ic"]));
+
+  it("has a piece for each account and each kind, biggest first, with none for what is worth nothing", () => {
+    const segs = worthSegments(accounts, loose);
+    expect(segs.map((s) => s.label)).toEqual(["Gold", "Groww", "Retirement", "Silver"]);
+    expect(segs.map((s) => s.source)).toEqual(["kind", "account", "kind", "kind"]);
+  });
+
+  it("keeps Retirement as one piece made of EPF and EPS pension, and never merges kinds into an other", () => {
+    const seg = worthSegments(accounts, loose).find((s) => s.label === "Retirement");
+    expect(seg?.valuePaise).toBe(25_120_00);
+    expect(worthSegments(accounts, loose).some((s) => /other/i.test(s.label))).toBe(false);
+  });
+
+  it("adds up to about the whole", () => {
+    const total = worthSegments(accounts, loose).reduce((sum, s) => sum + s.pct, 0);
+    expect(total).toBeGreaterThan(99.8);
+    expect(total).toBeLessThan(100.2);
+  });
+
+  it("gives each known kind its own colour and an added kind the next spare one", () => {
+    const segs = worthSegments(accounts, loose);
+    expect(segs.find((s) => s.label === "Gold")?.color).toBe(KIND_COLORS.gold);
+    expect(segs.find((s) => s.label === "Silver")?.color).toBe(KIND_COLORS.silver);
+    expect(segs.find((s) => s.label === "Retirement")?.color).toBe(KIND_COLORS.retirement);
+    const added = looseByKind([holding({ id: "x1", kind: "k-1", kindName: "Bonds", valuePaise: 1_000_00 }), holding({ id: "x2", kind: "k-2", kindName: "Art", valuePaise: 2_000_00 })], new Set());
+    const colors = worthSegments([], added).map((s) => s.color);
+    expect(new Set(colors).size).toBe(2);
+    for (const c of colors) expect(EXTRA_KIND_COLORS).toContain(c);
+  });
+
+  it("gives a kind added by hand the colour its name suggests", () => {
+    const silverByHand = looseByKind([holding({ id: "x", kind: "01ABCDEF", kindName: "Silver", valuePaise: 1_000_00 })], new Set());
+    expect(worthSegments([], silverByHand)[0]?.color).toBe(KIND_COLORS.silver);
+  });
+
+  it("gives broker accounts a green by their place by name, and the colours are all different", () => {
+    const two = [
+      { id: "z", name: "Zerodha", valuePaise: 5_000_00 },
+      { id: "a", name: "Axis Direct", valuePaise: 4_000_00 },
+    ];
+    const segs = worthSegments(two, []);
+    expect(segs.find((s) => s.label === "Axis Direct")?.color).toBe(BROKER_COLORS[0]);
+    expect(segs.find((s) => s.label === "Zerodha")?.color).toBe(BROKER_COLORS[1]);
+    const all = [...Object.values(KIND_COLORS), ...EXTRA_KIND_COLORS, ...BROKER_COLORS];
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it("is empty when nothing is worth anything", () => {
+    expect(worthSegments([{ id: "a", name: "Groww", valuePaise: 0 }], [])).toEqual([]);
   });
 });

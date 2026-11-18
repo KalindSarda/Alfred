@@ -116,3 +116,42 @@ export function looseByKind(holdings: Holding[], knownAccountIds: Set<string>): 
   for (const h of loose) kinds.set(h.kind, h.kindName);
   return [...kinds.entries()].map(([key, name]) => kindSummary(key, name, loose)).sort((a, b) => b.valuePaise - a.valuePaise || a.kindName.localeCompare(b.kindName));
 }
+
+/** One piece of the stacked bar of what you hold: a broker account, or a kind outside any broker. */
+export interface WorthSegment {
+  key: string;
+  label: string;
+  valuePaise: number;
+  /** Its share of the pieces together, one decimal. */
+  pct: number;
+  color: string;
+  source: "account" | "kind";
+}
+
+/** A kind's own colour: gold is gold, silver is silver-grey, retirement purple. */
+export const KIND_COLORS: Record<string, string> = { stock: "#2b6cde", fund: "#0f8f6e", gold: "#d9a21b", silver: "#94a3b8", crypto: "#e07a4f", retirement: "#7a5ea8", other: "#6b7280" };
+/** For a kind you added, in the order they appear. */
+export const EXTRA_KIND_COLORS = ["#c2457a", "#4f8fd6", "#b3489e", "#1f3f7a", "#c0573f"];
+/** Broker accounts share a green ramp, so they read as "in a broker" against the kinds' own hues. */
+export const BROKER_COLORS = ["#1f8a5b", "#3fa476", "#6bbf94", "#92d1b0", "#b3e0c8"];
+
+/**
+ * The stacked bar of what you hold: each broker account, and each kind outside a broker (never merged into one "other"), biggest
+ * first. A kind has its own colour by its key, or by its name when it was added by hand (Silver, Gold); any other gets the next spare one.
+ */
+export function worthSegments(accounts: { id: string; name: string; valuePaise: number }[], loose: KindSummary[]): WorthSegment[] {
+  const brokerOrder = [...accounts].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  const pieces: Omit<WorthSegment, "pct">[] = [];
+  brokerOrder.forEach((a, i) => {
+    if (a.valuePaise > 0) pieces.push({ key: `a:${a.id}`, label: a.name, valuePaise: a.valuePaise, color: BROKER_COLORS[i % BROKER_COLORS.length] as string, source: "account" });
+  });
+  let extra = 0;
+  for (const k of [...loose].sort((a, b) => a.kindName.localeCompare(b.kindName))) {
+    if (k.valuePaise <= 0) continue;
+    // A kind you added (Silver, say) has a generated key, so a fitting name gets the kind's own colour too.
+    const color = KIND_COLORS[k.kindKey] ?? KIND_COLORS[k.kindName.trim().toLowerCase()] ?? (EXTRA_KIND_COLORS[extra++ % EXTRA_KIND_COLORS.length] as string);
+    pieces.push({ key: `k:${k.kindKey}`, label: k.kindName, valuePaise: k.valuePaise, color, source: "kind" });
+  }
+  const total = pieces.reduce((sum, p) => sum + p.valuePaise, 0);
+  return pieces.map((p) => ({ ...p, pct: total > 0 ? round1((p.valuePaise / total) * 100) : 0 })).sort((a, b) => b.valuePaise - a.valuePaise || a.label.localeCompare(b.label));
+}
