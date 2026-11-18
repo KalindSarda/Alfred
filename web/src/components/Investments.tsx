@@ -778,6 +778,7 @@ function HoldingLine({ h, onAct, showKind = false }: { h: Holding; onAct: (what:
             {h.gainPct !== null && ` (${h.gainPct}%)`}
           </span>
         </span>
+        <Chevron open={open} className="mt-1.5 text-soft" />
       </button>
       {open && (
         <div className="space-y-3 pb-3">
@@ -923,7 +924,7 @@ function KindCard({ summary: s, sort, open, onToggle, onAct, onRate, onAssign }:
               </Button>
             </div>
           )}
-          <PurchaseList purchases={s.purchases} investedPaise={s.investedPaise} unitLabel={s.unitLabel} showHolding={!single} holdings={s.holdings} />
+          {single && <PurchaseList purchases={s.purchases} investedPaise={s.investedPaise} unitLabel={s.unitLabel} showHolding={false} holdings={s.holdings} />}
         </>
       )}
     </Card>

@@ -265,3 +265,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-12-08: slice 47 follow-up noted: single kind card, compact holding lines, opening balance in purchases.
 - 2026-12-09: editable total put in for holdings valued by typing (PATCH investedPaise).
 - 2026-12-10: slice 48 noted: `holding_contributions` ledger (linked pension entries), counted as put in and, after the latest typed value, as worth.
+- 2026-12-11: holding lines show a chevron and open to their own entries; a kind with several holdings has no merged list (one holding keeps the single card).
