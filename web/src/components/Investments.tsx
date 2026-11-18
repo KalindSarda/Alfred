@@ -3,7 +3,7 @@ import { type Holding, type HoldingKind, api, describeError } from "../api";
 import { rupeesToPaise } from "../filters";
 import { e4ToQty, paiseToInput, qtyToE4, rupees, shortDate, today } from "../format";
 import { useAccounts, useHoldingKinds, useHoldings, useInvestmentAccounts, useRefreshMoney } from "../queries";
-import { looseByKind, type KindSummary } from "../investmentKinds";
+import { byNewest, type KindPurchase, type KindSummary, looseByKind, purchasesOf } from "../investmentKinds";
 import { NewKindSheet } from "./InvestmentKinds";
 import { AccountSelect, AccountsSheet, MoveSheet } from "./InvestmentAccounts";
 import { useToast } from "./toast";
@@ -451,17 +451,11 @@ function TradeSheet({ holding, selling, onClose }: { holding: Holding; selling: 
 type Act = "value" | "rate" | "buy" | "sell" | "edit" | "convert";
 type SheetState = { kind: "edit"; holding: Holding | null } | { kind: Exclude<Act, "edit">; holding: Holding } | null;
 
-function Row({ h, onAct }: { h: Holding; onAct: (what: Act) => void }) {
+/** Changes one holding and refreshes what depends on it, reporting back. */
+function useHoldingActions() {
   const refresh = useRefreshMoney();
   const toast = useToast();
-  const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
-  const active = h.status === "active";
-  const stale = active && (h.staleDays === null || h.staleDays > 35);
-  const counted = h.tracking === "units";
-  const unit = unitOfHolding(h);
-  const kindUnit = unitOfKind((useHoldingKinds().data ?? []).find((k) => k.key === h.kind));
-
   const act = async (work: () => Promise<unknown>, done: string) => {
     setError("");
     try {
@@ -472,128 +466,216 @@ function Row({ h, onAct }: { h: Holding; onAct: (what: Act) => void }) {
       setError(describeError(e));
     }
   };
+  return { act, error };
+}
 
+/** The typed rates and values of one holding, newest first. */
+function RateHistorySheet({ h, onClose }: { h: Holding; onClose: () => void }) {
+  const unit = unitOfHolding(h);
   return (
-    <li className="space-y-2 px-4 py-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="min-w-0 truncate font-medium">
-          {h.name}
-          <span className="ml-2 text-xs font-normal text-faint">{h.kindName}{!active && " · closed"}</span>
-        </span>
-        <span className="shrink-0 font-semibold tabular-nums">{rupees(h.valuePaise)}</span>
-      </div>
-      {counted && unit && (
-        <p className="text-sm">
-          <span className="font-medium">{heldText(h)}</span>
-          {h.ratePaise ? <span className="text-soft"> at {rupees(h.ratePaise)} {rateWord(unit)}</span> : <span className="text-soft"> · no rate typed yet</span>}
-          {h.avgCostPaise ? <span className="text-soft"> · you paid {rupees(h.avgCostPaise)} {rateWord(unit)} on average</span> : null}
-        </p>
+    <Sheet title={`${h.name}: rate history`} onClose={onClose}>
+      {h.values.length === 0 ? (
+        <p className="text-sm text-soft">Nothing typed yet.</p>
+      ) : (
+        <ul className="divide-y divide-line text-sm">
+          {h.values.map((v) => (
+            <li key={v.date} className="flex items-baseline justify-between gap-3 py-2.5">
+              <span>
+                {shortDate(v.date)}
+                {v.ratePaise && unit ? <span className="block text-xs text-soft">{rupees(v.ratePaise)} {rateWord(unit)}</span> : null}
+              </span>
+              <span className="font-medium tabular-nums">{rupees(v.valuePaise)}</span>
+            </li>
+          ))}
+        </ul>
       )}
-      <p className="text-sm text-soft">
-        Put in {rupees(h.investedPaise)}
-        {h.soldPaise > 0 && <> · sold for {rupees(h.soldPaise)}</>}
-        {" · "}
-        <span className={`font-medium ${tone(h.gainPaise)}`}>
-          {signed(h.gainPaise)}
-          {h.gainPct !== null && ` (${h.gainPct}%)`}
-        </span>
-      </p>
-      <p className={`text-xs ${stale ? "font-medium text-warn-ink" : "text-soft"}`}>{counted ? ago(h.staleDays).replace("valued", "rate typed").replace("no value typed yet", "no rate typed yet") : ago(h.staleDays)}</p>
-      {h.missingUnits > 0 && <p className="text-xs font-medium text-warn-ink">{h.missingUnits} {h.missingUnits === 1 ? "entry has" : "entries have"} no quantity. Open History and add it, or the quantity held will be short.</p>}
+    </Sheet>
+  );
+}
+
+/** What can be done to a holding: the main three, and the rest under More. */
+function HoldingButtons({ h, onAct }: { h: Holding; onAct: (what: Act) => void }) {
+  const { act, error } = useHoldingActions();
+  const [more, setMore] = useState(false);
+  const [history, setHistory] = useState(false);
+  const counted = h.tracking === "units";
+  const kindUnit = unitOfKind((useHoldingKinds().data ?? []).find((k) => k.key === h.kind));
+
+  if (h.status !== "active") {
+    return (
+      <div className="space-y-2">
+        <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={() => void act(() => api.post(`/api/holdings/${h.id}/reopen`), `${h.name} reopened. Type its value to count it again.`)}>
+          Reopen
+        </Button>
+        <ErrorText>{error}</ErrorText>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        {active ? (
-          <>
-            <Button className="min-h-11 py-1.5 text-sm" onClick={() => onAct(counted ? "rate" : "value")}>
-              {counted ? "Update rate" : "Update value"}
-            </Button>
-            <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("buy")}>
-              Buy more
-            </Button>
-            {(counted ? h.unitsHeldE4 > 0 : h.valuePaise > 0) && (
-              <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("sell")}>
-                Sell
-              </Button>
-            )}
-            {!counted && kindUnit && (
-              <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("convert")}>
-                Count by quantity
-              </Button>
-            )}
-            <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("edit")}>
-              Edit
-            </Button>
-            <Button
-              variant="ghost"
-              className="min-h-11 py-1.5 text-sm"
-              onClick={() => {
-                if (window.confirm(`Close ${h.name}? It stops counting toward your net worth. Use this when it is gone without a sale you want recorded.`)) void act(() => api.post(`/api/holdings/${h.id}/close`), `${h.name} closed.`);
-              }}
-            >
-              Close
-            </Button>
-          </>
-        ) : (
-          <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={() => void act(() => api.post(`/api/holdings/${h.id}/reopen`), `${h.name} reopened. Type its value to count it again.`)}>
-            Reopen
+        <Button className="min-h-11 py-1.5 text-sm" onClick={() => onAct(counted ? "rate" : "value")}>
+          {counted ? "Update rate" : "Update value"}
+        </Button>
+        <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("buy")}>
+          Buy more
+        </Button>
+        {(counted ? h.unitsHeldE4 > 0 : h.valuePaise > 0) && (
+          <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("sell")}>
+            Sell
           </Button>
         )}
+        <Button variant="ghost" className="min-h-11 py-1.5 text-sm" aria-expanded={more} onClick={() => setMore((v) => !v)}>
+          More <Chevron open={more} className="ml-1 inline" />
+        </Button>
       </div>
-      {(h.entries.length > 0 || h.values.length > 1 || h.lots.length > 0) && (
-        <div>
-          <button type="button" className="min-h-9 text-sm text-soft underline" aria-expanded={open} onClick={() => setOpen(!open)}>
-            {open ? "Hide history" : "History"}
-          </button>
-          {open && (
-            <ul className="mt-1 space-y-1 text-sm text-soft">
-              {h.lots.map((l) => (
-                <li key={l.id}>
-                  {shortDate(l.date)} · bought {e4ToQty(l.unitsE4)} {h.unitLabel} for {rupees(l.costPaise)} (before Alfred){l.note ? ` · ${l.note}` : ""}{" "}
-                  <button
-                    type="button"
-                    className="underline"
-                    onClick={() => {
-                      if (window.confirm("Remove this purchase?")) void act(() => api.del(`/api/holdings/${h.id}/lots/${l.id}`), "Removed.");
-                    }}
-                  >
-                    remove
-                  </button>
-                </li>
-              ))}
-              {h.entries.map((e) => (
-                <li key={e.id}>
-                  {shortDate(e.date)} · {e.kind === "buy" ? "bought" : "sold"}
-                  {counted && e.unitsE4 ? ` ${e4ToQty(e.unitsE4)} ${h.unitLabel} for` : ""} {rupees(e.amountPaise)}
-                  {e.accountName ? ` ${e.kind === "buy" ? "from" : "into"} ${e.accountName}` : ""}
-                  {e.note ? ` · ${e.note}` : ""}
-                  {counted && e.unitsE4 === null && (
-                    <>
-                      {" · "}
-                      <button
-                        type="button"
-                        className="font-medium text-warn-ink underline"
-                        onClick={() => {
-                          const typed = window.prompt(`How many ${h.unitLabel} was that?`);
-                          const units = typed ? qtyToE4(typed) : null;
-                          if (units) void act(() => api.post(`/api/holdings/${h.id}/entries/${e.id}/units`, { unitsE4: units }), "Quantity added.");
-                        }}
-                      >
-                        add quantity
-                      </button>
-                    </>
-                  )}
-                </li>
-              ))}
-              {h.values.map((v) => (
-                <li key={v.date}>
-                  {shortDate(v.date)} · {v.ratePaise && unit ? `rate ${rupees(v.ratePaise)} ${rateWord(unit)}, worth ` : "valued "}
-                  {rupees(v.valuePaise)}
-                </li>
-              ))}
-            </ul>
+      {more && (
+        <div className="flex flex-wrap gap-2">
+          <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("edit")}>
+            Edit
+          </Button>
+          {!counted && kindUnit && (
+            <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("convert")}>
+              Count by quantity
+            </Button>
           )}
+          {h.values.length > 0 && (
+            <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={() => setHistory(true)}>
+              Rate history
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            className="min-h-11 py-1.5 text-sm"
+            onClick={() => {
+              if (window.confirm(`Close ${h.name}? It stops counting toward your net worth. Use this when it is gone without a sale you want recorded.`)) void act(() => api.post(`/api/holdings/${h.id}/close`), `${h.name} closed.`);
+            }}
+          >
+            Close
+          </Button>
         </div>
       )}
       <ErrorText>{error}</ErrorText>
+      {history && <RateHistorySheet h={h} onClose={() => setHistory(false)} />}
+    </div>
+  );
+}
+
+/** Purchases shown at first in a list; the rest open in place. */
+const PURCHASES = 8;
+
+/** The one list of what went in: buys, sales, earlier lots and the opening balance, each with the account it came from. */
+function PurchaseList({ purchases, investedPaise, unitLabel, showHolding, holdings }: { purchases: KindPurchase[]; investedPaise: number; unitLabel: string | null; showHolding: boolean; holdings: Holding[] }) {
+  const { act, error } = useHoldingActions();
+  const [all, setAll] = useState(false);
+  if (purchases.length === 0) return null;
+  const label = unitLabel ?? "";
+  const shown = all ? purchases : purchases.slice(0, PURCHASES);
+  const unitOf = (holdingId: string) => holdings.find((h) => h.id === holdingId)?.unitLabel ?? label;
+  return (
+    <div className="border-t border-line px-4 py-3">
+      <h3 className="text-xs tracking-wide text-soft uppercase">Purchases · paid {rupees(investedPaise)} in all</h3>
+      <ul className="mt-2 space-y-2.5 text-sm">
+        {shown.map((p) => (
+          <li key={p.key} className="flex items-start justify-between gap-3">
+            <span className="min-w-0">
+              <span className="block">
+                {p.kind === "opening" ? "Opening balance" : shortDate(p.date)}
+                {p.unitsE4 !== null && p.unitsE4 > 0 ? ` · ${e4ToQty(p.unitsE4)} ${unitOf(p.holdingId)}`.trimEnd() : ""}
+              </span>
+              <span className="block text-xs text-soft">
+                {p.kind === "sell" ? "Sold" : p.kind === "lot" ? "Before tracking" : p.kind === "opening" ? "Held before tracking" : "Bought"}
+                {p.accountName ? ` · ${p.kind === "sell" ? "into" : "from"} ${p.accountName}` : ""}
+                {showHolding ? ` · ${p.holdingName}` : ""}
+                {p.lotId && (
+                  <>
+                    {" · "}
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => {
+                        if (window.confirm("Remove this purchase?")) void act(() => api.del(`/api/holdings/${p.holdingId}/lots/${p.lotId}`), "Removed.");
+                      }}
+                    >
+                      remove
+                    </button>
+                  </>
+                )}
+                {p.needsQuantity && p.entryId && (
+                  <>
+                    {" · "}
+                    <button
+                      type="button"
+                      className="font-medium text-warn-ink underline"
+                      onClick={() => {
+                        const typed = window.prompt(`How many ${unitOf(p.holdingId)} was that?`);
+                        const units = typed ? qtyToE4(typed) : null;
+                        if (units) void act(() => api.post(`/api/holdings/${p.holdingId}/entries/${p.entryId}/units`, { unitsE4: units }), "Quantity added.");
+                      }}
+                    >
+                      add quantity
+                    </button>
+                  </>
+                )}
+              </span>
+            </span>
+            <span className={`shrink-0 tabular-nums ${p.kind === "sell" ? "text-good" : ""}`}>
+              {p.kind === "sell" ? "+" : ""}
+              {rupees(p.amountPaise)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {purchases.length > PURCHASES && (
+        <button type="button" className="mt-2 min-h-11 text-sm text-brand" onClick={() => setAll((v) => !v)}>
+          {all ? "Show fewer" : `Show all ${purchases.length}`}
+        </button>
+      )}
+      <ErrorText>{error}</ErrorText>
+    </div>
+  );
+}
+
+/** One holding as a line: its name, how much and at what, and what it is worth; tap for its buttons and purchases. */
+function HoldingLine({ h, onAct, showKind = false }: { h: Holding; onAct: (what: Act) => void; showKind?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const active = h.status === "active";
+  const counted = h.tracking === "units";
+  const unit = unitOfHolding(h);
+  const stale = active && (h.staleDays === null || h.staleDays > 35);
+  const second = counted && unit ? (h.ratePaise ? `${heldText(h)} at ${rupees(h.ratePaise)} ${rateWord(unit)}` : `${heldText(h)} · no rate typed yet`) : ago(h.staleDays);
+  return (
+    <li>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex min-h-14 w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-hover">
+        <span className="min-w-0">
+          <span className="block truncate font-medium">
+            {h.name}
+            {(showKind || !active) && (
+              <span className="ml-2 text-xs font-normal text-faint">
+                {showKind ? h.kindName : ""}
+                {!active && `${showKind ? " · " : ""}closed`}
+              </span>
+            )}
+          </span>
+          <span className={`block text-xs ${stale ? "font-medium text-warn-ink" : "text-soft"}`}>{second}</span>
+        </span>
+        <span className="shrink-0 text-right">
+          <span className="block font-semibold tabular-nums">{rupees(h.valuePaise)}</span>
+          <span className={`block text-xs ${tone(h.gainPaise)}`}>
+            {signed(h.gainPaise)}
+            {h.gainPct !== null && ` (${h.gainPct}%)`}
+          </span>
+        </span>
+      </button>
+      {open && (
+        <div className="space-y-3 pb-3">
+          <div className="px-4">
+            {h.missingUnits > 0 && <p className="mb-2 text-xs font-medium text-warn-ink">{h.missingUnits} {h.missingUnits === 1 ? "entry has" : "entries have"} no quantity. Add it below, or the quantity held will be short.</p>}
+            <HoldingButtons h={h} onAct={onAct} />
+          </div>
+          <PurchaseList purchases={byNewest(purchasesOf(h))} investedPaise={h.investedPaise} unitLabel={h.unitLabel} showHolding={false} holdings={[h]} />
+        </div>
+      )}
     </li>
   );
 }
@@ -653,34 +735,32 @@ function KindRateSheet({ summary, onClose }: { summary: KindSummary; onClose: ()
   );
 }
 
-/** Purchases shown at first in a kind; the rest open in place. */
-const PURCHASES = 8;
-
 /**
- * Investments outside any broker account, one card per kind (Gold, Silver…): what you hold in total, what it is worth, the
- * gain and the latest rate; opened, the holdings with their actions and every purchase with its date, quantity, cost and
- * the account it was paid from.
+ * Investments outside any broker account, one card per kind (Gold, Silver…). A kind with one holding is a single card: what you
+ * hold, what it is worth, the gain, the rate, the buttons and the purchases. A kind with several shows its totals, one line per
+ * holding, and the purchases of all of them.
  */
 function KindCard({ summary: s, sort, open, onToggle, onAct, onRate, onAssign }: { summary: KindSummary; sort: Sort; open: boolean; onToggle: () => void; onAct: (h: Holding) => (what: Act) => void; onRate: () => void; onAssign?: () => void }) {
-  const [all, setAll] = useState(false);
+  const single = s.holdings.length === 1 ? (s.holdings[0] as Holding) : null;
   const label = s.unitLabel ?? "";
   const quantity = s.unitsE4 !== null ? `${e4ToQty(s.unitsE4)} ${label}`.trim() : null;
-  const shown = all ? s.purchases : s.purchases.slice(0, PURCHASES);
-  const many = s.holdings.length > 1;
   const rate = s.rate;
+  const ages = s.holdings.filter((h) => h.tracking === "units" && h.ratePaise !== null).map((h) => h.staleDays ?? Number.POSITIVE_INFINITY);
+  const stale = ages.length > 0 && Math.min(...ages) > 35;
+  const named = single && single.name.trim().toLowerCase() !== s.kindName.trim().toLowerCase() ? single.name : null;
   return (
     <Card pad="p-0">
       <button type="button" className="flex min-h-14 w-full items-start justify-between gap-3 px-4 py-3 text-left" onClick={onToggle} aria-expanded={open}>
         <span className="min-w-0">
           <span className="block font-medium">{s.kindName}</span>
           <span className="block text-xs text-soft">
-            {s.holdings.length} {s.holdings.length === 1 ? "holding" : "holdings"}
-            {quantity ? ` · ${quantity}` : ""}
+            {[named, single ? null : `${s.holdings.length} holdings`, quantity].filter(Boolean).join(" · ")}
           </span>
           {rate && (
-            <span className="block text-xs text-soft">
-              Rate {rupees(rate.paise)} {rateWord({ one: rate.unitOne, per: rate.per })}
+            <span className={`block text-xs ${stale ? "font-medium text-warn-ink" : "text-soft"}`}>
+              {rupees(rate.paise)} {rateWord({ one: rate.unitOne, per: rate.per })}
               {rate.date ? `, ${shortDate(rate.date)}` : ""}
+              {stale ? " · over a month old" : ""}
             </span>
           )}
         </span>
@@ -697,53 +777,41 @@ function KindCard({ summary: s, sort, open, onToggle, onAct, onRate, onAssign }:
       </button>
       {open && (
         <>
-          {(s.counted || onAssign) && (
-            <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2">
-              {s.counted && (
-                <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={onRate}>
-                  Set today&apos;s rate
-                </Button>
-              )}
-              {onAssign && (
-                <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={onAssign}>
-                  Assign to a broker account
-                </Button>
-              )}
+          {single ? (
+            <div className="px-4 pb-3">
+              <HoldingButtons h={single} onAct={onAct(single)} />
             </div>
-          )}
-          <ul className="divide-y divide-line border-t border-line">
-            {sortHoldings(s.holdings, sort).map((h) => (
-              <Row key={h.id} h={h} onAct={onAct(h)} />
-            ))}
-          </ul>
-          {s.purchases.length > 0 && (
-            <div className="border-t border-line px-4 py-3">
-              <h3 className="text-xs tracking-wide text-soft uppercase">Purchases</h3>
-              <ul className="mt-2 space-y-2.5 text-sm">
-                {shown.map((p) => (
-                  <li key={p.key} className="flex items-start justify-between gap-3">
-                    <span className="min-w-0">
-                      <span className="block">
-                        {shortDate(p.date)}
-                        {p.unitsE4 !== null && p.unitsE4 > 0 ? ` · ${e4ToQty(p.unitsE4)} ${label}`.trimEnd() : ""}
-                      </span>
-                      <span className="block text-xs text-soft">
-                        {p.kind === "sell" ? "Sold" : p.kind === "lot" ? "Before tracking" : "Bought"}
-                        {p.accountName ? ` · ${p.kind === "sell" ? "into" : "from"} ${p.accountName}` : ""}
-                        {many ? ` · ${p.holdingName}` : ""}
-                      </span>
-                    </span>
-                    <span className={`shrink-0 tabular-nums ${p.kind === "sell" ? "text-good" : ""}`}>{p.kind === "sell" ? "+" : ""}{rupees(p.amountPaise)}</span>
-                  </li>
+          ) : (
+            <>
+              {(s.counted || onAssign) && (
+                <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
+                  {s.counted && (
+                    <Button className="min-h-11 py-1.5 text-sm" onClick={onRate}>
+                      Update rate
+                    </Button>
+                  )}
+                  {onAssign && (
+                    <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={onAssign}>
+                      Assign to a broker account
+                    </Button>
+                  )}
+                </div>
+              )}
+              <ul className="divide-y divide-line border-t border-line">
+                {sortHoldings(s.holdings, sort).map((h) => (
+                  <HoldingLine key={h.id} h={h} onAct={onAct(h)} />
                 ))}
               </ul>
-              {s.purchases.length > PURCHASES && (
-                <button type="button" className="mt-2 min-h-11 text-sm text-brand" onClick={() => setAll((v) => !v)}>
-                  {all ? "Show fewer" : `Show all ${s.purchases.length}`}
-                </button>
-              )}
+            </>
+          )}
+          {single && onAssign && (
+            <div className="px-4 pb-3">
+              <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={onAssign}>
+                Assign to a broker account
+              </Button>
             </div>
           )}
+          <PurchaseList purchases={s.purchases} investedPaise={s.investedPaise} unitLabel={s.unitLabel} showHolding={!single} holdings={s.holdings} />
         </>
       )}
     </Card>
@@ -786,7 +854,7 @@ function Group({ title, note, holdings, sort, open, onToggle, onAct, actions }: 
         <>
           <ul className="divide-y divide-line border-t border-line">
             {shown.map((h) => (
-              <Row key={h.id} h={h} onAct={onAct(h)} />
+              <HoldingLine key={h.id} h={h} onAct={onAct(h)} showKind />
             ))}
           </ul>
           {sorted.length > TOP && (
@@ -930,7 +998,7 @@ export function Investments() {
           <Card pad="p-0">
             <ul className="divide-y divide-line">
               {closed.map((h) => (
-                <Row key={h.id} h={h} onAct={act(h)} />
+                <HoldingLine key={h.id} h={h} onAct={act(h)} showKind />
               ))}
             </ul>
           </Card>

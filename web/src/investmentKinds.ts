@@ -1,10 +1,17 @@
 import type { Holding } from "./api";
 
-/** One line in a kind's purchase list: a buy, a sale, or a purchase from before tracking (a lot). */
+/** One line in a kind's purchase list: a buy, a sale, a purchase from before tracking (a lot), or what was held at the start. */
 export interface KindPurchase {
   key: string;
+  /** The day; empty for the opening balance, which has none. */
   date: string;
-  kind: "buy" | "sell" | "lot";
+  kind: "buy" | "sell" | "lot" | "opening";
+  holdingId: string;
+  /** Set for a lot (it can be removed) and for a buy or sale (a quantity can be added to it). */
+  lotId?: string;
+  entryId?: string;
+  /** A buy or sale of a holding counted by quantity that has no quantity yet. */
+  needsQuantity?: boolean;
   /** The quantity, when counted by quantity and known. */
   unitsE4: number | null;
   /** What it cost (a buy or a lot) or fetched (a sale). */
@@ -34,6 +41,26 @@ export interface KindSummary {
   purchases: KindPurchase[];
 }
 
+/** One holding's purchase lines: its buys and sales, earlier lots, and what was held before tracking. Unsorted. */
+export function purchasesOf(h: Holding): KindPurchase[] {
+  const out: KindPurchase[] = [];
+  const isCounted = h.tracking === "units";
+  for (const e of h.entries) {
+    out.push({ key: `e${e.id}`, date: e.date, kind: e.kind, holdingId: h.id, entryId: e.id, needsQuantity: isCounted && e.unitsE4 === null, unitsE4: e.unitsE4, amountPaise: e.amountPaise, accountName: e.accountName, holdingName: h.name });
+  }
+  for (const l of h.lots) out.push({ key: `l${l.id}`, date: l.date, kind: "lot", holdingId: h.id, lotId: l.id, unitsE4: l.unitsE4, amountPaise: l.costPaise, accountName: null, holdingName: h.name });
+  // What was held before tracking, with no purchase to show for it: the quantity is what is left once every purchase is taken off.
+  const bought = h.entries.reduce((sum, e) => sum + (e.kind === "buy" ? (e.unitsE4 ?? 0) : -(e.unitsE4 ?? 0)), 0) + h.lots.reduce((sum, l) => sum + l.unitsE4, 0);
+  const openingUnits = isCounted ? Math.max(0, h.unitsHeldE4 - bought) : 0;
+  if (h.openingInvestedPaise > 0 || openingUnits > 0) {
+    out.push({ key: `o${h.id}`, date: "", kind: "opening", holdingId: h.id, unitsE4: openingUnits > 0 ? openingUnits : null, amountPaise: h.openingInvestedPaise, accountName: null, holdingName: h.name });
+  }
+  return out;
+}
+
+/** The newest first; the opening balance, which has no day, last. */
+export const byNewest = (list: KindPurchase[]): KindPurchase[] => [...list].sort((x, y) => y.date.localeCompare(x.date) || x.key.localeCompare(y.key));
+
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
 /** Totals and the purchase list for the active holdings of one kind. */
@@ -47,12 +74,7 @@ export function kindSummary(kindKey: string, kindName: string, holdings: Holding
   const withRate = counted.filter((h) => h.ratePaise !== null);
   const latest = [...withRate].sort((a, b) => (b.valueDate ?? "").localeCompare(a.valueDate ?? ""))[0];
 
-  const purchases: KindPurchase[] = [];
-  for (const h of mine) {
-    for (const e of h.entries) purchases.push({ key: `e${e.id}`, date: e.date, kind: e.kind, unitsE4: e.unitsE4, amountPaise: e.amountPaise, accountName: e.accountName, holdingName: h.name });
-    for (const l of h.lots) purchases.push({ key: `l${l.id}`, date: l.date, kind: "lot", unitsE4: l.unitsE4, amountPaise: l.costPaise, accountName: null, holdingName: h.name });
-  }
-  purchases.sort((a, b) => b.date.localeCompare(a.date) || a.key.localeCompare(b.key));
+  const purchases: KindPurchase[] = mine.flatMap(purchasesOf);
 
   return {
     kindKey,
@@ -66,7 +88,7 @@ export function kindSummary(kindKey: string, kindName: string, holdings: Holding
     unitsE4: counted.length > 0 ? counted.reduce((s, h) => s + h.unitsHeldE4, 0) : null,
     unitLabel: counted[0]?.unitLabel ?? null,
     rate: latest && latest.ratePaise !== null ? { paise: latest.ratePaise, per: latest.ratePer, unitOne: latest.unitOne ?? latest.unitLabel ?? "unit", date: latest.valueDate } : null,
-    purchases,
+    purchases: byNewest(purchases),
   };
 }
 

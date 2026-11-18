@@ -262,3 +262,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-12-05: slice 46 noted: one navigation tree (nav.ts), grouped sidebar from 1100 px, phone Menu sheet.
 - 2026-12-06: slice 46 follow-up noted: no tabs on desktop, accordion sidebar, independent sidebar scroll.
 - 2026-12-07: slice 47 noted: broker_use per kind, rule on holdings, kind rate, per-kind cards (investmentKinds.ts).
+- 2026-12-08: slice 47 follow-up noted: single kind card, compact holding lines, opening balance in purchases.

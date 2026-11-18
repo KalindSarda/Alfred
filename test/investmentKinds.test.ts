@@ -90,6 +90,70 @@ describe("a kind's summary", () => {
   });
 });
 
+describe("the opening balance and the actions on a purchase line", () => {
+  it("shows what was held before any purchase, with the quantity left once purchases are taken off", () => {
+    const brick = holding({
+      id: "k",
+      name: "brick",
+      kind: "silver",
+      kindName: "Silver",
+      openingInvestedPaise: 2_008_00,
+      investedPaise: 21_784_00,
+      valuePaise: 22_000_00,
+      gainPaise: 216_00,
+      unitsHeldE4: 110 * E4,
+      ratePer: 1000,
+      entries: [{ id: "e1", kind: "buy", amountPaise: 19_776_00, date: "2026-11-07", accountName: "Hdfc bank", note: null, unitsE4: 100 * E4 }],
+    });
+    const list = kindSummary("silver", "Silver", [brick]).purchases;
+    expect(list.map((p) => [p.kind, p.date, p.unitsE4, p.amountPaise])).toEqual([
+      ["buy", "2026-11-07", 100 * E4, 19_776_00],
+      ["opening", "", 10 * E4, 2_008_00],
+    ]);
+    // the purchases add up to what was put in
+    expect(list.reduce((s, p) => s + p.amountPaise, 0)).toBe(brick.investedPaise);
+  });
+
+  it("takes sales and lots off when working out the opening quantity, and shows none when nothing was held", () => {
+    const h = holding({
+      id: "g",
+      openingInvestedPaise: 0,
+      unitsHeldE4: 9 * E4,
+      entries: [
+        { id: "b", kind: "buy", amountPaise: 1_000_00, date: "2026-01-01", accountName: null, note: null, unitsE4: 8 * E4 },
+        { id: "s", kind: "sell", amountPaise: 500_00, date: "2026-02-01", accountName: null, note: null, unitsE4: 2 * E4 },
+      ],
+      lots: [{ id: "l", date: "2025-01-01", unitsE4: 3 * E4, costPaise: 300_00, note: null }],
+    });
+    // 8 bought, 2 sold, 3 from a lot is 9 held, so nothing was held at the start
+    expect(kindSummary("gold", "Gold", [h]).purchases.some((p) => p.kind === "opening")).toBe(false);
+    const more = kindSummary("gold", "Gold", [{ ...h, unitsHeldE4: 12 * E4 }]).purchases.find((p) => p.kind === "opening");
+    expect(more?.unitsE4).toBe(3 * E4);
+  });
+
+  it("shows only the amount for a holding valued by typing", () => {
+    const brick = holding({ id: "v", tracking: "value", unitLabel: null, unitOne: null, ratePer: 1, openingInvestedPaise: 5_000_00, unitsHeldE4: 0 });
+    const line = kindSummary("gold", "Gold", [brick]).purchases[0];
+    expect(line).toMatchObject({ kind: "opening", unitsE4: null, amountPaise: 5_000_00 });
+  });
+
+  it("marks a lot as removable and a buy with no quantity as needing one", () => {
+    const h = holding({
+      id: "q",
+      unitsHeldE4: 2 * E4,
+      entries: [
+        { id: "e1", kind: "buy", amountPaise: 1_000_00, date: "2026-03-01", accountName: null, note: null, unitsE4: null },
+        { id: "e2", kind: "buy", amountPaise: 1_000_00, date: "2026-03-02", accountName: null, note: null, unitsE4: 2 * E4 },
+      ],
+      lots: [{ id: "l1", date: "2025-01-01", unitsE4: 1 * E4, costPaise: 500_00, note: null }],
+    });
+    const by = (key: string) => kindSummary("gold", "Gold", [h]).purchases.find((p) => p.key === key);
+    expect(by("ee1")).toMatchObject({ holdingId: "q", entryId: "e1", needsQuantity: true });
+    expect(by("ee2")?.needsQuantity).toBe(false);
+    expect(by("ll1")).toMatchObject({ kind: "lot", lotId: "l1", holdingId: "q" });
+  });
+});
+
 describe("holdings outside a broker account, by kind", () => {
   it("makes one summary per kind, the most valuable first, leaving out those in an account", () => {
     const gold = holding({ id: "g", valuePaise: 3_00_000_00 });
