@@ -457,6 +457,7 @@ export interface HoldingEntry {
   kind: "buy" | "sell";
   amountPaise: number;
   date: string;
+  accountId: string;
   accountName: string | null;
   note: string | null;
   /** The quantity (1/10,000 units) when counted by quantity; null when missing, 0 when part of the quantity at the switch. */
@@ -495,6 +496,8 @@ export interface Holding {
   isEmergency: boolean;
   countsForFire: boolean;
   openingInvestedPaise: number;
+  /** Held before tracking, in 1/10,000 of a unit (counted by quantity only). */
+  openingUnitsE4: number;
   investedPaise: number;
   soldPaise: number;
   valuePaise: number;

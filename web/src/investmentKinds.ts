@@ -15,6 +15,9 @@ export interface KindPurchase {
   contributionId?: string;
   /** What a contribution was made of, for its second line. */
   detail?: string;
+  /** What can be done to the line: corrected, and taken out. The opening balance is only corrected; the pension side of a contribution is only taken out. */
+  editable: boolean;
+  removable: boolean;
   /** A buy or sale of a holding counted by quantity that has no quantity yet. */
   needsQuantity?: boolean;
   /** The quantity, when counted by quantity and known. */
@@ -51,9 +54,9 @@ export function purchasesOf(h: Holding): KindPurchase[] {
   const out: KindPurchase[] = [];
   const isCounted = h.tracking === "units";
   for (const e of h.entries) {
-    out.push({ key: `e${e.id}`, date: e.date, kind: e.kind, holdingId: h.id, entryId: e.id, needsQuantity: isCounted && e.unitsE4 === null, unitsE4: e.unitsE4, amountPaise: e.amountPaise, accountName: e.accountName, holdingName: h.name });
+    out.push({ key: `e${e.id}`, date: e.date, kind: e.kind, holdingId: h.id, entryId: e.id, editable: true, removable: true, needsQuantity: isCounted && e.unitsE4 === null, unitsE4: e.unitsE4, amountPaise: e.amountPaise, accountName: e.accountName, holdingName: h.name });
   }
-  for (const l of h.lots) out.push({ key: `l${l.id}`, date: l.date, kind: "lot", holdingId: h.id, lotId: l.id, unitsE4: l.unitsE4, amountPaise: l.costPaise, accountName: null, holdingName: h.name });
+  for (const l of h.lots) out.push({ key: `l${l.id}`, date: l.date, kind: "lot", holdingId: h.id, lotId: l.id, editable: true, removable: true, unitsE4: l.unitsE4, amountPaise: l.costPaise, accountName: null, holdingName: h.name });
   for (const c of h.contributions) {
     const parts: string[] = [];
     if (c.linked?.role === "pension") parts.push(`Employer pension share · from ${c.linked.holdingName}`);
@@ -62,13 +65,12 @@ export function purchasesOf(h: Holding): KindPurchase[] {
       if (c.employerPaise > 0) parts.push(`Employer ${rupees(c.employerPaise)}`);
       if (c.linked?.role === "primary") parts.push(`Pension ${rupees(c.linked.paise)} to ${c.linked.holdingName}`);
     }
-    out.push({ key: `c${c.id}`, date: c.date, kind: "contribution", holdingId: h.id, contributionId: c.id, detail: parts.join(" · "), unitsE4: null, amountPaise: c.ownPaise + c.employerPaise, accountName: null, holdingName: h.name });
+    out.push({ key: `c${c.id}`, date: c.date, kind: "contribution", holdingId: h.id, contributionId: c.id, editable: c.linked?.role !== "pension", removable: true, detail: parts.join(" · "), unitsE4: null, amountPaise: c.ownPaise + c.employerPaise, accountName: null, holdingName: h.name });
   }
-  // What was held before tracking, with no purchase to show for it: the quantity is what is left once every purchase is taken off.
-  const bought = h.entries.reduce((sum, e) => sum + (e.kind === "buy" ? (e.unitsE4 ?? 0) : -(e.unitsE4 ?? 0)), 0) + h.lots.reduce((sum, l) => sum + l.unitsE4, 0);
-  const openingUnits = isCounted ? Math.max(0, h.unitsHeldE4 - bought) : 0;
+  // What was held before tracking, with no purchase to show for it.
+  const openingUnits = isCounted ? h.openingUnitsE4 : 0;
   if (h.openingInvestedPaise > 0 || openingUnits > 0) {
-    out.push({ key: `o${h.id}`, date: "", kind: "opening", holdingId: h.id, unitsE4: openingUnits > 0 ? openingUnits : null, amountPaise: h.openingInvestedPaise, accountName: null, holdingName: h.name });
+    out.push({ key: `o${h.id}`, date: "", kind: "opening", holdingId: h.id, editable: true, removable: false, unitsE4: openingUnits > 0 ? openingUnits : null, amountPaise: h.openingInvestedPaise, accountName: null, holdingName: h.name });
   }
   return out;
 }

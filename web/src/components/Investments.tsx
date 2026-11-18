@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { type Holding, type HoldingKind, api, describeError } from "../api";
+import { type Holding, type HoldingContribution, type HoldingEntry, type HoldingKind, type HoldingLot, api, describeError } from "../api";
 import { rupeesToPaise } from "../filters";
 import { e4ToQty, paiseToInput, qtyToE4, rupees, shortDate, today } from "../format";
 import { useAccounts, useHoldingKinds, useHoldings, useInvestmentAccounts, useRefreshMoney } from "../queries";
@@ -467,15 +467,16 @@ type SheetState = { kind: "edit"; holding: Holding | null } | { kind: Exclude<Ac
  * A month's money put into an investment valued by typing with no bank entry, such as an EPF contribution taken from salary: the
  * person's share, the employer's, and a pension share that goes to another investment of theirs.
  */
-function ContributionSheet({ holding, onClose }: { holding: Holding; onClose: () => void }) {
+function ContributionSheet({ holding, editing, onClose }: { holding: Holding; editing?: HoldingContribution; onClose: () => void }) {
   const { run, error, setError, busy } = useAction(onClose);
   const others = (useHoldings("all").data?.holdings ?? []).filter((h) => h.status === "active" && h.tracking === "value" && h.id !== holding.id);
-  const [date, setDate] = useState(today());
-  const [own, setOwn] = useState("");
-  const [employer, setEmployer] = useState("");
-  const [pension, setPension] = useState("");
-  const [target, setTarget] = useState(others.find((h) => /pension|eps/i.test(h.name))?.id ?? "");
-  const [note, setNote] = useState("");
+  const given = editing?.linked?.role === "primary" ? editing.linked : null;
+  const [date, setDate] = useState(editing?.date ?? today());
+  const [own, setOwn] = useState(editing && editing.ownPaise > 0 ? paiseToInput(editing.ownPaise) : "");
+  const [employer, setEmployer] = useState(editing && editing.employerPaise > 0 ? paiseToInput(editing.employerPaise) : "");
+  const [pension, setPension] = useState(given ? paiseToInput(given.paise) : "");
+  const [target, setTarget] = useState(given?.holdingId ?? others.find((h) => /pension|eps/i.test(h.name))?.id ?? "");
+  const [note, setNote] = useState(editing?.note ?? "");
 
   const save = () => {
     const mine = own.trim() ? rupeesToPaise(own) : 0;
@@ -484,14 +485,15 @@ function ContributionSheet({ holding, onClose }: { holding: Holding; onClose: ()
     if (mine === null || theirs === null || pens === null) return setError("An amount looks wrong. Use a number such as 1800, or leave it empty.");
     if (mine + theirs <= 0) return setError("Enter your share or the employer's.");
     if (pens > 0 && !target) return setError("Choose the investment the pension share goes to, or leave the pension share empty.");
+    const body = { date, ...(mine ? { ownPaise: mine } : {}), ...(theirs ? { employerPaise: theirs } : {}), ...(pens > 0 ? { pensionPaise: pens, pensionHoldingId: target } : {}), ...(note.trim() ? { note: note.trim() } : {}) };
     void run(
-      () => api.post(`/api/holdings/${holding.id}/contributions`, { date, ...(mine ? { ownPaise: mine } : {}), ...(theirs ? { employerPaise: theirs } : {}), ...(pens > 0 ? { pensionPaise: pens, pensionHoldingId: target } : {}), ...(note.trim() ? { note: note.trim() } : {}) }),
-      "Contribution added.",
+      () => (editing ? api.patch(`/api/holdings/${holding.id}/contributions/${editing.id}`, body) : api.post(`/api/holdings/${holding.id}/contributions`, body)),
+      editing ? "Saved." : "Contribution added.",
     );
   };
 
   return (
-    <Sheet title={`${holding.name}: add a contribution`} onClose={onClose}>
+    <Sheet title={`${holding.name}: ${editing ? "edit a contribution" : "add a contribution"}`} onClose={onClose}>
       <form
         className="space-y-4"
         onSubmit={(e) => {
@@ -530,7 +532,168 @@ function ContributionSheet({ holding, onClose }: { holding: Holding; onClose: ()
         </Field>
         <ErrorText>{error}</ErrorText>
         <Button type="submit" className="w-full" disabled={busy}>
-          Add
+          {editing ? "Save" : "Add"}
+        </Button>
+      </form>
+    </Sheet>
+  );
+}
+
+/** Corrects one buy or sale made through a bank: the day, the amount, the bank, the quantity and the note. */
+function EntryEditSheet({ holding, entry, onClose }: { holding: Holding; entry: HoldingEntry; onClose: () => void }) {
+  const { run, error, setError, busy } = useAction(onClose);
+  const banks = (useAccounts().data ?? []).filter((a) => a.kind === "bank");
+  const counted = holding.tracking === "units";
+  const selling = entry.kind === "sell";
+  const unit = unitOfHolding(holding) ?? { label: "units", one: "unit", per: 1 };
+  const [date, setDate] = useState(entry.date);
+  const [amount, setAmount] = useState(paiseToInput(entry.amountPaise));
+  const [qty, setQty] = useState(entry.unitsE4 ? e4ToQty(entry.unitsE4) : "");
+  const [accountId, setAccountId] = useState(entry.accountId);
+  const [note, setNote] = useState(entry.note ?? "");
+
+  const save = () => {
+    const paise = rupeesToPaise(amount);
+    if (!paise) return setError(selling ? "Enter what you received, such as 4000." : "Enter what you paid, such as 5000.");
+    let units: number | null | undefined;
+    if (counted && qty.trim()) {
+      units = qtyToE4(qty);
+      if (!units) return setError(`How many ${spoken(unit.label)} looks wrong. Use a number such as 2.5.`);
+    }
+    void run(() => api.patch(`/api/holdings/${holding.id}/entries/${entry.id}`, { amountPaise: paise, date, accountId, ...(units ? { unitsE4: units } : {}), note: note.trim() || null }), "Saved.");
+  };
+
+  return (
+    <Sheet title={`${holding.name}: edit ${selling ? "a sale" : "a purchase"}`} onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
+        <p className="text-sm text-soft">This is the entry in your bank. Changing it changes the bank&apos;s balance and what you put in, so the rest follows.</p>
+        <Field label="On">
+          <input className={inputClass} type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <Field label={selling ? "Received (₹)" : "Paid in total (₹)"}>
+          <AmountInput className={inputClass} autoComplete="off" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </Field>
+        {counted && (
+          <Field label={`${selling ? "Sold" : "Bought"} (${spoken(unit.label)})`}>
+            <input className={inputClass} inputMode="decimal" autoComplete="off" value={qty} onChange={(e) => setQty(e.target.value)} />
+          </Field>
+        )}
+        <Field label={selling ? "Into" : "From"}>
+          <select className={inputClass} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            {!banks.some((b) => b.id === entry.accountId) && <option value={entry.accountId}>{entry.accountName ?? "This account"}</option>}
+            {banks.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Note (optional)">
+          <input className={inputClass} maxLength={200} autoComplete="off" value={note} onChange={(e) => setNote(e.target.value)} />
+        </Field>
+        <ErrorText>{error}</ErrorText>
+        <Button type="submit" className="w-full" disabled={busy}>
+          Save
+        </Button>
+      </form>
+    </Sheet>
+  );
+}
+
+/** Corrects one purchase from before tracking. */
+function LotEditSheet({ holding, lot, onClose }: { holding: Holding; lot: HoldingLot; onClose: () => void }) {
+  const { run, error, setError, busy } = useAction(onClose);
+  const unit = unitOfHolding(holding) ?? { label: "units", one: "unit", per: 1 };
+  const [date, setDate] = useState(lot.date);
+  const [qty, setQty] = useState(e4ToQty(lot.unitsE4));
+  const [cost, setCost] = useState(paiseToInput(lot.costPaise));
+  const [note, setNote] = useState(lot.note ?? "");
+
+  const save = () => {
+    const units = qtyToE4(qty);
+    if (!units) return setError(`How many ${spoken(unit.label)} looks wrong. Use a number such as 2.5.`);
+    const paise = cost.trim() ? rupeesToPaise(cost) : 0;
+    if (paise === null) return setError("What it cost looks wrong. Use an amount such as 50000.");
+    void run(() => api.patch(`/api/holdings/${holding.id}/lots/${lot.id}`, { unitsE4: units, costPaise: paise, date, note: note.trim() || null }), "Saved.");
+  };
+
+  return (
+    <Sheet title={`${holding.name}: edit a purchase from before Alfred`} onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
+        <Field label="On">
+          <input className={inputClass} type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <Field label={`Bought (${spoken(unit.label)})`}>
+          <input className={inputClass} inputMode="decimal" autoComplete="off" value={qty} onChange={(e) => setQty(e.target.value)} />
+        </Field>
+        <Field label="Paid in total (₹)">
+          <AmountInput className={inputClass} autoComplete="off" value={cost} onChange={(e) => setCost(e.target.value)} />
+        </Field>
+        <Field label="Note (optional)">
+          <input className={inputClass} maxLength={200} autoComplete="off" value={note} onChange={(e) => setNote(e.target.value)} />
+        </Field>
+        <ErrorText>{error}</ErrorText>
+        <Button type="submit" className="w-full" disabled={busy}>
+          Save
+        </Button>
+      </form>
+    </Sheet>
+  );
+}
+
+/** What was held and put in before Alfred tracked it. */
+function OpeningSheet({ holding, onClose }: { holding: Holding; onClose: () => void }) {
+  const { run, error, setError, busy } = useAction(onClose);
+  const counted = holding.tracking === "units";
+  const unit = unitOfHolding(holding) ?? { label: "units", one: "unit", per: 1 };
+  const [qty, setQty] = useState(holding.openingUnitsE4 > 0 ? e4ToQty(holding.openingUnitsE4) : "");
+  const [put, setPut] = useState(holding.openingInvestedPaise > 0 ? paiseToInput(holding.openingInvestedPaise) : "");
+
+  const save = () => {
+    const paise = put.trim() ? rupeesToPaise(put) : 0;
+    if (paise === null) return setError("The amount looks wrong. Use a number such as 2008, or leave it empty.");
+    let units = 0;
+    if (counted && qty.trim()) {
+      const parsed = qtyToE4(qty);
+      if (!parsed) return setError(`How many ${spoken(unit.label)} looks wrong. Use a number such as 10.`);
+      units = parsed;
+    }
+    void run(() => api.patch(`/api/holdings/${holding.id}`, { openingInvestedPaise: paise, ...(counted ? { openingUnitsE4: units } : {}) }), "Saved.");
+  };
+
+  return (
+    <Sheet title={`${holding.name}: opening balance`} onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
+        <p className="text-sm text-soft">What you already held, and what you had put in, before Alfred began tracking it. Purchases you add are on top of this.</p>
+        {counted && (
+          <Field label={`Held before (${spoken(unit.label)})`}>
+            <input className={inputClass} inputMode="decimal" autoComplete="off" placeholder="0" value={qty} onChange={(e) => setQty(e.target.value)} />
+          </Field>
+        )}
+        <Field label="Put in before (₹)">
+          <AmountInput className={inputClass} autoComplete="off" placeholder="0" value={put} onChange={(e) => setPut(e.target.value)} />
+        </Field>
+        <ErrorText>{error}</ErrorText>
+        <Button type="submit" className="w-full" disabled={busy}>
+          Save
         </Button>
       </form>
     </Sheet>
@@ -555,9 +718,25 @@ function useHoldingActions() {
   return { act, error };
 }
 
-/** The typed rates and values of one holding, newest first. */
+/** The typed rates and values of one holding, newest first. Each can be changed (typing the day again) or deleted. */
 function RateHistorySheet({ h, onClose }: { h: Holding; onClose: () => void }) {
+  const { act, error } = useHoldingActions();
   const unit = unitOfHolding(h);
+  const counted = h.tracking === "units";
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [problem, setProblem] = useState("");
+
+  const save = (date: string) => {
+    const paise = rupeesToPaise(draft);
+    if (!paise) return setProblem("Enter an amount, such as 130000.");
+    setProblem("");
+    void act(async () => {
+      await api.post(`/api/holdings/${h.id}/${counted ? "rate" : "value"}`, counted ? { ratePaise: paise, date } : { valuePaise: paise, date });
+      setEditing(null);
+    }, "Saved.");
+  };
+
   return (
     <Sheet title={`${h.name}: rate history`} onClose={onClose}>
       {h.values.length === 0 ? (
@@ -565,16 +744,58 @@ function RateHistorySheet({ h, onClose }: { h: Holding; onClose: () => void }) {
       ) : (
         <ul className="divide-y divide-line text-sm">
           {h.values.map((v) => (
-            <li key={v.date} className="flex items-baseline justify-between gap-3 py-2.5">
-              <span>
-                {shortDate(v.date)}
-                {v.ratePaise && unit ? <span className="block text-xs text-soft">{rupees(v.ratePaise)} {rateWord(unit)}</span> : null}
-              </span>
-              <span className="font-medium tabular-nums">{rupees(v.valuePaise)}</span>
+            <li key={v.date} className="py-2.5">
+              <div className="flex items-baseline justify-between gap-3">
+                <span>
+                  {shortDate(v.date)}
+                  {v.ratePaise && unit ? <span className="block text-xs text-soft">{rupees(v.ratePaise)} {rateWord(unit)}</span> : null}
+                </span>
+                <span className="font-medium tabular-nums">{rupees(v.valuePaise)}</span>
+              </div>
+              {editing === v.date ? (
+                <div className="mt-2 space-y-2">
+                  <AmountInput className={inputClass} autoComplete="off" autoFocus aria-label={counted ? "Rate" : "Value"} value={draft} onChange={(e) => setDraft(e.target.value)} />
+                  {problem && <p className="text-sm text-bad">{problem}</p>}
+                  <div className="flex gap-2">
+                    <Button className="min-h-11 py-1.5 text-sm" onClick={() => save(v.date)}>
+                      Save
+                    </Button>
+                    <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={() => setEditing(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-1 flex gap-4 text-xs">
+                  {(!counted || v.ratePaise) && (
+                    <button
+                      type="button"
+                      className="min-h-9 underline"
+                      onClick={() => {
+                        setEditing(v.date);
+                        setProblem("");
+                        setDraft(paiseToInput(counted ? (v.ratePaise ?? 0) : v.valuePaise));
+                      }}
+                    >
+                      edit
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="min-h-9 underline"
+                    onClick={() => {
+                      if (window.confirm(`Delete what was typed on ${shortDate(v.date)}?`)) void act(() => api.del(`/api/holdings/${h.id}/values/${v.date}`), "Deleted.");
+                    }}
+                  >
+                    delete
+                  </button>
+                </div>
+              )}
             </li>
           ))}
         </ul>
       )}
+      {error && <p className="mt-2 text-sm text-bad">{error}</p>}
     </Sheet>
   );
 }
@@ -662,14 +883,53 @@ function HoldingButtons({ h, onAct }: { h: Holding; onAct: (what: Act) => void }
 /** Purchases shown at first in a list; the rest open in place. */
 const PURCHASES = 8;
 
-/** The one list of what went in: buys, sales, earlier lots and the opening balance, each with the account it came from. */
+/** The one list of what went in: buys, sales, earlier lots, contributions and the opening balance, each with edit and remove where they apply. */
 function PurchaseList({ purchases, investedPaise, unitLabel, showHolding, holdings }: { purchases: KindPurchase[]; investedPaise: number; unitLabel: string | null; showHolding: boolean; holdings: Holding[] }) {
   const { act, error } = useHoldingActions();
   const [all, setAll] = useState(false);
+  const [editing, setEditing] = useState<KindPurchase | null>(null);
   if (purchases.length === 0) return null;
   const label = unitLabel ?? "";
   const shown = all ? purchases : purchases.slice(0, PURCHASES);
   const unitOf = (holdingId: string) => holdings.find((h) => h.id === holdingId)?.unitLabel ?? label;
+  const holdingOf = (p: KindPurchase) => holdings.find((h) => h.id === p.holdingId);
+  const link = (text: string, onClick: () => void, warn = false) => (
+    <>
+      {" · "}
+      <button type="button" className={`underline ${warn ? "font-medium text-warn-ink" : ""}`} onClick={onClick}>
+        {text}
+      </button>
+    </>
+  );
+  const remove = (p: KindPurchase) => {
+    const h = holdingOf(p);
+    if (p.kind === "contribution" && p.contributionId) {
+      if (window.confirm("Remove this contribution? A pension share linked to it is removed too.")) void act(() => api.del(`/api/holdings/${p.holdingId}/contributions/${p.contributionId}`), "Removed.");
+    } else if (p.kind === "lot" && p.lotId) {
+      if (window.confirm("Remove this purchase?")) void act(() => api.del(`/api/holdings/${p.holdingId}/lots/${p.lotId}`), "Removed.");
+    } else if ((p.kind === "buy" || p.kind === "sell") && p.entryId) {
+      const where = p.accountName ?? "the bank";
+      const text = p.kind === "sell" ? `Remove this sale? The ${rupees(p.amountPaise)} comes back out of ${where}.` : `Remove this purchase? The ${rupees(p.amountPaise)} goes back into ${where}.`;
+      if (window.confirm(text + (h?.status === "closed" ? " The investment stays closed." : ""))) void act(() => api.del(`/api/holdings/${p.holdingId}/entries/${p.entryId}`), "Removed.");
+    }
+  };
+  const sheet = () => {
+    if (!editing) return null;
+    const h = holdingOf(editing);
+    if (!h) return null;
+    const close = () => setEditing(null);
+    if (editing.kind === "opening") return <OpeningSheet holding={h} onClose={close} />;
+    if (editing.kind === "lot") {
+      const lot = h.lots.find((l) => l.id === editing.lotId);
+      return lot ? <LotEditSheet holding={h} lot={lot} onClose={close} /> : null;
+    }
+    if (editing.kind === "contribution") {
+      const c = h.contributions.find((x) => x.id === editing.contributionId);
+      return c ? <ContributionSheet holding={h} editing={c} onClose={close} /> : null;
+    }
+    const entry = h.entries.find((e) => e.id === editing.entryId);
+    return entry ? <EntryEditSheet holding={h} entry={entry} onClose={close} /> : null;
+  };
   return (
     <div className="border-t border-line px-4 py-3">
       <h3 className="text-xs tracking-wide text-soft uppercase">What went in · {rupees(investedPaise)} in all</h3>
@@ -685,50 +945,13 @@ function PurchaseList({ purchases, investedPaise, unitLabel, showHolding, holdin
                 {p.kind === "sell" ? "Sold" : p.kind === "lot" ? "Before tracking" : p.kind === "opening" ? "Held before tracking" : p.kind === "contribution" ? (p.detail || "Contribution") : "Bought"}
                 {p.accountName ? ` · ${p.kind === "sell" ? "into" : "from"} ${p.accountName}` : ""}
                 {showHolding ? ` · ${p.holdingName}` : ""}
-                {p.contributionId && (
-                  <>
-                    {" · "}
-                    <button
-                      type="button"
-                      className="underline"
-                      onClick={() => {
-                        if (window.confirm("Remove this contribution? A pension share linked to it is removed too.")) void act(() => api.del(`/api/holdings/${p.holdingId}/contributions/${p.contributionId}`), "Removed.");
-                      }}
-                    >
-                      remove
-                    </button>
-                  </>
-                )}
-                {p.lotId && (
-                  <>
-                    {" · "}
-                    <button
-                      type="button"
-                      className="underline"
-                      onClick={() => {
-                        if (window.confirm("Remove this purchase?")) void act(() => api.del(`/api/holdings/${p.holdingId}/lots/${p.lotId}`), "Removed.");
-                      }}
-                    >
-                      remove
-                    </button>
-                  </>
-                )}
-                {p.needsQuantity && p.entryId && (
-                  <>
-                    {" · "}
-                    <button
-                      type="button"
-                      className="font-medium text-warn-ink underline"
-                      onClick={() => {
-                        const typed = window.prompt(`How many ${unitOf(p.holdingId)} was that?`);
-                        const units = typed ? qtyToE4(typed) : null;
-                        if (units) void act(() => api.post(`/api/holdings/${p.holdingId}/entries/${p.entryId}/units`, { unitsE4: units }), "Quantity added.");
-                      }}
-                    >
-                      add quantity
-                    </button>
-                  </>
-                )}
+                {p.editable && link("edit", () => setEditing(p))}
+                {p.removable && link("remove", () => remove(p))}
+                {p.needsQuantity && p.entryId && link("add quantity", () => {
+                  const typed = window.prompt(`How many ${unitOf(p.holdingId)} was that?`);
+                  const units = typed ? qtyToE4(typed) : null;
+                  if (units) void act(() => api.post(`/api/holdings/${p.holdingId}/entries/${p.entryId}/units`, { unitsE4: units }), "Quantity added.");
+                }, true)}
               </span>
             </span>
             <span className={`shrink-0 tabular-nums ${p.kind === "sell" ? "text-good" : ""}`}>
@@ -744,6 +967,7 @@ function PurchaseList({ purchases, investedPaise, unitLabel, showHolding, holdin
         </button>
       )}
       <ErrorText>{error}</ErrorText>
+      {sheet()}
     </div>
   );
 }

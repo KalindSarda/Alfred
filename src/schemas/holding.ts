@@ -35,7 +35,10 @@ export const CreateHolding = z
 export type CreateHoldingData = z.output<typeof CreateHolding>;
 
 /** `investedPaise` is the total put in, for an investment valued by typing (such as the contributions on an EPF passbook). */
-export const UpdateHolding = z.object({ name: Name, kind: HoldingKind, isEmergency: z.boolean(), countsForFire: z.boolean(), investmentAccountId: Id.nullable(), investedPaise: Money }).partial().strict();
+export const UpdateHolding = z
+  .object({ name: Name, kind: HoldingKind, isEmergency: z.boolean(), countsForFire: z.boolean(), investmentAccountId: Id.nullable(), investedPaise: Money, openingInvestedPaise: Money, openingUnitsE4: z.number().int().min(0).max(1_000_000_000_000) })
+  .partial()
+  .strict();
 export type UpdateHoldingData = z.output<typeof UpdateHolding>;
 
 export const SetHoldingValue = z.object({ valuePaise: Money, date: IstDateString.optional() }).strict();
@@ -52,6 +55,14 @@ export const AddContribution = z
   .object({ date: IstDateString, ownPaise: Money.optional(), employerPaise: Money.optional(), pensionPaise: Money.optional(), pensionHoldingId: Id.optional(), note: Note.nullable().optional() })
   .strict();
 export type AddContributionData = z.output<typeof AddContribution>;
+
+/** Correcting a buy or a sale made through a bank account: only what is sent changes. */
+export const EditEntry = z.object({ amountPaise: Positive.optional(), date: IstDateString.optional(), accountId: Id.optional(), unitsE4: UnitsE4.optional(), note: Note.nullable().optional() }).strict();
+export type EditEntryData = z.output<typeof EditEntry>;
+
+/** Correcting a purchase from before tracking: only what is sent changes. */
+export const EditLot = z.object({ unitsE4: UnitsE4.optional(), costPaise: Money.optional(), date: IstDateString.optional(), note: Note.nullable().optional() }).strict();
+export type EditLotData = z.output<typeof EditLot>;
 
 /** A purchase made before tracking: the quantity, what it cost, and the day. No bank is touched. */
 export const AddLot = z.object({ unitsE4: UnitsE4, costPaise: Money, date: IstDateString, note: Note.nullable().optional() }).strict();

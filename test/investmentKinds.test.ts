@@ -33,6 +33,7 @@ const holding = (over: Partial<Holding>): Holding => ({
   avgCostPaise: null,
   lots: [],
   contributions: [],
+  openingUnitsE4: 0,
   missingUnits: 0,
   ...over,
 });
@@ -48,12 +49,12 @@ describe("a kind's summary", () => {
     ratePaise: 1_37_500_00,
     valueDate: "2026-11-10",
     entries: [
-      { id: "e1", kind: "buy", amountPaise: 1_00_000_00, date: "2026-03-01", accountName: "HDFC bank", note: null, unitsE4: 8 * E4 },
-      { id: "e2", kind: "buy", amountPaise: 50_000_00, date: "2026-09-15", accountName: "ICICI", note: null, unitsE4: 4 * E4 },
+      { id: "e1", kind: "buy", amountPaise: 1_00_000_00, date: "2026-03-01", accountId: "a", accountName: "HDFC bank", note: null, unitsE4: 8 * E4 },
+      { id: "e2", kind: "buy", amountPaise: 50_000_00, date: "2026-09-15", accountId: "a", accountName: "ICICI", note: null, unitsE4: 4 * E4 },
     ],
     lots: [{ id: "l1", date: "2025-01-10", unitsE4: 4 * E4, costPaise: 50_000_00, note: null }],
   });
-  const bar = holding({ id: "b", name: "Gold bar", investedPaise: 1_00_000_00, valuePaise: 1_10_000_00, gainPaise: 10_000_00, unitsHeldE4: 8 * E4, ratePaise: 1_37_000_00, valueDate: "2026-10-20", entries: [{ id: "e3", kind: "buy", amountPaise: 1_00_000_00, date: "2026-06-01", accountName: "HDFC bank", note: null, unitsE4: 8 * E4 }] });
+  const bar = holding({ id: "b", name: "Gold bar", investedPaise: 1_00_000_00, valuePaise: 1_10_000_00, gainPaise: 10_000_00, unitsHeldE4: 8 * E4, ratePaise: 1_37_000_00, valueDate: "2026-10-20", entries: [{ id: "e3", kind: "buy", amountPaise: 1_00_000_00, date: "2026-06-01", accountId: "a", accountName: "HDFC bank", note: null, unitsE4: 8 * E4 }] });
 
   it("adds up the worth, what was put in, the gain and the quantity", () => {
     const s = kindSummary("gold", "Gold", [coins, bar]);
@@ -103,8 +104,9 @@ describe("the opening balance and the actions on a purchase line", () => {
       valuePaise: 22_000_00,
       gainPaise: 216_00,
       unitsHeldE4: 110 * E4,
+      openingUnitsE4: 10 * E4,
       ratePer: 1000,
-      entries: [{ id: "e1", kind: "buy", amountPaise: 19_776_00, date: "2026-11-07", accountName: "Hdfc bank", note: null, unitsE4: 100 * E4 }],
+      entries: [{ id: "e1", kind: "buy", amountPaise: 19_776_00, date: "2026-11-07", accountId: "a", accountName: "Hdfc bank", note: null, unitsE4: 100 * E4 }],
     });
     const list = kindSummary("silver", "Silver", [brick]).purchases;
     expect(list.map((p) => [p.kind, p.date, p.unitsE4, p.amountPaise])).toEqual([
@@ -115,20 +117,10 @@ describe("the opening balance and the actions on a purchase line", () => {
     expect(list.reduce((s, p) => s + p.amountPaise, 0)).toBe(brick.investedPaise);
   });
 
-  it("takes sales and lots off when working out the opening quantity, and shows none when nothing was held", () => {
-    const h = holding({
-      id: "g",
-      openingInvestedPaise: 0,
-      unitsHeldE4: 9 * E4,
-      entries: [
-        { id: "b", kind: "buy", amountPaise: 1_000_00, date: "2026-01-01", accountName: null, note: null, unitsE4: 8 * E4 },
-        { id: "s", kind: "sell", amountPaise: 500_00, date: "2026-02-01", accountName: null, note: null, unitsE4: 2 * E4 },
-      ],
-      lots: [{ id: "l", date: "2025-01-01", unitsE4: 3 * E4, costPaise: 300_00, note: null }],
-    });
-    // 8 bought, 2 sold, 3 from a lot is 9 held, so nothing was held at the start
+  it("shows the opening quantity as held, and none when nothing was held", () => {
+    const h = holding({ id: "g", openingInvestedPaise: 0, openingUnitsE4: 0, unitsHeldE4: 9 * E4 });
     expect(kindSummary("gold", "Gold", [h]).purchases.some((p) => p.kind === "opening")).toBe(false);
-    const more = kindSummary("gold", "Gold", [{ ...h, unitsHeldE4: 12 * E4 }]).purchases.find((p) => p.kind === "opening");
+    const more = kindSummary("gold", "Gold", [{ ...h, openingUnitsE4: 3 * E4 }]).purchases.find((p) => p.kind === "opening");
     expect(more?.unitsE4).toBe(3 * E4);
   });
 
@@ -143,8 +135,8 @@ describe("the opening balance and the actions on a purchase line", () => {
       id: "q",
       unitsHeldE4: 2 * E4,
       entries: [
-        { id: "e1", kind: "buy", amountPaise: 1_000_00, date: "2026-03-01", accountName: null, note: null, unitsE4: null },
-        { id: "e2", kind: "buy", amountPaise: 1_000_00, date: "2026-03-02", accountName: null, note: null, unitsE4: 2 * E4 },
+        { id: "e1", kind: "buy", amountPaise: 1_000_00, date: "2026-03-01", accountId: "a", accountName: null, note: null, unitsE4: null },
+        { id: "e2", kind: "buy", amountPaise: 1_000_00, date: "2026-03-02", accountId: "a", accountName: null, note: null, unitsE4: 2 * E4 },
       ],
       lots: [{ id: "l1", date: "2025-01-01", unitsE4: 1 * E4, costPaise: 500_00, note: null }],
     });
@@ -220,5 +212,39 @@ describe("contribution lines", () => {
     const s = kindSummary("retirement", "Retirement", [epf]);
     expect(s.purchases.map((p) => p.date)).toEqual(["2026-10-15", "2026-09-13"]);
     expect(s.purchases.reduce((sum, p) => sum + p.amountPaise, 0)).toBe(4_882_00);
+  });
+});
+
+describe("what each line can do", () => {
+  const base = holding({
+    id: "h",
+    name: "EPF",
+    kind: "retirement",
+    kindName: "Retirement",
+    tracking: "value",
+    unitLabel: null,
+    unitOne: null,
+    ratePer: 1,
+    openingInvestedPaise: 1_000_00,
+    entries: [{ id: "b1", kind: "buy", amountPaise: 500_00, date: "2026-10-01", accountId: "a", accountName: "HDFC", note: null, unitsE4: null }, { id: "s1", kind: "sell", amountPaise: 100_00, date: "2026-10-02", accountId: "a", accountName: "HDFC", note: null, unitsE4: null }],
+    contributions: [
+      { id: "c1", date: "2026-10-03", ownPaise: 100_00, employerPaise: 0, note: null, linked: { role: "primary", holdingId: "x", holdingName: "EPS", paise: 50_00 } },
+      { id: "c2", date: "2026-10-04", ownPaise: 0, employerPaise: 50_00, note: null, linked: { role: "pension", holdingId: "y", holdingName: "EPF", paise: 100_00 } },
+    ],
+  });
+  const flags = (key: string) => purchasesOf(base).find((p) => p.key === key);
+
+  it("lets a buy, a sale and a contribution be corrected and taken out", () => {
+    for (const key of ["eb1", "es1", "cc1"]) expect(flags(key), key).toMatchObject({ editable: true, removable: true });
+  });
+
+  it("only takes the pension side of a contribution out, and only corrects the opening balance", () => {
+    expect(flags("cc2")).toMatchObject({ editable: false, removable: true });
+    expect(flags(`o${base.id}`)).toMatchObject({ kind: "opening", editable: true, removable: false });
+  });
+
+  it("lets a lot be corrected and taken out", () => {
+    const withLot = holding({ id: "g", lots: [{ id: "l1", date: "2025-01-01", unitsE4: E4, costPaise: 100_00, note: null }], unitsHeldE4: E4 });
+    expect(purchasesOf(withLot).find((p) => p.key === "ll1")).toMatchObject({ editable: true, removable: true, lotId: "l1" });
   });
 });

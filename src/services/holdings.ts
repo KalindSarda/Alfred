@@ -7,8 +7,8 @@ import { getKindByKey, getKindRow, type HoldingKindRow, kindsByKey } from "../db
 import { accounts, holdingContributions, holdingLots, holdings, holdingValues, investmentAccounts, transactions } from "../db/schema";
 import { type IstDate, isValidIstDate } from "../domain/dates";
 import { formatRupees } from "../domain/money";
-import { avgCostPaise, gainPaise, gainPct, type HoldingFacts, investedPaise, latestRate, latestValue, soldPaise, staleDays, unitOne, unitsHeldE4, valueAtRate, valuePaise } from "../domain/holdings";
-import type { AddContributionData, AddLotData, BuyHoldingData, ConvertHoldingData, CreateHoldingData, SellHoldingData, SetHoldingRateData, SetHoldingValueData, UpdateHoldingData } from "../schemas/holding";
+import { avgCostPaise, gainPaise, gainPct, type HoldingFacts, type UnitsFacts, investedPaise, latestRate, latestValue, soldPaise, staleDays, unitOne, unitsHeldE4, valueAtRate, valuePaise } from "../domain/holdings";
+import type { AddContributionData, AddLotData, BuyHoldingData, ConvertHoldingData, CreateHoldingData, EditEntryData, EditLotData, SellHoldingData, SetHoldingRateData, SetHoldingValueData, UpdateHoldingData } from "../schemas/holding";
 import { newId, nowIso } from "../utils/id";
 import { checkBrokerRule, requireUsableInvestmentAccount } from "./investmentAccounts";
 
@@ -17,6 +17,7 @@ export interface HoldingEntryDto {
   kind: "buy" | "sell";
   amountPaise: number;
   date: IstDate;
+  accountId: string;
   accountName: string | null;
   note: string | null;
   /** The quantity, when counted by quantity: null when it was not given, 0 when it was part of what was held at the switch. */
@@ -57,6 +58,8 @@ export interface HoldingDto {
   /** Counted in the FIRE corpus. */
   countsForFire: boolean;
   openingInvestedPaise: number;
+  /** Held before tracking, in 1/10,000 of a unit (counted by quantity only). */
+  openingUnitsE4: number;
   /** Put in: what was invested before tracking plus every purchase. */
   investedPaise: number;
   /** Taken out: the proceeds of every sale. */
@@ -158,7 +161,7 @@ export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldin
     (buy ? f.purchases : f.sales).push({ date: t.date, amountPaise: t.amountPaise });
     if (f.units) (buy ? f.units.buys : f.units.sells).push({ date: t.date, unitsE4: t.unitsE4 ?? 0 });
     const list = entries.get(t.holdingId as string) ?? [];
-    list.push({ id: t.id, kind: buy ? "buy" : "sell", amountPaise: t.amountPaise, date: t.date, accountName: accountName.get(t.accountId) ?? null, note: t.note, unitsE4: t.unitsE4 });
+    list.push({ id: t.id, kind: buy ? "buy" : "sell", amountPaise: t.amountPaise, date: t.date, accountId: t.accountId, accountName: accountName.get(t.accountId) ?? null, note: t.note, unitsE4: t.unitsE4 });
     entries.set(t.holdingId as string, list);
   }
   const lots = new Map<string, HoldingLotDto[]>();
@@ -208,6 +211,7 @@ function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lot
     isEmergency: row.isEmergency,
     countsForFire: row.countsForFire,
     openingInvestedPaise: row.openingInvestedPaise,
+    openingUnitsE4: row.openingUnitsE4,
     investedPaise: investedPaise(f, today),
     soldPaise: soldPaise(f, today),
     valuePaise: valuePaise(f, today),
@@ -338,6 +342,16 @@ export async function updateHolding(db: Db, userId: string, id: string, patch: U
   }
   // The total put in: what bank purchases already show stays, and the rest is what was put in before (such as EPF contributions with no bank entry).
   let openingInvested = row.openingInvestedPaise;
+  let openingUnits = row.openingUnitsE4;
+  if (patch.investedPaise !== undefined && patch.openingInvestedPaise !== undefined) throw invalid("investedPaise", "Send the total put in or the opening amount, not both");
+  if (patch.openingInvestedPaise !== undefined) openingInvested = patch.openingInvestedPaise;
+  if (patch.openingUnitsE4 !== undefined) {
+    if (row.tracking !== "units") throw invalid("openingUnitsE4", "This investment is valued by typing what it is worth, so it has no quantity");
+    const { facts } = await loadHoldings(db, userId);
+    const u = (facts.get(id) as HoldingFacts).units as UnitsFacts;
+    if (rawUnits(u) - u.openingUnitsE4 + patch.openingUnitsE4 < 0) throw invalid("openingUnitsE4", "That would leave less than nothing held. Change the sales first.");
+    openingUnits = patch.openingUnitsE4;
+  }
   if (patch.investedPaise !== undefined) {
     if (row.tracking !== "value") throw invalid("investedPaise", "Counted by quantity, what was put in comes from its purchases");
     const { facts } = await loadHoldings(db, userId);
@@ -347,7 +361,7 @@ export async function updateHolding(db: Db, userId: string, id: string, patch: U
   }
   await db
     .update(holdings)
-    .set({ name: patch.name === undefined ? row.name : tidy(patch.name), kind: patch.kind ?? row.kind, isEmergency: patch.isEmergency ?? row.isEmergency, countsForFire: patch.countsForFire ?? row.countsForFire, investmentAccountId: accountId, openingInvestedPaise: openingInvested })
+    .set({ name: patch.name === undefined ? row.name : tidy(patch.name), kind: patch.kind ?? row.kind, isEmergency: patch.isEmergency ?? row.isEmergency, countsForFire: patch.countsForFire ?? row.countsForFire, investmentAccountId: accountId, openingInvestedPaise: openingInvested, openingUnitsE4: openingUnits })
     .where(and(eq(holdings.id, id), eq(holdings.userId, userId)));
   return getHolding(db, userId, id, today);
 }
@@ -441,6 +455,134 @@ export async function removeContribution(db: Db, userId: string, id: string, con
   const [found] = await db.select().from(holdingContributions).where(and(eq(holdingContributions.userId, userId), eq(holdingContributions.holdingId, id), eq(holdingContributions.id, contributionId))).limit(1);
   if (!found) throw new NotFoundError("Contribution not found");
   await db.delete(holdingContributions).where(and(eq(holdingContributions.userId, userId), found.linkId ? eq(holdingContributions.linkId, found.linkId) : eq(holdingContributions.id, found.id)));
+  return getHolding(db, userId, id, today);
+}
+
+/** The quantity after every purchase and sale, not held at nothing: below zero means more was sold than bought. */
+function rawUnits(u: UnitsFacts): number {
+  const total = (list: readonly { unitsE4: number }[]) => list.reduce((s, e) => s + e.unitsE4, 0);
+  return u.openingUnitsE4 + total(u.lots) + total(u.buys) - total(u.sells);
+}
+
+async function findEntry(db: Db, userId: string, id: string, txnId: string) {
+  const [t] = await db
+    .select()
+    .from(transactions)
+    .where(and(eq(transactions.id, txnId), eq(transactions.userId, userId), eq(transactions.holdingId, id), isNull(transactions.deletedAt), inArray(transactions.type, ["investment", "investment_sale"])))
+    .limit(1);
+  if (!t) throw new NotFoundError("Entry not found");
+  return t;
+}
+
+/** Corrects a buy or a sale made through a bank account. Only what is sent changes; the quantity must stay at or above nothing. */
+export async function editEntry(db: Db, userId: string, id: string, txnId: string, patch: EditEntryData, today: IstDate): Promise<HoldingDto> {
+  const row = await getHoldingRow(db, userId, id);
+  if (!row) throw new NotFoundError("Holding not found");
+  const t = await findEntry(db, userId, id, txnId);
+  if (patch.date !== undefined) checkDate("date", patch.date, today);
+  if (patch.accountId !== undefined) await requireBank(db, userId, patch.accountId);
+  const counted = row.tracking === "units";
+  if (patch.unitsE4 !== undefined && !counted) throw invalid("unitsE4", "This investment is valued by typing what it is worth");
+  if (counted && patch.unitsE4 !== undefined) {
+    const { facts } = await loadHoldings(db, userId);
+    const sign = t.type === "investment" ? 1 : -1;
+    if (rawUnits((facts.get(id) as HoldingFacts).units as UnitsFacts) + sign * (patch.unitsE4 - (t.unitsE4 ?? 0)) < 0) throw invalid("unitsE4", "That would leave less than nothing held. Change the other entries first.");
+  }
+  const set: Partial<typeof transactions.$inferInsert> = { updatedAt: nowIso() };
+  if (patch.amountPaise !== undefined) set.amountPaise = patch.amountPaise;
+  if (patch.date !== undefined) set.txnDate = patch.date;
+  if (patch.accountId !== undefined) set.accountId = patch.accountId;
+  if (patch.unitsE4 !== undefined) set.unitsE4 = patch.unitsE4;
+  if (patch.note !== undefined) set.note = patch.note?.trim() || null;
+  await db.update(transactions).set(set).where(and(eq(transactions.id, txnId), eq(transactions.userId, userId)));
+  return getHolding(db, userId, id, today);
+}
+
+/** Removes a buy or a sale. Removing a purchase that later sales came out of is refused until those sales are changed. */
+export async function removeEntry(db: Db, userId: string, id: string, txnId: string, today: IstDate): Promise<HoldingDto> {
+  const row = await getHoldingRow(db, userId, id);
+  if (!row) throw new NotFoundError("Holding not found");
+  const t = await findEntry(db, userId, id, txnId);
+  if (row.tracking === "units" && t.type === "investment") {
+    const { facts } = await loadHoldings(db, userId);
+    if (rawUnits((facts.get(id) as HoldingFacts).units as UnitsFacts) - (t.unitsE4 ?? 0) < 0) throw invalid("txnId", "Sales came out of this purchase. Change or remove those first.");
+  }
+  const now = nowIso();
+  await db.update(transactions).set({ deletedAt: now, updatedAt: now }).where(and(eq(transactions.id, txnId), eq(transactions.userId, userId)));
+  return getHolding(db, userId, id, today);
+}
+
+/** Corrects a purchase from before tracking. Only what is sent changes. */
+export async function editLot(db: Db, userId: string, id: string, lotId: string, patch: EditLotData, today: IstDate): Promise<HoldingDto> {
+  await requireCounted(db, userId, id);
+  const [lot] = await db.select().from(holdingLots).where(and(eq(holdingLots.id, lotId), eq(holdingLots.holdingId, id), eq(holdingLots.userId, userId))).limit(1);
+  if (!lot) throw new NotFoundError("Purchase not found");
+  if (patch.date !== undefined) checkDate("date", patch.date, today);
+  if (patch.unitsE4 !== undefined) {
+    const { facts } = await loadHoldings(db, userId);
+    if (rawUnits((facts.get(id) as HoldingFacts).units as UnitsFacts) - lot.unitsE4 + patch.unitsE4 < 0) throw invalid("unitsE4", "That would leave less than nothing held. Change the sales first.");
+  }
+  const set: Partial<typeof holdingLots.$inferInsert> = {};
+  if (patch.date !== undefined) set.date = patch.date;
+  if (patch.unitsE4 !== undefined) set.unitsE4 = patch.unitsE4;
+  if (patch.costPaise !== undefined) set.costPaise = patch.costPaise;
+  if (patch.note !== undefined) set.note = patch.note?.trim() || null;
+  if (Object.keys(set).length > 0) await db.update(holdingLots).set(set).where(and(eq(holdingLots.id, lotId), eq(holdingLots.userId, userId)));
+  return getHolding(db, userId, id, today);
+}
+
+/**
+ * Corrects a month of contributions: the same fields as adding one, replacing what was there. The pension share updates its linked
+ * entry, creates one when it is new, or removes it when it is dropped. The pension side of a pair is changed from the entry it
+ * came from.
+ */
+export async function editContribution(db: Db, userId: string, id: string, contributionId: string, input: AddContributionData, today: IstDate): Promise<HoldingDto> {
+  const row = await requireActive(db, userId, id);
+  if (row.tracking !== "value") throw invalid("tracking", "Counted by quantity, what was put in comes from its purchases");
+  const [c] = await db.select().from(holdingContributions).where(and(eq(holdingContributions.id, contributionId), eq(holdingContributions.holdingId, id), eq(holdingContributions.userId, userId))).limit(1);
+  if (!c) throw new NotFoundError("Contribution not found");
+  const partner = c.linkId ? (await db.select().from(holdingContributions).where(and(eq(holdingContributions.linkId, c.linkId), eq(holdingContributions.userId, userId)))).find((o) => o.id !== c.id) : undefined;
+  if (c.linkRole === "pension") {
+    const other = partner ? ((await getHoldingRow(db, userId, partner.holdingId))?.name ?? "the other investment") : "the other investment";
+    throw new ConflictError(`This is the pension share of an entry on ${other}. Change it there.`);
+  }
+  checkDate("date", input.date, today);
+  const own = input.ownPaise ?? 0;
+  const employer = input.employerPaise ?? 0;
+  const pension = input.pensionPaise ?? 0;
+  if (own + employer <= 0) throw invalid("ownPaise", "Enter your share or the employer's");
+  let target: HoldingRow | null = null;
+  if (pension > 0) {
+    if (!input.pensionHoldingId) throw invalid("pensionHoldingId", "Choose the investment the pension share goes to");
+    if (input.pensionHoldingId === id) throw invalid("pensionHoldingId", "The pension share goes to a different investment");
+    target = await requireActive(db, userId, input.pensionHoldingId);
+    if (target.tracking !== "value") throw invalid("pensionHoldingId", `${target.name} is counted by quantity, so it cannot take a contribution`);
+  }
+  const note = input.note?.trim() || null;
+  let linkId = c.linkId;
+  if (target) {
+    if (partner) {
+      await db.update(holdingContributions).set({ holdingId: target.id, date: input.date, ownPaise: 0, employerPaise: pension, note }).where(and(eq(holdingContributions.id, partner.id), eq(holdingContributions.userId, userId)));
+    } else {
+      linkId = newId();
+      await db.insert(holdingContributions).values({ id: newId(), userId, holdingId: target.id, date: input.date, ownPaise: 0, employerPaise: pension, linkId, linkRole: "pension", note, createdAt: nowIso() });
+    }
+  } else {
+    if (partner) await db.delete(holdingContributions).where(and(eq(holdingContributions.id, partner.id), eq(holdingContributions.userId, userId)));
+    linkId = null;
+  }
+  await db.update(holdingContributions).set({ date: input.date, ownPaise: own, employerPaise: employer, note, linkId, linkRole: target ? "primary" : null }).where(and(eq(holdingContributions.id, c.id), eq(holdingContributions.userId, userId)));
+  return getHolding(db, userId, id, today);
+}
+
+/** Deletes the value (or rate) typed on one day. A closed holding keeps its closing value. */
+export async function removeValue(db: Db, userId: string, id: string, date: IstDate, today: IstDate): Promise<HoldingDto> {
+  const row = await getHoldingRow(db, userId, id);
+  if (!row) throw new NotFoundError("Holding not found");
+  if (row.status !== "active") throw new ConflictError("That holding is closed. Reopen it first.");
+  const [found] = await db.select({ id: holdingValues.id }).from(holdingValues).where(and(eq(holdingValues.holdingId, id), eq(holdingValues.userId, userId), eq(holdingValues.date, date))).limit(1);
+  if (!found) throw new NotFoundError("Nothing was typed on that day");
+  await db.delete(holdingValues).where(and(eq(holdingValues.id, found.id), eq(holdingValues.userId, userId)));
   return getHolding(db, userId, id, today);
 }
 
