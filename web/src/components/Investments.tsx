@@ -460,8 +460,82 @@ function TradeSheet({ holding, selling, onClose }: { holding: Holding; selling: 
   );
 }
 
-type Act = "value" | "rate" | "buy" | "sell" | "edit" | "convert";
+type Act = "value" | "rate" | "buy" | "sell" | "edit" | "convert" | "contribute";
 type SheetState = { kind: "edit"; holding: Holding | null } | { kind: Exclude<Act, "edit">; holding: Holding } | null;
+
+/**
+ * A month's money put into an investment valued by typing with no bank entry, such as an EPF contribution taken from salary: the
+ * person's share, the employer's, and a pension share that goes to another investment of theirs.
+ */
+function ContributionSheet({ holding, onClose }: { holding: Holding; onClose: () => void }) {
+  const { run, error, setError, busy } = useAction(onClose);
+  const others = (useHoldings("all").data?.holdings ?? []).filter((h) => h.status === "active" && h.tracking === "value" && h.id !== holding.id);
+  const [date, setDate] = useState(today());
+  const [own, setOwn] = useState("");
+  const [employer, setEmployer] = useState("");
+  const [pension, setPension] = useState("");
+  const [target, setTarget] = useState(others.find((h) => /pension|eps/i.test(h.name))?.id ?? "");
+  const [note, setNote] = useState("");
+
+  const save = () => {
+    const mine = own.trim() ? rupeesToPaise(own) : 0;
+    const theirs = employer.trim() ? rupeesToPaise(employer) : 0;
+    const pens = pension.trim() ? rupeesToPaise(pension) : 0;
+    if (mine === null || theirs === null || pens === null) return setError("An amount looks wrong. Use a number such as 1800, or leave it empty.");
+    if (mine + theirs <= 0) return setError("Enter your share or the employer's.");
+    if (pens > 0 && !target) return setError("Choose the investment the pension share goes to, or leave the pension share empty.");
+    void run(
+      () => api.post(`/api/holdings/${holding.id}/contributions`, { date, ...(mine ? { ownPaise: mine } : {}), ...(theirs ? { employerPaise: theirs } : {}), ...(pens > 0 ? { pensionPaise: pens, pensionHoldingId: target } : {}), ...(note.trim() ? { note: note.trim() } : {}) }),
+      "Contribution added.",
+    );
+  };
+
+  return (
+    <Sheet title={`${holding.name}: add a contribution`} onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
+        <p className="text-sm text-soft">Money that went in without a bank entry, such as a month on your EPF passbook. It counts as put in from that day, and raises the worth if it is after the last value you typed.</p>
+        <Field label="Credited on">
+          <input className={inputClass} type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <Field label="Your share (₹)" hint="What was taken from your salary.">
+          <AmountInput className={inputClass} autoComplete="off" placeholder="1800" value={own} onChange={(e) => setOwn(e.target.value)} />
+        </Field>
+        <Field label="Employer's share (₹)" hint="For EPF, only the part that goes to the provident fund.">
+          <AmountInput className={inputClass} autoComplete="off" placeholder="550" value={employer} onChange={(e) => setEmployer(e.target.value)} />
+        </Field>
+        <Field label="Pension share (₹)" hint="Optional. The employer's pension (EPS) part; it is recorded on another investment of yours.">
+          <AmountInput className={inputClass} autoComplete="off" placeholder="1250" value={pension} onChange={(e) => setPension(e.target.value)} />
+        </Field>
+        {pension.trim() && (
+          <Field label="Add the pension share to">
+            <select className={inputClass} value={target} onChange={(e) => setTarget(e.target.value)}>
+              <option value="">Choose an investment</option>
+              {others.map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.name}
+                </option>
+              ))}
+            </select>
+            {others.length === 0 && <span className="mt-1 block text-xs text-warn-ink">Add an investment for it first, such as EPS pension (Retirement, valued by typing).</span>}
+          </Field>
+        )}
+        <Field label="Note (optional)">
+          <input className={inputClass} maxLength={200} autoComplete="off" placeholder="Wage month Nov" value={note} onChange={(e) => setNote(e.target.value)} />
+        </Field>
+        <ErrorText>{error}</ErrorText>
+        <Button type="submit" className="w-full" disabled={busy}>
+          Add
+        </Button>
+      </form>
+    </Sheet>
+  );
+}
 
 /** Changes one holding and refreshes what depends on it, reporting back. */
 function useHoldingActions() {
@@ -512,6 +586,8 @@ function HoldingButtons({ h, onAct }: { h: Holding; onAct: (what: Act) => void }
   const [history, setHistory] = useState(false);
   const counted = h.tracking === "units";
   const kindUnit = unitOfKind((useHoldingKinds().data ?? []).find((k) => k.key === h.kind));
+  // Retirement money, or anything that already has entries, offers contributions up front; the rest keep it under More.
+  const prominentContribution = h.kind === "retirement" || h.contributions.length > 0;
 
   if (h.status !== "active") {
     return (
@@ -529,6 +605,11 @@ function HoldingButtons({ h, onAct }: { h: Holding; onAct: (what: Act) => void }
         <Button className="min-h-11 py-1.5 text-sm" onClick={() => onAct(counted ? "rate" : "value")}>
           {counted ? "Update rate" : "Update value"}
         </Button>
+        {!counted && prominentContribution && (
+          <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("contribute")}>
+            Add contribution
+          </Button>
+        )}
         <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("buy")}>
           Buy more
         </Button>
@@ -546,6 +627,11 @@ function HoldingButtons({ h, onAct }: { h: Holding; onAct: (what: Act) => void }
           <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("edit")}>
             Edit
           </Button>
+          {!counted && !prominentContribution && (
+            <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("contribute")}>
+              Add contribution
+            </Button>
+          )}
           {!counted && kindUnit && (
             <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("convert")}>
               Count by quantity
@@ -586,7 +672,7 @@ function PurchaseList({ purchases, investedPaise, unitLabel, showHolding, holdin
   const unitOf = (holdingId: string) => holdings.find((h) => h.id === holdingId)?.unitLabel ?? label;
   return (
     <div className="border-t border-line px-4 py-3">
-      <h3 className="text-xs tracking-wide text-soft uppercase">Purchases · paid {rupees(investedPaise)} in all</h3>
+      <h3 className="text-xs tracking-wide text-soft uppercase">What went in · {rupees(investedPaise)} in all</h3>
       <ul className="mt-2 space-y-2.5 text-sm">
         {shown.map((p) => (
           <li key={p.key} className="flex items-start justify-between gap-3">
@@ -596,9 +682,23 @@ function PurchaseList({ purchases, investedPaise, unitLabel, showHolding, holdin
                 {p.unitsE4 !== null && p.unitsE4 > 0 ? ` · ${e4ToQty(p.unitsE4)} ${unitOf(p.holdingId)}`.trimEnd() : ""}
               </span>
               <span className="block text-xs text-soft">
-                {p.kind === "sell" ? "Sold" : p.kind === "lot" ? "Before tracking" : p.kind === "opening" ? "Held before tracking" : "Bought"}
+                {p.kind === "sell" ? "Sold" : p.kind === "lot" ? "Before tracking" : p.kind === "opening" ? "Held before tracking" : p.kind === "contribution" ? (p.detail || "Contribution") : "Bought"}
                 {p.accountName ? ` · ${p.kind === "sell" ? "into" : "from"} ${p.accountName}` : ""}
                 {showHolding ? ` · ${p.holdingName}` : ""}
+                {p.contributionId && (
+                  <>
+                    {" · "}
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => {
+                        if (window.confirm("Remove this contribution? A pension share linked to it is removed too.")) void act(() => api.del(`/api/holdings/${p.holdingId}/contributions/${p.contributionId}`), "Removed.");
+                      }}
+                    >
+                      remove
+                    </button>
+                  </>
+                )}
                 {p.lotId && (
                   <>
                     {" · "}
@@ -1022,6 +1122,7 @@ export function Investments() {
       {manage === "move" && <MoveSheet holdings={active} onClose={() => setManage(null)} />}
       {sheet?.kind === "edit" && <HoldingSheet holding={sheet.holding} all={holdings} onBuyInstead={(h) => setSheet({ kind: "buy", holding: h })} onClose={() => setSheet(null)} />}
       {sheet?.kind === "rate" && <RateSheet holding={sheet.holding} onClose={() => setSheet(null)} />}
+      {sheet?.kind === "contribute" && <ContributionSheet holding={sheet.holding} onClose={() => setSheet(null)} />}
       {sheet?.kind === "convert" && <ConvertSheet holding={sheet.holding} onClose={() => setSheet(null)} />}
       {sheet?.kind === "value" && <ValueSheet holding={sheet.holding} onClose={() => setSheet(null)} />}
       {(sheet?.kind === "buy" || sheet?.kind === "sell") && <TradeSheet holding={sheet.holding} selling={sheet.kind === "sell"} onClose={() => setSheet(null)} />}

@@ -2,8 +2,8 @@ import { Hono } from "hono";
 import type { AppEnv } from "../app";
 import { MoveHoldings } from "../schemas/investmentAccount";
 import { moveHoldings } from "../services/investmentAccounts";
-import { AddLot, BuyHolding, ConvertHolding, CreateHolding, ListHoldingsQuery, SellHolding, SetHoldingRate, SetHoldingValue, SetEntryUnits, UpdateHolding } from "../schemas/holding";
-import { addLot, buy, closeHolding, convertToUnits, createHolding, deleteHolding, listHoldings, removeLot, reopenHolding, sell, setEntryUnits, setRate, setValue, updateHolding } from "../services/holdings";
+import { AddContribution, AddLot, BuyHolding, ConvertHolding, CreateHolding, ListHoldingsQuery, SellHolding, SetHoldingRate, SetHoldingValue, SetEntryUnits, UpdateHolding } from "../schemas/holding";
+import { addContribution, addLot, buy, closeHolding, convertToUnits, createHolding, deleteHolding, listHoldings, removeContribution, removeLot, reopenHolding, sell, setEntryUnits, setRate, setValue, updateHolding } from "../services/holdings";
 import { requestToday } from "../utils/clock";
 import { parseJson, parseQuery } from "../utils/validate";
 
@@ -18,6 +18,8 @@ export const holdingRoutes = new Hono<AppEnv>()
   .post("/:id/value", async (c) => c.json(await setValue(c.var.auth.db, c.var.userId, c.req.param("id"), await parseJson(c, SetHoldingValue), requestToday(c.var.auth))))
   .post("/:id/rate", async (c) => c.json(await setRate(c.var.auth.db, c.var.userId, c.req.param("id"), await parseJson(c, SetHoldingRate), requestToday(c.var.auth))))
   .post("/:id/lots", async (c) => c.json(await addLot(c.var.auth.db, c.var.userId, c.req.param("id"), await parseJson(c, AddLot), requestToday(c.var.auth)), 201))
+  .post("/:id/contributions", async (c) => c.json(await addContribution(c.var.auth.db, c.var.userId, c.req.param("id"), await parseJson(c, AddContribution), requestToday(c.var.auth)), 201))
+  .delete("/:id/contributions/:contributionId", async (c) => c.json(await removeContribution(c.var.auth.db, c.var.userId, c.req.param("id"), c.req.param("contributionId"), requestToday(c.var.auth))))
   .delete("/:id/lots/:lotId", async (c) => c.json(await removeLot(c.var.auth.db, c.var.userId, c.req.param("id"), c.req.param("lotId"), requestToday(c.var.auth))))
   .post("/:id/convert", async (c) => c.json(await convertToUnits(c.var.auth.db, c.var.userId, c.req.param("id"), await parseJson(c, ConvertHolding), requestToday(c.var.auth))))
   .post("/:id/entries/:txnId/units", async (c) => c.json(await setEntryUnits(c.var.auth.db, c.var.userId, c.req.param("id"), c.req.param("txnId"), (await parseJson(c, SetEntryUnits)).unitsE4, requestToday(c.var.auth))))

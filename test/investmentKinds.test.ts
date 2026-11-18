@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Holding } from "../web/src/api";
-import { kindSummary, looseByKind } from "../web/src/investmentKinds";
+import { kindSummary, looseByKind, purchasesOf } from "../web/src/investmentKinds";
 
 const E4 = 10_000;
 
@@ -32,6 +32,7 @@ const holding = (over: Partial<Holding>): Holding => ({
   ratePaise: null,
   avgCostPaise: null,
   lots: [],
+  contributions: [],
   missingUnits: 0,
   ...over,
 });
@@ -171,5 +172,53 @@ describe("holdings outside a broker account, by kind", () => {
   it("treats an account that no longer exists as no account", () => {
     const h = holding({ id: "g", investmentAccountId: "gone", valuePaise: 1_000_00 });
     expect(looseByKind([h], new Set(["acc1"]))).toHaveLength(1);
+  });
+});
+
+describe("contribution lines", () => {
+  const epf = holding({
+    id: "epf",
+    name: "EPF",
+    kind: "retirement",
+    kindName: "Retirement",
+    tracking: "value",
+    unitLabel: null,
+    unitOne: null,
+    ratePer: 1,
+    investedPaise: 3_082_00,
+    valuePaise: 3_082_00,
+    contributions: [
+      { id: "c1", date: "2026-10-15", ownPaise: 2_360_00, employerPaise: 722_00, note: null, linked: { role: "primary", holdingId: "eps", holdingName: "EPS pension", paise: 1_638_00 } },
+      { id: "c2", date: "2026-09-13", ownPaise: 1_800_00, employerPaise: 0, note: null, linked: null },
+    ],
+  });
+
+  it("shows each month with what it was made of and the pension share that went elsewhere", () => {
+    const list = purchasesOf(epf);
+    const first = list.find((p) => p.contributionId === "c1");
+    expect(first).toMatchObject({ kind: "contribution", date: "2026-10-15", amountPaise: 3_082_00, holdingId: "epf" });
+    expect(first?.detail).toBe("Your ₹2,360 · Employer ₹722 · Pension ₹1,638 to EPS pension");
+    expect(list.find((p) => p.contributionId === "c2")?.detail).toBe("Your ₹1,800");
+  });
+
+  it("shows the pension investment's side as the employer's pension share and where it came from", () => {
+    const eps = holding({
+      id: "eps",
+      name: "EPS pension",
+      kind: "retirement",
+      kindName: "Retirement",
+      tracking: "value",
+      unitLabel: null,
+      unitOne: null,
+      ratePer: 1,
+      contributions: [{ id: "c3", date: "2026-10-15", ownPaise: 0, employerPaise: 1_638_00, note: null, linked: { role: "pension", holdingId: "epf", holdingName: "EPF", paise: 3_082_00 } }],
+    });
+    expect(purchasesOf(eps)[0]).toMatchObject({ kind: "contribution", amountPaise: 1_638_00, detail: "Employer pension share · from EPF" });
+  });
+
+  it("are part of a kind's list, newest first, and add up with the rest of what was put in", () => {
+    const s = kindSummary("retirement", "Retirement", [epf]);
+    expect(s.purchases.map((p) => p.date)).toEqual(["2026-10-15", "2026-09-13"]);
+    expect(s.purchases.reduce((sum, p) => sum + p.amountPaise, 0)).toBe(4_882_00);
   });
 });

@@ -1,15 +1,20 @@
 import type { Holding } from "./api";
+import { rupees } from "./format";
 
 /** One line in a kind's purchase list: a buy, a sale, a purchase from before tracking (a lot), or what was held at the start. */
 export interface KindPurchase {
   key: string;
   /** The day; empty for the opening balance, which has none. */
   date: string;
-  kind: "buy" | "sell" | "lot" | "opening";
+  kind: "buy" | "sell" | "lot" | "opening" | "contribution";
   holdingId: string;
   /** Set for a lot (it can be removed) and for a buy or sale (a quantity can be added to it). */
   lotId?: string;
   entryId?: string;
+  /** Set for a contribution (it can be removed). */
+  contributionId?: string;
+  /** What a contribution was made of, for its second line. */
+  detail?: string;
   /** A buy or sale of a holding counted by quantity that has no quantity yet. */
   needsQuantity?: boolean;
   /** The quantity, when counted by quantity and known. */
@@ -49,6 +54,16 @@ export function purchasesOf(h: Holding): KindPurchase[] {
     out.push({ key: `e${e.id}`, date: e.date, kind: e.kind, holdingId: h.id, entryId: e.id, needsQuantity: isCounted && e.unitsE4 === null, unitsE4: e.unitsE4, amountPaise: e.amountPaise, accountName: e.accountName, holdingName: h.name });
   }
   for (const l of h.lots) out.push({ key: `l${l.id}`, date: l.date, kind: "lot", holdingId: h.id, lotId: l.id, unitsE4: l.unitsE4, amountPaise: l.costPaise, accountName: null, holdingName: h.name });
+  for (const c of h.contributions) {
+    const parts: string[] = [];
+    if (c.linked?.role === "pension") parts.push(`Employer pension share · from ${c.linked.holdingName}`);
+    else {
+      if (c.ownPaise > 0) parts.push(`Your ${rupees(c.ownPaise)}`);
+      if (c.employerPaise > 0) parts.push(`Employer ${rupees(c.employerPaise)}`);
+      if (c.linked?.role === "primary") parts.push(`Pension ${rupees(c.linked.paise)} to ${c.linked.holdingName}`);
+    }
+    out.push({ key: `c${c.id}`, date: c.date, kind: "contribution", holdingId: h.id, contributionId: c.id, detail: parts.join(" · "), unitsE4: null, amountPaise: c.ownPaise + c.employerPaise, accountName: null, holdingName: h.name });
+  }
   // What was held before tracking, with no purchase to show for it: the quantity is what is left once every purchase is taken off.
   const bought = h.entries.reduce((sum, e) => sum + (e.kind === "buy" ? (e.unitsE4 ?? 0) : -(e.unitsE4 ?? 0)), 0) + h.lots.reduce((sum, l) => sum + l.unitsE4, 0);
   const openingUnits = isCounted ? Math.max(0, h.unitsHeldE4 - bought) : 0;

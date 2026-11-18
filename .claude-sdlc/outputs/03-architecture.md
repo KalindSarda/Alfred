@@ -264,3 +264,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-12-07: slice 47 noted: broker_use per kind, rule on holdings, kind rate, per-kind cards (investmentKinds.ts).
 - 2026-12-08: slice 47 follow-up noted: single kind card, compact holding lines, opening balance in purchases.
 - 2026-12-09: editable total put in for holdings valued by typing (PATCH investedPaise).
+- 2026-12-10: slice 48 noted: `holding_contributions` ledger (linked pension entries), counted as put in and, after the latest typed value, as worth.

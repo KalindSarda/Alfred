@@ -253,6 +253,13 @@
       "when": 1795005889537,
       "tag": "0035_kind_broker_use",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1795012582799,
+      "tag": "0036_holding_contributions",
+      "breakpoints": true
     }
   ]
 }

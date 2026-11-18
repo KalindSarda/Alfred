@@ -4,11 +4,11 @@ import type { Db } from "../db/client";
 import { getAccount } from "../db/accounts";
 import { getHoldingRow, type HoldingRow } from "../db/holdings";
 import { getKindByKey, getKindRow, type HoldingKindRow, kindsByKey } from "../db/holdingKinds";
-import { accounts, holdingLots, holdings, holdingValues, investmentAccounts, transactions } from "../db/schema";
+import { accounts, holdingContributions, holdingLots, holdings, holdingValues, investmentAccounts, transactions } from "../db/schema";
 import { type IstDate, isValidIstDate } from "../domain/dates";
 import { formatRupees } from "../domain/money";
 import { avgCostPaise, gainPaise, gainPct, type HoldingFacts, investedPaise, latestRate, latestValue, soldPaise, staleDays, unitOne, unitsHeldE4, valueAtRate, valuePaise } from "../domain/holdings";
-import type { AddLotData, BuyHoldingData, ConvertHoldingData, CreateHoldingData, SellHoldingData, SetHoldingRateData, SetHoldingValueData, UpdateHoldingData } from "../schemas/holding";
+import type { AddContributionData, AddLotData, BuyHoldingData, ConvertHoldingData, CreateHoldingData, SellHoldingData, SetHoldingRateData, SetHoldingValueData, UpdateHoldingData } from "../schemas/holding";
 import { newId, nowIso } from "../utils/id";
 import { checkBrokerRule, requireUsableInvestmentAccount } from "./investmentAccounts";
 
@@ -29,6 +29,17 @@ export interface HoldingLotDto {
   unitsE4: number;
   costPaise: number;
   note: string | null;
+}
+
+/** Money put in with no bank entry (an EPF month). A pension share is its own entry on another investment, linked to this one. */
+export interface HoldingContributionDto {
+  id: string;
+  date: IstDate;
+  ownPaise: number;
+  employerPaise: number;
+  note: string | null;
+  /** The entry it is linked to. This entry's own role: "primary" is the one the person made (its pension share went to the linked investment); "pension" is the one created from the other investment's entry. */
+  linked: { role: "pension" | "primary"; holdingId: string; holdingName: string; paise: number } | null;
 }
 
 export interface HoldingDto {
@@ -70,6 +81,8 @@ export interface HoldingDto {
   ratePaise: number | null;
   avgCostPaise: number | null;
   lots: HoldingLotDto[];
+  /** Money put in with no bank entry, newest first. */
+  contributions: HoldingContributionDto[];
   /** Buys or sells with no quantity, which the held quantity cannot count. */
   missingUnits: number;
 }
@@ -95,6 +108,7 @@ export interface LoadedHoldings {
   facts: Map<string, HoldingFacts>;
   entries: Map<string, HoldingEntryDto[]>;
   lots: Map<string, HoldingLotDto[]>;
+  contributions: Map<string, HoldingContributionDto[]>;
   kinds: Map<string, HoldingKindRow>;
   /** The person's broker accounts, by id. */
   brokers: Map<string, string>;
@@ -102,7 +116,7 @@ export interface LoadedHoldings {
 
 /** Everything about a person's holdings in three queries: the holdings, their typed values, and their linked entries. */
 export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldings> {
-  const [rows, values, txns, accountRows, lotRows, kinds, brokerRows] = await Promise.all([
+  const [rows, values, txns, accountRows, lotRows, kinds, brokerRows, contributionRows] = await Promise.all([
     db.select().from(holdings).where(eq(holdings.userId, userId)),
     db.select().from(holdingValues).where(eq(holdingValues.userId, userId)),
     db
@@ -113,6 +127,7 @@ export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldin
     db.select().from(holdingLots).where(eq(holdingLots.userId, userId)),
     kindsByKey(db, userId),
     db.select({ id: investmentAccounts.id, name: investmentAccounts.name }).from(investmentAccounts).where(eq(investmentAccounts.userId, userId)),
+    db.select().from(holdingContributions).where(eq(holdingContributions.userId, userId)),
   ]);
   const accountName = new Map(accountRows.map((a) => [a.id, a.name]));
   type Mutable = {
@@ -156,10 +171,29 @@ export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldin
     list.push({ id: l.id, date: l.date, unitsE4: l.unitsE4, costPaise: l.costPaise, note: l.note });
     lots.set(l.holdingId, list);
   }
-  return { rows, facts: facts as Map<string, HoldingFacts>, entries, lots, kinds, brokers: new Map(brokerRows.map((b) => [b.id, b.name])) };
+  // Money put in with no bank entry counts as put in from its day, like a purchase.
+  const holdingName = new Map(rows.map((r) => [r.id, r.name]));
+  const contributions = new Map<string, HoldingContributionDto[]>();
+  for (const c of contributionRows) {
+    const f = facts.get(c.holdingId);
+    if (!f) continue;
+    f.purchases.push({ date: c.date, amountPaise: c.ownPaise + c.employerPaise });
+    const partner = c.linkId ? contributionRows.find((o) => o.linkId === c.linkId && o.id !== c.id) : undefined;
+    const list = contributions.get(c.holdingId) ?? [];
+    list.push({
+      id: c.id,
+      date: c.date,
+      ownPaise: c.ownPaise,
+      employerPaise: c.employerPaise,
+      note: c.note,
+      linked: partner && c.linkRole ? { role: c.linkRole, holdingId: partner.holdingId, holdingName: holdingName.get(partner.holdingId) ?? "", paise: partner.ownPaise + partner.employerPaise } : null,
+    });
+    contributions.set(c.holdingId, list);
+  }
+  return { rows, facts: facts as Map<string, HoldingFacts>, entries, lots, contributions, kinds, brokers: new Map(brokerRows.map((b) => [b.id, b.name])) };
 }
 
-function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lots: HoldingLotDto[], today: IstDate, kind?: HoldingKindRow, brokerName: string | null = null): HoldingDto {
+function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lots: HoldingLotDto[], contributions: HoldingContributionDto[], today: IstDate, kind?: HoldingKindRow, brokerName: string | null = null): HoldingDto {
   const rate = f.units ? latestRate(f.units, today) : null;
   const latest = f.units ? rate : latestValue(f, today);
   const unit = f.units ? (kind?.unit ?? null) : null;
@@ -194,16 +228,17 @@ function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lot
     ratePaise: rate?.ratePaise ?? null,
     avgCostPaise: avgCostPaise(f, today),
     lots: [...lots].sort((a, b) => b.date.localeCompare(a.date)),
+    contributions: [...contributions].sort((a, b) => b.date.localeCompare(a.date)),
     missingUnits: f.units ? entries.filter((e) => e.unitsE4 === null).length : 0,
   };
 }
 
 /** Active holdings first, the most valuable first; closed ones after when asked for. */
 export async function listHoldings(db: Db, userId: string, today: IstDate, status: "active" | "all"): Promise<HoldingsOverview> {
-  const { rows, facts, entries, lots, kinds, brokers } = await loadHoldings(db, userId);
+  const { rows, facts, entries, lots, contributions, kinds, brokers } = await loadHoldings(db, userId);
   const dtos = rows
     .filter((r) => status === "all" || r.status === "active")
-    .map((r) => toDto(r, facts.get(r.id) as HoldingFacts, entries.get(r.id) ?? [], lots.get(r.id) ?? [], today, kinds.get(r.kind), r.investmentAccountId ? (brokers.get(r.investmentAccountId) ?? null) : null))
+    .map((r) => toDto(r, facts.get(r.id) as HoldingFacts, entries.get(r.id) ?? [], lots.get(r.id) ?? [], contributions.get(r.id) ?? [], today, kinds.get(r.kind), r.investmentAccountId ? (brokers.get(r.investmentAccountId) ?? null) : null))
     .sort((a, b) => (a.status === b.status ? 0 : a.status === "active" ? -1 : 1) || b.valuePaise - a.valuePaise || a.name.localeCompare(b.name));
   const live = dtos.filter((h) => h.status === "active");
   return {
@@ -307,7 +342,7 @@ export async function updateHolding(db: Db, userId: string, id: string, patch: U
     if (row.tracking !== "value") throw invalid("investedPaise", "Counted by quantity, what was put in comes from its purchases");
     const { facts } = await loadHoldings(db, userId);
     const bought = (facts.get(id)?.purchases ?? []).reduce((sum, p) => sum + p.amountPaise, 0);
-    if (patch.investedPaise < bought) throw invalid("investedPaise", `That is less than the ${formatRupees(bought)} your bank entries already show`);
+    if (patch.investedPaise < bought) throw invalid("investedPaise", `That is less than the ${formatRupees(bought)} your entries already show`);
     openingInvested = patch.investedPaise - bought;
   }
   await db
@@ -370,6 +405,43 @@ export async function setKindRate(db: Db, userId: string, kindId: string, input:
     await putRate(db, userId, h.id, date, input.ratePaise, f.units ? unitsHeldE4(f.units, date) : 0, kind.ratePer);
   }
   return { updated: targets.length };
+}
+
+/**
+ * Money put into an investment valued by typing with no bank entry, such as a month's EPF contribution: the person's share, the
+ * employer's, and a pension share that becomes a linked entry on another such investment. It counts as put in from its day, and
+ * raises the worth when it is dated after the latest value typed.
+ */
+export async function addContribution(db: Db, userId: string, id: string, input: AddContributionData, today: IstDate): Promise<HoldingDto> {
+  const row = await requireActive(db, userId, id);
+  if (row.tracking !== "value") throw invalid("tracking", "Counted by quantity, what was put in comes from its purchases");
+  checkDate("date", input.date, today);
+  const own = input.ownPaise ?? 0;
+  const employer = input.employerPaise ?? 0;
+  const pension = input.pensionPaise ?? 0;
+  if (own + employer <= 0) throw invalid("ownPaise", "Enter your share or the employer's");
+  let target: HoldingRow | null = null;
+  if (pension > 0) {
+    if (!input.pensionHoldingId) throw invalid("pensionHoldingId", "Choose the investment the pension share goes to");
+    if (input.pensionHoldingId === id) throw invalid("pensionHoldingId", "The pension share goes to a different investment");
+    target = await requireActive(db, userId, input.pensionHoldingId);
+    if (target.tracking !== "value") throw invalid("pensionHoldingId", `${target.name} is counted by quantity, so it cannot take a contribution`);
+  }
+  const linkId = target ? newId() : null;
+  const make = (holdingId: string, ownPaise: number, employerPaise: number, linkRole: "primary" | "pension" | null) =>
+    ({ id: newId(), userId, holdingId, date: input.date, ownPaise, employerPaise, linkId, linkRole, note: input.note?.trim() || null, createdAt: nowIso() }) satisfies typeof holdingContributions.$inferInsert;
+  const rows = [make(id, own, employer, target ? "primary" : null)];
+  if (target) rows.push(make(target.id, 0, pension, "pension"));
+  await db.insert(holdingContributions).values(rows);
+  return getHolding(db, userId, id, today);
+}
+
+/** Removes a contribution, and the pension entry it created (or the entry a pension share came from). */
+export async function removeContribution(db: Db, userId: string, id: string, contributionId: string, today: IstDate): Promise<HoldingDto> {
+  const [found] = await db.select().from(holdingContributions).where(and(eq(holdingContributions.userId, userId), eq(holdingContributions.holdingId, id), eq(holdingContributions.id, contributionId))).limit(1);
+  if (!found) throw new NotFoundError("Contribution not found");
+  await db.delete(holdingContributions).where(and(eq(holdingContributions.userId, userId), found.linkId ? eq(holdingContributions.linkId, found.linkId) : eq(holdingContributions.id, found.id)));
+  return getHolding(db, userId, id, today);
 }
 
 /** A purchase from before tracking, with no bank entry: its quantity, cost and day. */
@@ -508,7 +580,7 @@ export async function deleteHolding(db: Db, userId: string, id: string): Promise
   if (!row) throw new NotFoundError("Holding not found");
   const linked = await db.select({ id: transactions.id }).from(transactions).where(and(eq(transactions.userId, userId), eq(transactions.holdingId, id), isNull(transactions.deletedAt))).limit(1);
   if (linked.length > 0) throw new ConflictError("Entries are linked to this holding. Close it instead.");
-  await db.batch([db.delete(holdingLots).where(and(eq(holdingLots.holdingId, id), eq(holdingLots.userId, userId))), db.delete(holdingValues).where(and(eq(holdingValues.holdingId, id), eq(holdingValues.userId, userId))), db.delete(holdings).where(and(eq(holdings.id, id), eq(holdings.userId, userId)))]);
+  await db.batch([db.delete(holdingContributions).where(and(eq(holdingContributions.holdingId, id), eq(holdingContributions.userId, userId))), db.delete(holdingLots).where(and(eq(holdingLots.holdingId, id), eq(holdingLots.userId, userId))), db.delete(holdingValues).where(and(eq(holdingValues.holdingId, id), eq(holdingValues.userId, userId))), db.delete(holdings).where(and(eq(holdings.id, id), eq(holdings.userId, userId)))]);
 }
 
 /**

@@ -471,6 +471,17 @@ export interface HoldingLot {
   note: string | null;
 }
 
+/** Money put in with no bank entry (an EPF month); a pension share is a linked entry on another investment. */
+export interface HoldingContribution {
+  id: string;
+  date: string;
+  ownPaise: number;
+  employerPaise: number;
+  note: string | null;
+  /** This entry's own role: "primary" is the one the person made (its pension share went to the linked investment), "pension" the one created from the other's. */
+  linked: { role: "primary" | "pension"; holdingId: string; holdingName: string; paise: number } | null;
+}
+
 export interface Holding {
   id: string;
   name: string;
@@ -501,6 +512,7 @@ export interface Holding {
   ratePaise: number | null;
   avgCostPaise: number | null;
   lots: HoldingLot[];
+  contributions: HoldingContribution[];
   missingUnits: number;
 }
 

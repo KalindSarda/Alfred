@@ -647,6 +647,29 @@ export const holdingValues = sqliteTable(
 );
 
 /**
+ * Money put into an investment valued by typing with no bank entry, such as a month's EPF contribution taken from salary: the
+ * person's own share and the employer's. A pension share goes to another investment as a linked entry (same `linkId`).
+ */
+export const holdingContributions = sqliteTable(
+  "holding_contributions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    holdingId: text("holding_id").notNull().references(() => holdings.id),
+    date: text("date").notNull(),
+    ownPaise: integer("own_paise").notNull().default(0),
+    employerPaise: integer("employer_paise").notNull().default(0),
+    /** Shared by an entry and the pension entry it created on another investment. */
+    linkId: text("link_id"),
+    /** "primary" for the entry the person made, "pension" for the one it created. */
+    linkRole: text("link_role", { enum: ["primary", "pension"] }),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("holding_contributions_holding_idx").on(t.holdingId), index("holding_contributions_link_idx").on(t.linkId), check("holding_contributions_amounts", sql`${t.ownPaise} >= 0 AND ${t.employerPaise} >= 0 AND ${t.ownPaise} + ${t.employerPaise} > 0`)],
+);
+
+/**
  * A bank loan. What is still owed is `principalPaise` (outstanding when tracking began) less the principal repaid since,
  * which comes from the loan_payment entries; interest is each month's outstanding at the rate. Instalments are added on
  * the due date from the paying bank.

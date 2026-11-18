@@ -41,7 +41,7 @@ describe("the total put in, for something valued by typing", () => {
     const tooLow = await s.api("PATCH", `/api/holdings/${h.id}`, { investedPaise: 4_000_00 });
     expect(tooLow.status).toBe(422);
     expect(tooLow.json.error.details[0]).toMatchObject({ path: "investedPaise" });
-    expect(tooLow.json.error.details[0].message).toBe("That is less than the ₹5,000 your bank entries already show");
+    expect(tooLow.json.error.details[0].message).toBe("That is less than the ₹5,000 your entries already show");
     // exactly what the bank entries show is allowed: nothing was put in before
     expect((await s.api("PATCH", `/api/holdings/${h.id}`, { investedPaise: 5_000_00 })).json.investedPaise).toBe(5_000_00);
   });

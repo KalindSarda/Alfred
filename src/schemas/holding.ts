@@ -44,6 +44,15 @@ export type SetHoldingValueData = z.output<typeof SetHoldingValue>;
 export const SetHoldingRate = z.object({ ratePaise: Rate, date: IstDateString.optional() }).strict();
 export type SetHoldingRateData = z.output<typeof SetHoldingRate>;
 
+/**
+ * Money put into an investment valued by typing with no bank entry (an EPF month): the person's share, the employer's, and a
+ * pension share that goes to another such investment.
+ */
+export const AddContribution = z
+  .object({ date: IstDateString, ownPaise: Money.optional(), employerPaise: Money.optional(), pensionPaise: Money.optional(), pensionHoldingId: Id.optional(), note: Note.nullable().optional() })
+  .strict();
+export type AddContributionData = z.output<typeof AddContribution>;
+
 /** A purchase made before tracking: the quantity, what it cost, and the day. No bank is touched. */
 export const AddLot = z.object({ unitsE4: UnitsE4, costPaise: Money, date: IstDateString, note: Note.nullable().optional() }).strict();
 export type AddLotData = z.output<typeof AddLot>;
