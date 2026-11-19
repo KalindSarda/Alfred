@@ -202,3 +202,90 @@ describe("another person's money in a holding", () => {
     expect(out.holdingPartnerEntries[0].userId).toBeUndefined();
   });
 });
+
+describe("paying someone back", () => {
+  async function sold() {
+    const s = await setup();
+    const h = await s.pooled();
+    await s.api("POST", `/api/holdings/${h.id}/sell`, { amountPaise: 80_000_00, accountId: s.bank.id, date: "2026-10-24" });
+    return { s, h };
+  }
+  const nishant = async (s: Awaited<ReturnType<typeof setup>>, id: string) => (await s.get(id)).shared.partners[0];
+
+  it("shows the payout due from what was sold, and records it leaving your bank", async () => {
+    const { s, h } = await sold();
+    const before = await nishant(s, h.id);
+    expect(before).toMatchObject({ valuePaise: 16_000_00, dueNowPaise: 32_000_00, owedPaise: 48_000_00, paidOutPaise: 0 });
+    const bank = await s.balance();
+    const res = await s.api("POST", `/api/holdings/${h.id}/partners/${before.contactId}/payout`, { amountPaise: 32_000_00, accountId: s.bank.id, date: "2026-10-25" });
+    expect(res.status).toBe(201);
+    expect(await s.balance()).toBe(bank - 32_000_00);
+    const after = await nishant(s, h.id);
+    expect(after).toMatchObject({ paidOutPaise: 32_000_00, dueNowPaise: 0, owedPaise: 16_000_00 });
+    const [txn] = await db.select().from(transactions).where(and(eq(transactions.holdingId, h.id), eq(transactions.type, "partner_out")));
+    expect(txn).toMatchObject({ amountPaise: 32_000_00, merchant: "Nishant", categoryId: null });
+  });
+
+  it("refuses more than they are owed unless it is meant, and allows a payout made some other way", async () => {
+    const { s, h } = await sold();
+    const p = await nishant(s, h.id);
+    const path = `/api/holdings/${h.id}/partners/${p.contactId}/payout`;
+    const over = await s.api("POST", path, { amountPaise: 50_000_00, accountId: s.bank.id });
+    expect(over.status).toBe(422);
+    expect((await s.api("POST", path, { amountPaise: 50_000_00, accountId: s.bank.id, allowMore: true })).status).toBe(201);
+    const cash = await s.api("POST", path, { amountPaise: 1_00, accountId: null, allowMore: true });
+    expect(cash.status).toBe(201);
+    expect((await db.select().from(holdingPartnerEntries).where(and(eq(holdingPartnerEntries.holdingId, h.id), eq(holdingPartnerEntries.kind, "out")))).map((e) => e.txnId !== null).sort()).toEqual([false, true]);
+  });
+
+  it("works on a closed holding, and for nobody who is not in it", async () => {
+    const { s, h } = await sold();
+    const p = await nishant(s, h.id);
+    await s.api("POST", `/api/holdings/${h.id}/close`);
+    expect((await s.api("POST", `/api/holdings/${h.id}/partners/${p.contactId}/payout`, { amountPaise: 10_00, accountId: s.bank.id })).status).toBe(201);
+    expect((await s.api("POST", `/api/holdings/${h.id}/partners/01HXXXXXXXXXXXXXXXXXXXXXXX/payout`, { amountPaise: 10_00, accountId: s.bank.id })).status).toBe(404);
+    expect((await s.api("POST", `/api/holdings/${h.id}/partners/${p.contactId}/payout`, { amountPaise: 10_00, accountId: s.card.id })).status).toBe(422);
+    const other = await setup();
+    expect((await other.api("POST", `/api/holdings/${h.id}/partners/${p.contactId}/payout`, { amountPaise: 10_00, accountId: other.bank.id })).status).toBe(404);
+  });
+
+  it("lists each person across every holding, closed ones too, with their entries", async () => {
+    const { s, h } = await sold();
+    const second = await s.make("Infosys");
+    await s.stake(second.id, { amountPaise: 10_000_00, date: "2026-10-22" });
+    const p = await nishant(s, h.id);
+    await s.api("POST", `/api/holdings/${h.id}/partners/${p.contactId}/payout`, { amountPaise: 10_000_00, accountId: s.bank.id, date: "2026-10-25" });
+    await s.api("POST", `/api/holdings/${h.id}/close`);
+    const { people } = (await s.api("GET", "/api/partners")).json;
+    expect(people).toHaveLength(1);
+    expect(people[0]).toMatchObject({ name: "Nishant", putInPaise: 50_000_00, paidOutPaise: 10_000_00 });
+    expect(people[0].holdings.map((x: Json) => [x.name, x.status]).sort()).toEqual([["Infosys", "active"], ["Tata Tech", "closed"]]);
+    expect(people[0].ledger).toHaveLength(3);
+    expect(people[0].ledger[0].date >= people[0].ledger[2].date).toBe(true);
+    const other = await setup();
+    expect(((await other.api("GET", "/api/partners")).json.people as Json[]).length).toBe(0);
+  });
+
+  it("keeps the history of who put in what and the shares after each step", async () => {
+    const s = await setup();
+    const h = await s.pooled();
+    await s.api("POST", `/api/holdings/${h.id}/buy`, { amountPaise: 50_000_00, accountId: s.bank.id, date: "2026-10-23" });
+    await s.stake(h.id, { name: "Asha", amountPaise: 30_000_00, date: "2026-10-24" });
+    const history = (await s.get(h.id)).shared.history as Json[];
+    expect(history.map((e) => [e.name, e.kind, e.date])).toEqual([["Nishant", "in", "2026-10-20"], ["Asha", "in", "2026-10-24"]]);
+    // Before anything is bought their money is all there is, so it is the whole of it; Asha joining after two buys leaves 20% and you 53.3%.
+    expect(history[0]).toMatchObject({ amountPaise: 40_000_00, sharePct: 100, mySharePct: 0 });
+    expect(history[1]).toMatchObject({ amountPaise: 30_000_00, sharePct: 20, mySharePct: 53.3 });
+  });
+
+  it("removes a payout together with its bank entry", async () => {
+    const { s, h } = await sold();
+    const p = await nishant(s, h.id);
+    await s.api("POST", `/api/holdings/${h.id}/partners/${p.contactId}/payout`, { amountPaise: 32_000_00, accountId: s.bank.id, date: "2026-10-25" });
+    const bank = await s.balance();
+    const out = (await s.get(h.id)).shared.partners[0].entries.find((e: Json) => e.kind === "out");
+    expect((await s.api("DELETE", `/api/holdings/${h.id}/partners/${out.id}`)).status).toBe(200);
+    expect(await s.balance()).toBe(bank + 32_000_00);
+    expect((await nishant(s, h.id)).dueNowPaise).toBe(32_000_00);
+  });
+});

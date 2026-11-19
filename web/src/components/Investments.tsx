@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { type Holding, type HoldingContribution, type HoldingEntry, type HoldingKind, type HoldingLot, type HoldingPartner, type HoldingsOverview, type PartnerEntry, api, describeError } from "../api";
+import { type Holding, type HoldingContribution, type HoldingEntry, type HoldingKind, type HoldingLot, type HoldingPartner, type HoldingsOverview, type Partner, type PartnerEntry, api, describeError } from "../api";
 import { rupeesToPaise } from "../filters";
 import { e4ToQty, paiseToInput, qtyToE4, rupees, rupeesCompact, shortDate, today } from "../format";
-import { useAccounts, useDebts, useHoldingKinds, useHoldings, useInvestmentAccounts, useRecurring, useRefreshMoney } from "../queries";
+import { useAccounts, useDebts, useHoldingKinds, useHoldings, useInvestmentAccounts, usePartners, useRecurring, useRefreshMoney } from "../queries";
 import { Link } from "../router";
 import { byNewest, type KindPurchase, type KindSummary, looseByKind, purchasesOf, type WorthSegment, worthSegments } from "../investmentKinds";
 import { NewKindSheet } from "./InvestmentKinds";
@@ -641,6 +641,72 @@ function StakeSheet({ holding, editing, onClose }: { holding: Holding; editing?:
   );
 }
 
+/**
+ * Paying someone their share back: the money leaves the bank you choose (not spending), and what they are owed comes down by it.
+ * More than they are owed is asked about first.
+ */
+function PayoutSheet({ holding, partner, onClose }: { holding: Holding; partner: HoldingPartner; onClose: () => void }) {
+  const { run, error, setError, busy } = useAction(onClose);
+  const banks = (useAccounts().data ?? []).filter((a) => a.kind === "bank" && !a.archived);
+  const [amount, setAmount] = useState(partner.dueNowPaise > 0 ? paiseToInput(partner.dueNowPaise) : partner.owedPaise > 0 ? paiseToInput(partner.owedPaise) : "");
+  const [bankId, setBankId] = useState(banks[0]?.id ?? "");
+  const [date, setDate] = useState(today());
+  const [note, setNote] = useState("");
+
+  const save = () => {
+    const paise = rupeesToPaise(amount);
+    if (!paise) return setError("Enter the amount you are paying back, such as 32000.");
+    let allowMore = false;
+    if (paise > Math.max(0, partner.owedPaise)) {
+      if (!window.confirm(`${partner.name} is owed ${rupees(Math.max(0, partner.owedPaise))} from this. Pay ${rupees(paise)} anyway?`)) return;
+      allowMore = true;
+    }
+    void run(
+      () => api.post(`/api/holdings/${holding.id}/partners/${partner.contactId}/payout`, { amountPaise: paise, date, accountId: bankId || null, ...(allowMore ? { allowMore } : {}), ...(note.trim() ? { note: note.trim() } : {}) }),
+      `Paid ${partner.name} ${rupees(paise)}.`,
+    );
+  };
+
+  return (
+    <Sheet title={`${holding.name}: pay ${partner.name}`} onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
+        <p className="text-sm text-soft">
+          {partner.name} has {partner.sharePct}% of this. Their share is worth {rupees(partner.valuePaise)} now, and {rupees(partner.dueNowPaise)} of what was sold is still to pay them. Altogether they are owed {rupees(Math.max(0, partner.owedPaise))}.
+        </p>
+        <Field label="Amount (₹)">
+          <AmountInput className={inputClass} autoComplete="off" autoFocus placeholder="32000" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </Field>
+        <Field label="Paid from" hint="The money leaves this bank account. It is not spending.">
+          <select className={inputClass} value={bankId} onChange={(e) => setBankId(e.target.value)}>
+            {banks.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+            <option value="">Paid some other way, no bank entry</option>
+          </select>
+        </Field>
+        <Field label="On">
+          <input className={inputClass} type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <Field label="Note (optional)">
+          <input className={inputClass} maxLength={200} autoComplete="off" value={note} onChange={(e) => setNote(e.target.value)} />
+        </Field>
+        <ErrorText>{error}</ErrorText>
+        <Button type="submit" className="w-full" disabled={busy}>
+          Record payout
+        </Button>
+      </form>
+    </Sheet>
+  );
+}
+
 /** Corrects one buy or sale made through a bank: the day, the amount, the bank, the quantity and the note. */
 function EntryEditSheet({ holding, entry, onClose }: { holding: Holding; entry: HoldingEntry; onClose: () => void }) {
   const { run, error, setError, busy } = useAction(onClose);
@@ -1119,6 +1185,7 @@ function PurchaseList({ purchases, investedPaise, unitLabel, showHolding, holdin
 function PartnerSection({ h, shared, onAct }: { h: Holding; shared: NonNullable<Holding["shared"]>; onAct: (what: Act) => void }) {
   const { act, error } = useHoldingActions();
   const [editing, setEditing] = useState<{ partner: HoldingPartner; entry: PartnerEntry } | null>(null);
+  const [paying, setPaying] = useState<HoldingPartner | null>(null);
   return (
     <div className="mx-4 space-y-3 rounded-xl bg-sunk p-3 text-sm">
       <p className="font-medium">
@@ -1134,6 +1201,14 @@ function PartnerSection({ h, shared, onAct }: { h: Holding; shared: NonNullable<
             <span className="font-medium">{p.name}</span> · {p.sharePct}% · put in {rupees(p.putInPaise)} · worth {rupees(p.valuePaise)} · <span className={tone(p.gainPaise)}>{signed(p.gainPaise)}</span>
             {p.paidOutPaise > 0 && <> · paid out {rupees(p.paidOutPaise)}</>}
           </p>
+          {p.dueNowPaise > 0 && (
+            <p className="rounded-lg bg-warn-bg px-2 py-1.5 text-warn-ink">
+              Payout due: {rupees(p.dueNowPaise)} of what was sold is still to pay {p.name}.{" "}
+              <button type="button" className="min-h-11 font-medium underline" onClick={() => setPaying(p)}>
+                Pay out
+              </button>
+            </p>
+          )}
           <ul className="space-y-0.5 text-xs text-soft">
             {p.entries.map((e) => (
               <li key={e.id} className="flex flex-wrap items-center gap-x-2">
@@ -1158,12 +1233,52 @@ function PartnerSection({ h, shared, onAct }: { h: Holding; shared: NonNullable<
           </ul>
         </div>
       ))}
-      <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("share")}>
-        Add someone&apos;s money
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("share")}>
+          Add someone&apos;s money
+        </Button>
+        {shared.partners.length > 0 && (
+          <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={() => setPaying(shared.partners[0] as HoldingPartner)}>
+            Pay out
+          </Button>
+        )}
+      </div>
+      {shared.history.length > 1 && (
+        <details>
+          <summary className="min-h-11 cursor-pointer py-2 text-soft">Who put in what, and the shares after each step</summary>
+          <ul className="space-y-1 text-xs text-soft">
+            {shared.history.map((e) => (
+              <li key={e.id}>
+                {shortDate(e.date)} · {e.name} {e.kind === "in" ? "put in" : "was paid"} {rupees(e.amountPaise)} · {e.name} {e.sharePct}%, you {e.mySharePct}%
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       <ErrorText>{error}</ErrorText>
       {editing && <StakeSheet holding={h} editing={editing} onClose={() => setEditing(null)} />}
+      {paying && <PayoutPicker holding={h} partners={shared.partners} first={paying} onClose={() => setPaying(null)} />}
     </div>
+  );
+}
+
+/** Pays one of the people in a holding; with several, the person is chosen first. */
+function PayoutPicker({ holding, partners, first, onClose }: { holding: Holding; partners: HoldingPartner[]; first: HoldingPartner; onClose: () => void }) {
+  const [id, setId] = useState(first.contactId);
+  const chosen = partners.find((p) => p.contactId === id) ?? first;
+  return (
+    <>
+      {partners.length > 1 && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Pay whom">
+          {partners.map((p) => (
+            <button key={p.contactId} type="button" aria-pressed={id === p.contactId} className={`min-h-11 rounded-full px-3 text-sm ${id === p.contactId ? "bg-brand text-white" : "bg-sunk text-soft"}`} onClick={() => setId(p.contactId)}>
+              {p.name}
+            </button>
+          ))}
+        </div>
+      )}
+      <PayoutSheet key={chosen.contactId} holding={holding} partner={chosen} onClose={onClose} />
+    </>
   );
 }
 
@@ -1408,9 +1523,129 @@ function Group({ title, note, holdings, sort, open, onToggle, onAct, actions }: 
 }
 
 /** What you own and what it is worth, by broker account: shares, IPO allotments, funds, gold, crypto. Values are typed by you; buying and selling go through a bank. */
+/** Everything you hold with one person: what they put in, their share of each investment, what they are owed, and every entry. */
+function PersonView({ contactId, holdings, onBack, onAct }: { contactId: string; holdings: Holding[]; onBack: () => void; onAct: (h: Holding) => (what: Act) => void }) {
+  const people = usePartners();
+  const [paying, setPaying] = useState<{ holding: Holding; partner: HoldingPartner } | null>(null);
+  const person: Partner | undefined = (people.data ?? []).find((p) => p.contactId === contactId);
+  if (people.isPending) return <p className="py-8 text-center text-sm text-soft">Loading…</p>;
+  if (!person) {
+    return (
+      <div className="space-y-3">
+        <Button variant="ghost" className="min-h-11" onClick={onBack}>
+          ← Back
+        </Button>
+        <Empty title="Nothing with this person yet">Add their money to an investment first.</Empty>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      <Button variant="ghost" className="min-h-11" onClick={onBack}>
+        ← Back to shared
+      </Button>
+      <Card>
+        <p className="text-xs tracking-wide text-soft uppercase">With {person.name}</p>
+        <p className="font-display mt-1 text-4xl tabular-nums">
+          <Amount paise={person.valuePaise} />
+        </p>
+        <p className="mt-2 text-sm text-soft">
+          Their share is worth this now. They put in {rupees(person.putInPaise)} ·{" "}
+          <span className={`font-medium ${tone(person.gainPaise)}`}>{signed(person.gainPaise)}</span>
+          {person.paidOutPaise > 0 ? ` · paid out ${rupees(person.paidOutPaise)}` : ""}
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+          <div className="rounded-xl bg-sunk p-3">
+            <p className="text-xs text-soft">You would owe them now</p>
+            <p className="font-semibold tabular-nums">{rupees(Math.max(0, person.owedPaise))}</p>
+          </div>
+          <div className="rounded-xl bg-sunk p-3">
+            <p className="text-xs text-soft">Due from what was sold</p>
+            <p className="font-semibold tabular-nums">{rupees(person.dueNowPaise)}</p>
+          </div>
+        </div>
+      </Card>
+      <div className="space-y-2">
+        <p className="px-1 text-xs tracking-wide text-soft uppercase">Investments with {person.name}</p>
+        <Card pad="p-0">
+          <ul className="divide-y divide-line">
+            {person.holdings.map((x) => {
+              const h = holdings.find((y) => y.id === x.holdingId);
+              const partner = h?.shared?.partners.find((p) => p.contactId === contactId);
+              return (
+                <li key={x.holdingId} className="space-y-1 px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="block font-medium">
+                        {x.name}
+                        {x.status === "closed" && <span className="ml-2 text-xs font-normal text-faint">closed</span>}
+                      </span>
+                      <span className="block text-xs text-soft">
+                        {x.sharePct}% · put in {rupees(x.putInPaise)}
+                        {x.paidOutPaise > 0 ? ` · paid out ${rupees(x.paidOutPaise)}` : ""}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block font-semibold tabular-nums">{rupees(x.valuePaise)}</span>
+                      <span className={`block text-xs ${tone(x.gainPaise)}`}>{signed(x.gainPaise)}</span>
+                    </span>
+                  </div>
+                  {x.dueNowPaise > 0 && <p className="text-xs font-medium text-warn-ink">Payout due {rupees(x.dueNowPaise)}</p>}
+                  {h && (
+                    <div className="flex flex-wrap gap-2">
+                      {h.status === "active" && (
+                        <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={() => onAct(h)("share")}>
+                          Add their money
+                        </Button>
+                      )}
+                      {partner && (
+                        <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={() => setPaying({ holding: h, partner })}>
+                          Pay out
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      </div>
+      <div className="space-y-2">
+        <p className="px-1 text-xs tracking-wide text-soft uppercase">Every entry</p>
+        <Card pad="p-0">
+          <ul className="divide-y divide-line">
+            {person.ledger.map((e) => (
+              <li key={e.id} className="flex items-start justify-between gap-3 px-4 py-2.5 text-sm">
+                <span className="min-w-0">
+                  <span className="block">
+                    {e.kind === "in" ? "Put in" : "Paid out"} · {e.holdingName}
+                  </span>
+                  <span className="block text-xs text-soft">
+                    {shortDate(e.date)}
+                    {e.bank ? " · through your bank" : " · no bank entry"}
+                    {e.note ? ` · ${e.note}` : ""}
+                  </span>
+                </span>
+                <span className={`shrink-0 font-medium tabular-nums ${e.kind === "in" ? "text-good" : ""}`}>
+                  {e.kind === "in" ? "+" : "−"}
+                  {rupees(e.amountPaise)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+      {paying && <PayoutSheet holding={paying.holding} partner={paying.partner} onClose={() => setPaying(null)} />}
+    </div>
+  );
+}
+
 /** The investments shared with other people: the whole of them, your part, each person's part, and the holdings. */
 function SharedView({ overview, holdings, sort, onAct }: { overview: HoldingsOverview; holdings: Holding[]; sort: Sort; onAct: (h: Holding) => (what: Act) => void }) {
   const s = overview.shared;
+  const [withId, setWithId] = useState<string | null>(null);
+  if (withId) return <PersonView contactId={withId} holdings={holdings} onBack={() => setWithId(null)} onAct={onAct} />;
   const myPct = s.my.investedPaise > 0 ? Math.round((s.my.gainPaise / s.my.investedPaise) * 1000) / 10 : null;
   return (
     <div className="space-y-4">
@@ -1442,19 +1677,22 @@ function SharedView({ overview, holdings, sort, onAct }: { overview: HoldingsOve
         <Card pad="p-0">
           <ul className="divide-y divide-line">
             {s.people.map((p) => (
-              <li key={p.contactId} className="flex items-start justify-between gap-3 px-4 py-3">
-                <span className="min-w-0">
-                  <span className="block font-medium">{p.name}</span>
-                  <span className="block text-xs text-soft">
-                    in {p.holdings} {p.holdings === 1 ? "investment" : "investments"} · put in {rupees(p.putInPaise)}
-                    {p.paidOutPaise > 0 ? ` · paid out ${rupees(p.paidOutPaise)}` : ""}
+              <li key={p.contactId}>
+                <button type="button" className="flex min-h-14 w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-hover" onClick={() => setWithId(p.contactId)}>
+                  <span className="min-w-0">
+                    <span className="block font-medium">{p.name}</span>
+                    <span className="block text-xs text-soft">
+                      in {p.holdings} {p.holdings === 1 ? "investment" : "investments"} · put in {rupees(p.putInPaise)}
+                      {p.paidOutPaise > 0 ? ` · paid out ${rupees(p.paidOutPaise)}` : ""}
+                    </span>
                   </span>
-                </span>
-                <span className="shrink-0 text-right">
-                  <span className="block font-semibold tabular-nums">{rupees(p.valuePaise)}</span>
-                  <span className={`block text-xs ${tone(p.gainPaise)}`}>{signed(p.gainPaise)}</span>
-                  <span className="block text-xs text-soft">owed {rupees(p.owedPaise)}</span>
-                </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block font-semibold tabular-nums">{rupees(p.valuePaise)}</span>
+                    <span className={`block text-xs ${tone(p.gainPaise)}`}>{signed(p.gainPaise)}</span>
+                    <span className="block text-xs text-soft">owed {rupees(p.owedPaise)}</span>
+                  </span>
+                  <Chevron open={false} className="mt-1.5 -rotate-90 text-soft" />
+                </button>
               </li>
             ))}
           </ul>

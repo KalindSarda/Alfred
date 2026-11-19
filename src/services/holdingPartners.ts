@@ -5,10 +5,11 @@ import { getAccount } from "../db/accounts";
 import { getHoldingRow } from "../db/holdings";
 import { contacts, holdingPartnerEntries, transactions } from "../db/schema";
 import { type IstDate, isValidIstDate } from "../domain/dates";
-import type { AddPartnerStakeData, EditPartnerEntryData } from "../schemas/holding";
+import type { AddPartnerStakeData, EditPartnerEntryData, PayPartnerData } from "../schemas/holding";
+import { formatRupees } from "../domain/money";
 import { newId, nowIso } from "../utils/id";
 import { contactIdFor } from "./debts";
-import { getHolding, type HoldingDto } from "./holdings";
+import { getHolding, type HoldingDto, listHoldings } from "./holdings";
 
 const invalid = (path: string, message: string) => new ValidationError("Request validation failed", [{ path, message }]);
 
@@ -97,4 +98,87 @@ export async function removePartnerEntry(db: Db, userId: string, holdingId: stri
   if (row.txnId) ops.push(db.delete(transactions).where(and(eq(transactions.id, row.txnId), eq(transactions.userId, userId))) as never);
   await db.batch(ops as [(typeof ops)[0], ...(typeof ops)[0][]]);
   return getHolding(db, userId, holdingId, today);
+}
+
+/**
+ * Pays someone their share back. With a bank account the money leaves it (a partner_out entry, linked to the holding) in one step
+ * with the payout; without one it was paid some other way. It works on a closed holding too: that is when payouts are due. More
+ * than they are owed is refused unless it is meant.
+ */
+export async function payPartner(db: Db, userId: string, holdingId: string, contactId: string, input: PayPartnerData, today: IstDate): Promise<HoldingDto> {
+  const holding = await getHoldingRow(db, userId, holdingId);
+  if (!holding) throw new NotFoundError("Holding not found");
+  const date = input.date ?? today;
+  checkDate(date, today);
+  const dto = await getHolding(db, userId, holdingId, today);
+  const partner = dto.shared?.partners.find((p) => p.contactId === contactId);
+  if (!partner) throw new NotFoundError("They have no money in this investment");
+  if (input.amountPaise > partner.owedPaise && !input.allowMore) {
+    throw invalid("amountPaise", `${partner.name} is owed ${formatRupees(Math.max(0, partner.owedPaise))} from this. Send allowMore to pay more`);
+  }
+  const account = input.accountId ? await requireBank(db, userId, input.accountId) : null;
+  const txn = account ? partnerTxn(userId, "partner_out", input.amountPaise, date, account.id, holdingId, partner.name, holding.name) : null;
+  const entry = db.insert(holdingPartnerEntries).values({ id: newId(), userId, holdingId, contactId, kind: "out", date, amountPaise: input.amountPaise, txnId: txn?.id ?? null, note: input.note?.trim() || null, createdAt: nowIso() });
+  if (txn) await db.batch([entry, db.insert(transactions).values(txn)]);
+  else await entry;
+  return getHolding(db, userId, holdingId, today);
+}
+
+export interface PartnerHoldingDto {
+  holdingId: string;
+  name: string;
+  status: "active" | "closed";
+  sharePct: number;
+  putInPaise: number;
+  valuePaise: number;
+  gainPaise: number;
+  paidOutPaise: number;
+  owedPaise: number;
+  dueNowPaise: number;
+}
+
+export interface PartnerLedgerDto {
+  id: string;
+  holdingId: string;
+  holdingName: string;
+  kind: "in" | "out";
+  date: IstDate;
+  amountPaise: number;
+  bank: boolean;
+  note: string | null;
+}
+
+/** One other person across everything you hold with them, closed holdings too: totals, a line per holding, and every entry. */
+export interface PartnerDto {
+  contactId: string;
+  name: string;
+  putInPaise: number;
+  valuePaise: number;
+  gainPaise: number;
+  paidOutPaise: number;
+  owedPaise: number;
+  dueNowPaise: number;
+  holdings: PartnerHoldingDto[];
+  ledger: PartnerLedgerDto[];
+}
+
+export async function listPartners(db: Db, userId: string, today: IstDate): Promise<{ people: PartnerDto[] }> {
+  const { holdings } = await listHoldings(db, userId, today, "all");
+  const people = new Map<string, PartnerDto>();
+  for (const h of holdings) {
+    for (const p of h.shared?.partners ?? []) {
+      const cur = people.get(p.contactId) ?? { contactId: p.contactId, name: p.name, putInPaise: 0, valuePaise: 0, gainPaise: 0, paidOutPaise: 0, owedPaise: 0, dueNowPaise: 0, holdings: [], ledger: [] };
+      cur.putInPaise += p.putInPaise;
+      cur.valuePaise += p.valuePaise;
+      cur.gainPaise += p.gainPaise;
+      cur.paidOutPaise += p.paidOutPaise;
+      cur.owedPaise += p.owedPaise;
+      cur.dueNowPaise += p.dueNowPaise;
+      cur.holdings.push({ holdingId: h.id, name: h.name, status: h.status, sharePct: p.sharePct, putInPaise: p.putInPaise, valuePaise: p.valuePaise, gainPaise: p.gainPaise, paidOutPaise: p.paidOutPaise, owedPaise: p.owedPaise, dueNowPaise: p.dueNowPaise });
+      for (const e of p.entries) cur.ledger.push({ id: e.id, holdingId: h.id, holdingName: h.name, kind: e.kind, date: e.date, amountPaise: e.amountPaise, bank: e.bank, note: e.note });
+      people.set(p.contactId, cur);
+    }
+  }
+  const out = [...people.values()].map((p) => ({ ...p, ledger: p.ledger.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)) }));
+  return { people: out.sort((a, b) => b.owedPaise - a.owedPaise || a.name.localeCompare(b.name)) };
 }

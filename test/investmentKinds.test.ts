@@ -331,7 +331,7 @@ describe("a holding shared with others", () => {
     myInvestedPaise: 60_000_00,
     myValuePaise: 72_000_00,
     myGainPaise: 12_000_00,
-    shared: { mySharePct: 60, partners: [] },
+    shared: { mySharePct: 60, partners: [], history: [] },
   });
 
   it("counts only your share in a kind's totals and in the bar", () => {

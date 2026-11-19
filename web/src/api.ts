@@ -513,7 +513,35 @@ export interface HoldingPartner {
   gainPaise: number;
   /** What you would still pay them if it were all sold at today's value. */
   owedPaise: number;
+  /** Their part of what was already sold, less what was paid out: the payout that is due now. */
+  dueNowPaise: number;
   entries: PartnerEntry[];
+}
+
+/** One step in how a shared holding was split: whose money went in or out, and the shares after it. */
+export interface PartnerHistory {
+  id: string;
+  date: string;
+  kind: "in" | "out";
+  contactId: string;
+  name: string;
+  amountPaise: number;
+  sharePct: number;
+  mySharePct: number;
+}
+
+/** One other person across everything you hold with them. */
+export interface Partner {
+  contactId: string;
+  name: string;
+  putInPaise: number;
+  valuePaise: number;
+  gainPaise: number;
+  paidOutPaise: number;
+  owedPaise: number;
+  dueNowPaise: number;
+  holdings: { holdingId: string; name: string; status: "active" | "closed"; sharePct: number; putInPaise: number; valuePaise: number; gainPaise: number; paidOutPaise: number; owedPaise: number; dueNowPaise: number }[];
+  ledger: { id: string; holdingId: string; holdingName: string; kind: "in" | "out"; date: string; amountPaise: number; bank: boolean; note: string | null }[];
 }
 
 export interface Holding {
@@ -555,7 +583,7 @@ export interface Holding {
   myValuePaise: number;
   myGainPaise: number;
   /** The other people in it, or null when it is only yours. */
-  shared: { partners: HoldingPartner[]; mySharePct: number } | null;
+  shared: { partners: HoldingPartner[]; mySharePct: number; history: PartnerHistory[] } | null;
 }
 
 /** Something dated that is going to leave before the next salary. */

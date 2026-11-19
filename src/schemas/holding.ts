@@ -94,6 +94,13 @@ export const AddPartnerStake = z
   .refine((v) => (v.contactId === undefined) !== (v.name === undefined), { message: "Give the person's name, or choose one", path: ["name"] });
 export type AddPartnerStakeData = z.output<typeof AddPartnerStake>;
 
+/**
+ * Paying someone their share back. With a bank account the money leaves it (a partner_out entry); without one it is a payout made
+ * some other way. More than they are owed is refused unless `allowMore` says it is meant.
+ */
+export const PayPartner = z.object({ amountPaise: Positive, date: IstDateString.optional(), accountId: Id.nullable().optional(), note: Note.nullable().optional(), allowMore: z.boolean().optional() }).strict();
+export type PayPartnerData = z.output<typeof PayPartner>;
+
 /** Correcting one of their entries: only what is sent changes. */
 export const EditPartnerEntry = z.object({ amountPaise: Positive.optional(), date: IstDateString.optional(), accountId: Id.optional(), note: Note.nullable().optional() }).strict();
 export type EditPartnerEntryData = z.output<typeof EditPartnerEntry>;

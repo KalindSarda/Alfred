@@ -1,5 +1,5 @@
 import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type CommitmentsView, type EntryHints, type EmergencyFund, type FireView, type InvestmentAccountsOverview, type LadderView, type SpendByAccount, type MoneyHealth, type TransferView, type ProtectionView, type Runway, type HoldingKind, type HoldingsOverview, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type CommitmentsView, type EntryHints, type EmergencyFund, type FireView, type InvestmentAccountsOverview, type LadderView, type SpendByAccount, type MoneyHealth, type TransferView, type ProtectionView, type Runway, type HoldingKind, type HoldingsOverview, type Partner, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -115,6 +115,9 @@ export const useEntryHints = () =>
 export const useHoldings = (status: "active" | "all" = "active") =>
   useQuery({ queryKey: ["holdings", status], queryFn: () => api.get<HoldingsOverview>(`/api/holdings?status=${status}`) });
 
+/** The other people in your shared investments, with what you hold with each. */
+export const usePartners = () => useQuery({ queryKey: ["partners"], queryFn: async () => (await api.get<{ people: Partner[] }>("/api/partners")).people });
+
 /** What each account spent in a period (the month so far by default), against the matching earlier stretch. */
 export const useSpendByAccount = (period = "cycle") => useQuery({ queryKey: ["spend-by-account", period], queryFn: () => api.get<SpendByAccount>(`/api/dashboard/spend-by-account?period=${period}`) });
 
@@ -176,6 +179,7 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["debts"] }),
       client.invalidateQueries({ queryKey: ["goals"] }),
       client.invalidateQueries({ queryKey: ["holdings"] }),
+      client.invalidateQueries({ queryKey: ["partners"] }),
       client.invalidateQueries({ queryKey: ["holding-kinds"] }),
       client.invalidateQueries({ queryKey: ["commitments"] }),
       client.invalidateQueries({ queryKey: ["runway"] }),

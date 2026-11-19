@@ -67,7 +67,22 @@ export interface HoldingPartnerDto {
   gainPaise: number;
   /** What you would still pay them if it were all sold at today's value. */
   owedPaise: number;
+  /** Their part of what was already sold, less what was paid out: the payout that is due now. */
+  dueNowPaise: number;
   entries: PartnerEntryDto[];
+}
+
+/** One step in how a shared holding was split: whose money went in or out, and the shares after it. */
+export interface PartnerHistoryDto {
+  id: string;
+  date: IstDate;
+  kind: "in" | "out";
+  contactId: string;
+  name: string;
+  amountPaise: number;
+  /** That person's share, and yours, after it. */
+  sharePct: number;
+  mySharePct: number;
 }
 
 export interface HoldingDto {
@@ -120,7 +135,7 @@ export interface HoldingDto {
   myValuePaise: number;
   myGainPaise: number;
   /** The other people in it, or null when it is only yours. */
-  shared: { partners: HoldingPartnerDto[]; mySharePct: number } | null;
+  shared: { partners: HoldingPartnerDto[]; mySharePct: number; history: PartnerHistoryDto[] } | null;
 }
 
 export interface Totals {
@@ -325,6 +340,12 @@ function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lot
     shared: split.shared
       ? {
           mySharePct: split.mySharePct,
+          history: [...partnerEntries]
+            .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+            .map((e) => {
+              const then = splitHolding(f, stakes, e.date);
+              return { id: e.id, date: e.date, kind: e.kind, contactId: e.contactId, name: stakes.find((s) => s.contactId === e.contactId)?.name ?? "", amountPaise: e.amountPaise, sharePct: then.partners.find((p) => p.contactId === e.contactId)?.sharePct ?? 0, mySharePct: then.mySharePct };
+            }),
           partners: split.partners.map((p) => ({
             contactId: p.contactId,
             name: p.name,
@@ -334,6 +355,7 @@ function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lot
             valuePaise: p.valuePaise,
             gainPaise: p.gainPaise,
             owedPaise: p.owedPaise,
+            dueNowPaise: Math.max(0, p.soldPaise - p.paidOutPaise),
             entries: partnerEntries.filter((e) => e.contactId === p.contactId).map(({ contactId: _omit, ...e }) => e).sort((a, b) => b.date.localeCompare(a.date)),
           })),
         }
