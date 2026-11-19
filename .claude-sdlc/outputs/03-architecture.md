@@ -269,3 +269,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-12-12: slice 49 noted: edit/remove for every entry of an investment (bank buys and sales, lots, contributions, opening balance, typed values).
 - 2026-12-13: Investments worth-now bar is one stacked bar by broker account and kind (worthSegments).
 - 2026-12-14: slice 50 noted: contribution rules reuse recurring rules (type `contribution`, no account); the daily job adds the month to the investment instead of a bank entry. Export and delete-a-person now cover contributions, broker accounts, policies and the plans.
+- 2026-12-15: slice 51 noted: shared investments. Ownership by money put in (holding_partner_entries, partner_in and partner_out entries); one `splitHolding` (src/domain/partners.ts) feeds the DTO and every net-worth consumer.

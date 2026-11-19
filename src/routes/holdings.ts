@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import type { AppEnv } from "../app";
 import { MoveHoldings } from "../schemas/investmentAccount";
 import { moveHoldings } from "../services/investmentAccounts";
-import { AddContribution, AddLot, BuyHolding, EditEntry, EditLot, ConvertHolding, CreateHolding, ListHoldingsQuery, SellHolding, SetHoldingRate, SetHoldingValue, SetEntryUnits, UpdateHolding } from "../schemas/holding";
+import { AddContribution, AddLot, AddPartnerStake, EditPartnerEntry, BuyHolding, EditEntry, EditLot, ConvertHolding, CreateHolding, ListHoldingsQuery, SellHolding, SetHoldingRate, SetHoldingValue, SetEntryUnits, UpdateHolding } from "../schemas/holding";
+import { addPartnerStake, editPartnerEntry, removePartnerEntry } from "../services/holdingPartners";
 import { addContribution, addLot, buy, editContribution, editEntry, editLot, removeEntry, removeValue, closeHolding, convertToUnits, createHolding, deleteHolding, listHoldings, removeContribution, removeLot, reopenHolding, sell, setEntryUnits, setRate, setValue, updateHolding } from "../services/holdings";
 import { ValidationError } from "../config/errors";
 import { isValidIstDate } from "../domain/dates";
@@ -29,6 +30,9 @@ export const holdingRoutes = new Hono<AppEnv>()
     if (!isValidIstDate(date)) throw new ValidationError("Request validation failed", [{ path: "date", message: "Not a real calendar date" }]);
     return c.json(await removeValue(c.var.auth.db, c.var.userId, c.req.param("id"), date, requestToday(c.var.auth)));
   })
+  .post("/:id/partners", async (c) => c.json(await addPartnerStake(c.var.auth.db, c.var.userId, c.req.param("id"), await parseJson(c, AddPartnerStake), requestToday(c.var.auth)), 201))
+  .patch("/:id/partners/:entryId", async (c) => c.json(await editPartnerEntry(c.var.auth.db, c.var.userId, c.req.param("id"), c.req.param("entryId"), await parseJson(c, EditPartnerEntry), requestToday(c.var.auth))))
+  .delete("/:id/partners/:entryId", async (c) => c.json(await removePartnerEntry(c.var.auth.db, c.var.userId, c.req.param("id"), c.req.param("entryId"), requestToday(c.var.auth))))
   .post("/:id/contributions", async (c) => c.json(await addContribution(c.var.auth.db, c.var.userId, c.req.param("id"), await parseJson(c, AddContribution), requestToday(c.var.auth)), 201))
   .delete("/:id/contributions/:contributionId", async (c) => c.json(await removeContribution(c.var.auth.db, c.var.userId, c.req.param("id"), c.req.param("contributionId"), requestToday(c.var.auth))))
   .delete("/:id/lots/:lotId", async (c) => c.json(await removeLot(c.var.auth.db, c.var.userId, c.req.param("id"), c.req.param("lotId"), requestToday(c.var.auth))))

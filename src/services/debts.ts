@@ -140,7 +140,7 @@ function checkDate(path: string, date: string, today: IstDate) {
   if (date > today) throw invalid(path, "That date is in the future");
 }
 
-async function contactIdFor(db: Db, userId: string, name: string): Promise<string> {
+export async function contactIdFor(db: Db, userId: string, name: string): Promise<string> {
   const key = keyOf(name);
   const [found] = await db.select().from(contacts).where(and(eq(contacts.userId, userId), eq(contacts.nameKey, key))).limit(1);
   if (found) return found.id;

@@ -83,3 +83,17 @@ export type SellHoldingData = z.output<typeof SellHolding>;
 export const ListHoldingsQuery = z.object({ status: z.enum(["active", "all"]).default("active") });
 
 export const SetEntryUnits = z.object({ unitsE4: UnitsE4 }).strict();
+
+/**
+ * Another person's money in a shared investment. The person is named (found or added among the people you lend to and borrow from)
+ * or picked by id. With a bank account the money is recorded arriving there; without one it is an earlier stake with no bank entry.
+ */
+export const AddPartnerStake = z
+  .object({ contactId: Id.optional(), name: Name.optional(), amountPaise: Positive, date: IstDateString.optional(), accountId: Id.nullable().optional(), note: Note.nullable().optional() })
+  .strict()
+  .refine((v) => (v.contactId === undefined) !== (v.name === undefined), { message: "Give the person's name, or choose one", path: ["name"] });
+export type AddPartnerStakeData = z.output<typeof AddPartnerStake>;
+
+/** Correcting one of their entries: only what is sent changes. */
+export const EditPartnerEntry = z.object({ amountPaise: Positive.optional(), date: IstDateString.optional(), accountId: Id.optional(), note: Note.nullable().optional() }).strict();
+export type EditPartnerEntryData = z.output<typeof EditPartnerEntry>;

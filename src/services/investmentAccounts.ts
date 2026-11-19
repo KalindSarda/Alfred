@@ -72,12 +72,13 @@ const pct = (part: number, whole: number): number | null => (whole > 0 ? Math.ro
 /** Every account with what it holds, and what is not in any account yet. Archived accounts are left out unless asked for. */
 export async function listInvestmentAccounts(db: Db, userId: string, today: IstDate, options: { includeArchived?: boolean } = {}): Promise<InvestmentAccountsOverview> {
   const [rows, overview] = await Promise.all([db.select().from(investmentAccounts).where(eq(investmentAccounts.userId, userId)), listHoldings(db, userId, today, "active")]);
-  const total = overview.totalValuePaise;
+  // Only your share counts here: a shared holding contributes what is yours of it.
+  const total = overview.mine.valuePaise;
   const sum = (items: typeof overview.holdings) => ({
     holdingCount: items.length,
-    valuePaise: items.reduce((s, h) => s + h.valuePaise, 0),
-    investedPaise: items.reduce((s, h) => s + h.investedPaise, 0),
-    gainPaise: items.reduce((s, h) => s + h.gainPaise, 0),
+    valuePaise: items.reduce((s, h) => s + h.myValuePaise, 0),
+    investedPaise: items.reduce((s, h) => s + h.myInvestedPaise, 0),
+    gainPaise: items.reduce((s, h) => s + h.myGainPaise, 0),
   });
   const accounts = rows
     .filter((r) => options.includeArchived || !r.archivedAt)

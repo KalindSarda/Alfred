@@ -1,6 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { accounts, budgets, categories, contacts, debtPayments, debts, emiPlans, goalContributions, goals, firePlan, holdingContributions, holdingKinds, holdingLots, holdings, holdingValues, holds, insurancePolicies, investmentAccounts, loans, protectionProfile, recurringRules, transactions } from "../db/schema";
+import { accounts, budgets, categories, contacts, debtPayments, debts, emiPlans, goalContributions, goals, firePlan, holdingContributions, holdingPartnerEntries, holdingKinds, holdingLots, holdings, holdingValues, holds, insurancePolicies, investmentAccounts, loans, protectionProfile, recurringRules, transactions } from "../db/schema";
 import { formatRupees } from "../domain/money";
 import { getSettings } from "./settings";
 
@@ -8,7 +8,7 @@ export const EXPORT_VERSION = 1;
 
 /** Everything the user owns, as plain JSON. Secrets, sessions and login codes are never included. */
 export async function exportJson(db: Db, userId: string, exportedAt: string) {
-  const [accountRows, categoryRows, txnRows, budgetRows, holdRows, emiRows, ruleRows, contactRows, debtRows, paymentRows, goalRows, goalEntryRows, holdingRows, holdingValueRows, loanRows, holdingLotRows, holdingKindRows, contributionRows, investmentAccountRows, policyRows, fireRows, protectionRows, settings] = await Promise.all([
+  const [accountRows, categoryRows, txnRows, budgetRows, holdRows, emiRows, ruleRows, contactRows, debtRows, paymentRows, goalRows, goalEntryRows, holdingRows, holdingValueRows, loanRows, holdingLotRows, holdingKindRows, contributionRows, partnerEntryRows, investmentAccountRows, policyRows, fireRows, protectionRows, settings] = await Promise.all([
     db.select().from(accounts).where(eq(accounts.userId, userId)).orderBy(asc(accounts.createdAt), asc(accounts.id)),
     db.select().from(categories).where(eq(categories.userId, userId)).orderBy(asc(categories.kind), asc(categories.name)),
     db.select().from(transactions).where(eq(transactions.userId, userId)).orderBy(asc(transactions.txnDate), asc(transactions.id)),
@@ -27,6 +27,7 @@ export async function exportJson(db: Db, userId: string, exportedAt: string) {
     db.select().from(holdingLots).where(eq(holdingLots.userId, userId)).orderBy(asc(holdingLots.date), asc(holdingLots.id)),
     db.select().from(holdingKinds).where(eq(holdingKinds.userId, userId)).orderBy(asc(holdingKinds.name)),
     db.select().from(holdingContributions).where(eq(holdingContributions.userId, userId)).orderBy(asc(holdingContributions.date), asc(holdingContributions.id)),
+    db.select().from(holdingPartnerEntries).where(eq(holdingPartnerEntries.userId, userId)).orderBy(asc(holdingPartnerEntries.date), asc(holdingPartnerEntries.id)),
     db.select().from(investmentAccounts).where(eq(investmentAccounts.userId, userId)).orderBy(asc(investmentAccounts.name)),
     db.select().from(insurancePolicies).where(eq(insurancePolicies.userId, userId)).orderBy(asc(insurancePolicies.createdAt), asc(insurancePolicies.id)),
     db.select().from(firePlan).where(eq(firePlan.userId, userId)),
@@ -55,6 +56,7 @@ export async function exportJson(db: Db, userId: string, exportedAt: string) {
     holdingLots: holdingLotRows.map(strip),
     holdingKinds: holdingKindRows.map(strip),
     holdingContributions: contributionRows.map(strip),
+    holdingPartnerEntries: partnerEntryRows.map(strip),
     investmentAccounts: investmentAccountRows.map(strip),
     insurancePolicies: policyRows.map(strip),
     firePlan: fireRows[0] ? strip(fireRows[0]) : null,

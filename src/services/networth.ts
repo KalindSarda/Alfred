@@ -8,8 +8,7 @@ import { bankBalance, cardOwed } from "../domain/balances";
 import { type IstDate, toIstDate } from "../domain/dates";
 import { emiToCome, instalmentSchedule } from "../domain/emi";
 import { type DebtFact, debtOutstandingAsOf, type MonthPoint, monthPoints, type NetWorthPoint, netWorthOf, trimLeading } from "../domain/networth";
-import { valuePaise } from "../domain/holdings";
-import { loadHoldings } from "./holdings";
+import { loadHoldings, myValueAt } from "./holdings";
 import { loanFacts } from "./loans";
 import { toLedgerAccount } from "./ledger";
 
@@ -86,7 +85,7 @@ async function computePoints(db: Db, userId: string, pointsFor: MonthPoint[]): P
       else youOwePaise += left;
     }
     let investmentsPaise = 0;
-    for (const f of held.facts.values()) investmentsPaise += valuePaise(f, p.asOf);
+    for (const id of held.facts.keys()) investmentsPaise += myValueAt(held, id, p.asOf);
     let loansPaise = 0;
     for (const l of loanList) loansPaise += Math.max(0, l.principalPaise - l.payments.filter((x) => x.date <= p.asOf).reduce((sum, x) => sum + x.amountPaise, 0));
     const parts = { banksPaise, cardsOwedPaise, emiToComePaise, owedToYouPaise, youOwePaise, investmentsPaise, loansPaise };

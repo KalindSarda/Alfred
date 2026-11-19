@@ -4,7 +4,8 @@ import { BROKER_COLORS, EXTRA_KIND_COLORS, KIND_COLORS, kindSummary, looseByKind
 
 const E4 = 10_000;
 
-const holding = (over: Partial<Holding>): Holding => ({
+const holding = (over: Partial<Holding>): Holding => {
+  const whole = {
   id: "h",
   name: "Holding",
   kind: "gold",
@@ -36,7 +37,10 @@ const holding = (over: Partial<Holding>): Holding => ({
   openingUnitsE4: 0,
   missingUnits: 0,
   ...over,
-});
+  };
+  // Not shared unless a test says so: your part is the whole of it.
+  return { myInvestedPaise: whole.investedPaise, myValuePaise: whole.valuePaise, myGainPaise: whole.gainPaise, shared: null, ...whole } as Holding;
+};
 
 describe("a kind's summary", () => {
   const coins = holding({
@@ -308,5 +312,32 @@ describe("the stacked bar of what you hold", () => {
 
   it("is empty when nothing is worth anything", () => {
     expect(worthSegments([{ id: "a", name: "Groww", valuePaise: 0 }], [])).toEqual([]);
+  });
+});
+
+describe("a holding shared with others", () => {
+  const shared = holding({
+    id: "s1",
+    name: "Tata",
+    kind: "stock",
+    kindName: "Stock",
+    tracking: "value",
+    unitLabel: null,
+    unitOne: null,
+    ratePer: 1,
+    investedPaise: 1_00_000_00,
+    valuePaise: 1_20_000_00,
+    gainPaise: 20_000_00,
+    myInvestedPaise: 60_000_00,
+    myValuePaise: 72_000_00,
+    myGainPaise: 12_000_00,
+    shared: { mySharePct: 60, partners: [] },
+  });
+
+  it("counts only your share in a kind's totals and in the bar", () => {
+    const solo = holding({ id: "s2", kind: "stock", kindName: "Stock", tracking: "value", valuePaise: 10_000_00, investedPaise: 8_000_00, gainPaise: 2_000_00 });
+    const k = kindSummary("stock", "Stock", [shared, solo]);
+    expect(k).toMatchObject({ valuePaise: 82_000_00, investedPaise: 68_000_00, gainPaise: 14_000_00 });
+    expect(worthSegments([], looseByKind([shared, solo], new Set()))[0]?.valuePaise).toBe(82_000_00);
   });
 });

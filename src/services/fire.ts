@@ -4,12 +4,10 @@ import type { Db } from "../db/client";
 import { firePlan } from "../db/schema";
 import type { IstDate } from "../domain/dates";
 import { coastNumber, fireNumber, monthsToFire, type ProjectionInput, progressPct, requiredSaving, type Sensitivity, sensitivity } from "../domain/fire";
-import type { HoldingFacts } from "../domain/holdings";
-import { valuePaise } from "../domain/holdings";
 import type { UpdateFirePlanData } from "../schemas/fire";
 import { nowIso } from "../utils/id";
 import { periodFacts } from "./health";
-import { loadHoldings } from "./holdings";
+import { loadHoldings, myValueAt } from "./holdings";
 import { listAccountsWithFigures } from "./ledger";
 import { getRunway } from "./runway";
 
@@ -115,7 +113,7 @@ export async function getFire(db: Db, userId: string, today: IstDate): Promise<F
   const bankPaise = figures.reduce((s, a) => s + (a.kind === "bank" && a.countsTowardSafeToSpend && !a.isEmergency ? Math.max(0, a.balancePaise - a.blockedPaise) : 0), 0);
   const holdings = loaded.rows
     .filter((r) => r.status === "active")
-    .map((r) => ({ id: r.id, name: r.name, kindName: loaded.kinds.get(r.kind)?.name ?? r.kind, paise: Math.max(0, valuePaise(loaded.facts.get(r.id) as HoldingFacts, today)), counts: r.countsForFire, inEmergencyFund: r.isEmergency }))
+    .map((r) => ({ id: r.id, name: r.name, kindName: loaded.kinds.get(r.kind)?.name ?? r.kind, paise: Math.max(0, myValueAt(loaded, r.id, today)), counts: r.countsForFire, inEmergencyFund: r.isEmergency }))
     .sort((a, b) => b.paise - a.paise);
   const holdingsPaise = holdings.filter((h) => h.counts && !h.inEmergencyFund).reduce((s, h) => s + h.paise, 0);
   const totalPaise = bankPaise + holdingsPaise;

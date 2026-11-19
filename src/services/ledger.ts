@@ -26,7 +26,7 @@ import { type IstDate, isValidIstDate } from "../domain/dates";
 import { emiToComeByCard } from "../db/emi";
 import { goalsSetAside } from "../db/goals";
 import { activeHoldTotals } from "../db/holds";
-import { hasNoCategory, isDebtType, isMovement } from "../domain/txnTypes";
+import { hasNoCategory, isDebtType, isMovement, isPartnerType } from "../domain/txnTypes";
 import { getHoldingRow } from "../db/holdings";
 import {
   checkTransactionShape,
@@ -92,6 +92,8 @@ function assertAccountKinds(v: Resolved, fromKind: "bank" | "card", toKind: "ban
     if (fromKind !== "bank") failShape([{ path: "accountId", message: "A loan is paid from a bank account" }]);
   } else if (isDebtType(v.type)) {
     if (fromKind !== "bank") failShape([{ path: "accountId", message: "Lent and borrowed money moves through a bank account" }]);
+  } else if (isPartnerType(v.type)) {
+    if (fromKind !== "bank") failShape([{ path: "accountId", message: "Money for a shared investment moves through a bank account" }]);
   }
 }
 
@@ -146,6 +148,7 @@ export async function createTransaction(
   // A sale is recorded from the holding, which keeps its value and the bank entry together.
   if (v.type === "investment_sale") failShape([{ path: "type", message: "Record a sale under Accounts, Investments" }]);
   if (v.type === "loan_payment") failShape([{ path: "type", message: "Loan instalments are recorded under Commitments, Loans" }]);
+  if (isPartnerType(v.type)) failShape([{ path: "type", message: "Record another person's money under Investments, Shared" }]);
   const resolved: Resolved = {
     type: v.type,
     amountPaise: v.amountPaise,
@@ -197,6 +200,9 @@ export async function updateTransaction(
   if (isDebtType(existing.type) || (parsed.data.type !== undefined && isDebtType(parsed.data.type))) {
     throw new ConflictError("This entry belongs to lent and borrowed money. Change it there.");
   }
+  if (isPartnerType(existing.type) || (parsed.data.type !== undefined && isPartnerType(parsed.data.type))) {
+    throw new ConflictError("This entry belongs to a shared investment. Change it there.");
+  }
   if (existing.loanId !== null || existing.type === "loan_payment" || parsed.data.type === "loan_payment") {
     throw new ConflictError("This entry is part of a loan instalment. Change it under Commitments, Loans.");
   }
@@ -243,6 +249,7 @@ export async function softDeleteTransaction(db: Db, userId: string, id: string):
   const row = await getTransactionRow(db, userId, id);
   if (!row) throw new NotFoundError("Transaction not found");
   if (isDebtType(row.type)) throw new ConflictError("This entry belongs to lent and borrowed money. Remove it there.");
+  if (isPartnerType(row.type)) throw new ConflictError("This entry belongs to a shared investment. Remove it there.");
   if (row.loanId !== null) throw new ConflictError("This entry is part of a loan instalment. Remove the instalment under Commitments, Loans.");
   const now = nowIso();
   await updateTransactionRow(db, userId, id, { deletedAt: now, updatedAt: now });

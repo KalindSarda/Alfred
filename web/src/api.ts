@@ -208,7 +208,7 @@ export interface Category {
   entryCount: number;
 }
 
-export type TxnType = "expense" | "income" | "transfer" | "bill_payment" | "investment" | "investment_sale" | "loan_payment" | "debt_out" | "debt_in";
+export type TxnType = "expense" | "income" | "transfer" | "bill_payment" | "investment" | "investment_sale" | "loan_payment" | "debt_out" | "debt_in" | "partner_in" | "partner_out";
 
 export interface DebtPayment {
   id: string;
@@ -491,6 +491,31 @@ export interface HoldingContribution {
   linked: { role: "primary" | "pension"; holdingId: string; holdingName: string; paise: number } | null;
 }
 
+/** One thing another person did on a shared holding: put money in, or was paid back. */
+export interface PartnerEntry {
+  id: string;
+  kind: "in" | "out";
+  date: string;
+  amountPaise: number;
+  /** Whether a bank entry was made for it. */
+  bank: boolean;
+  note: string | null;
+}
+
+/** One other person's part of a shared holding. */
+export interface HoldingPartner {
+  contactId: string;
+  name: string;
+  putInPaise: number;
+  paidOutPaise: number;
+  sharePct: number;
+  valuePaise: number;
+  gainPaise: number;
+  /** What you would still pay them if it were all sold at today's value. */
+  owedPaise: number;
+  entries: PartnerEntry[];
+}
+
 export interface Holding {
   id: string;
   name: string;
@@ -525,6 +550,12 @@ export interface Holding {
   lots: HoldingLot[];
   contributions: HoldingContribution[];
   missingUnits: number;
+  /** Your part of it: all of it when it is not shared. The numbers above are the whole holding. */
+  myInvestedPaise: number;
+  myValuePaise: number;
+  myGainPaise: number;
+  /** The other people in it, or null when it is only yours. */
+  shared: { partners: HoldingPartner[]; mySharePct: number } | null;
 }
 
 /** Something dated that is going to leave before the next salary. */
@@ -589,10 +620,33 @@ export interface InvestmentAccountsOverview {
   totalValuePaise: number;
 }
 
+export interface HoldingTotals {
+  valuePaise: number;
+  investedPaise: number;
+  gainPaise: number;
+}
+
+/** One other person across every shared holding. */
+export interface SharedPerson {
+  contactId: string;
+  name: string;
+  holdings: number;
+  putInPaise: number;
+  valuePaise: number;
+  gainPaise: number;
+  paidOutPaise: number;
+  owedPaise: number;
+}
+
 export interface HoldingsOverview {
+  /** The whole of every holding, other people's money in it too. */
   totalValuePaise: number;
   totalInvestedPaise: number;
   gainPaise: number;
+  /** Only your share of everything, and the part of it that is not shared. */
+  mine: HoldingTotals;
+  personal: HoldingTotals;
+  shared: { count: number; wholeValuePaise: number; wholeInvestedPaise: number; my: HoldingTotals; othersValuePaise: number; othersInvestedPaise: number; people: SharedPerson[] };
   holdings: Holding[];
 }
 

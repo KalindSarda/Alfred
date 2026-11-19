@@ -3,12 +3,10 @@ import type { Db } from "../db/client";
 import { transactions } from "../db/schema";
 import { addDays, cycleRange, type IstDate } from "../domain/dates";
 import { type EmergencyFund, emergencyFund } from "../domain/emergency";
-import type { HoldingFacts } from "../domain/holdings";
-import { valuePaise } from "../domain/holdings";
 import { type CycleFacts, MAX_CYCLES, type Pace, paceFromCycles, paceFromWindow } from "../domain/pace";
 import type { PeriodFacts } from "../domain/health";
 import { healthRange, periodFacts } from "./health";
-import { loadHoldings } from "./holdings";
+import { loadHoldings, myValueAt } from "./holdings";
 import { listAccountsWithFigures } from "./ledger";
 import { getRunway } from "./runway";
 import { getSettings } from "./settings";
@@ -58,7 +56,7 @@ export async function getEmergencyFund(db: Db, userId: string, today: IstDate): 
     .map((a) => ({ id: a.id, name: a.name, paise: a.kind === "bank" ? Math.max(0, a.balancePaise - a.blockedPaise) : 0 }));
   const holdings = loaded.rows
     .filter((r) => r.status === "active" && r.isEmergency)
-    .map((r) => ({ id: r.id, name: r.name, paise: Math.max(0, valuePaise(loaded.facts.get(r.id) as HoldingFacts, today)) }));
+    .map((r) => ({ id: r.id, name: r.name, paise: Math.max(0, myValueAt(loaded, r.id, today)) }));
 
   // What is spent in all, as a month at the recent rate; needs the same 14 days of history as the essentials figure.
   const days = runway.basedOnDays;

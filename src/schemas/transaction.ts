@@ -44,7 +44,7 @@ export function checkTransactionShape(v: {
   } else if (v.toAccountId) {
     issues.push({ path: "toAccountId", message: "Only transfers and bill payments have a destination" });
   }
-  if ((v.type === "investment" || v.type === "investment_sale" || v.type === "loan_payment") && v.categoryId) issues.push({ path: "categoryId", message: "Investments have no category" });
+  if ((v.type === "investment" || v.type === "investment_sale" || v.type === "loan_payment" || v.type === "partner_in" || v.type === "partner_out") && v.categoryId) issues.push({ path: "categoryId", message: "Investments have no category" });
   if (v.holdingId && v.type !== "investment") issues.push({ path: "holdingId", message: "Only an investment can belong to a holding" });
   if (isDebtType(v.type) && v.categoryId) issues.push({ path: "categoryId", message: "Lent and borrowed money has no category" });
   if (v.countsForDate && v.type !== "income") issues.push({ path: "countsForDate", message: "Only a refund or money paid back can count for an earlier day" });

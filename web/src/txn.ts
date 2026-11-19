@@ -22,6 +22,9 @@ export function describeTxn(
   if (txn.type === "investment") {
     return { title: txn.merchant || "Investment", sub: ["Investment", account, txn.note].filter(Boolean).join(" · ") };
   }
+  if (isPartner(txn.type)) {
+    return { title: txn.type === "partner_in" ? `From ${txn.merchant || "a partner"}` : `Paid ${txn.merchant || "a partner"}`, sub: [txn.type === "partner_in" ? "Shared investment" : "Shared investment payout", account, txn.note].filter(Boolean).join(" · ") };
+  }
   if (isDebt(txn.type)) {
     return { title: txn.merchant || "Lent and borrowed", sub: ["Lent and borrowed", account, txn.note].filter(Boolean).join(" · ") };
   }
@@ -34,21 +37,24 @@ export function describeTxn(
 /** Lent and borrowed entries are managed from Accounts, under Commitments, not edited like other entries. */
 export const isDebt = (type: Transaction["type"]): boolean => type === "debt_out" || type === "debt_in";
 
+/** Another person's money for a shared investment, and a payout back to them. */
+export const isPartner = (type: Transaction["type"]): boolean => type === "partner_in" || type === "partner_out";
+
 const isMovement = (type: Transaction["type"]) => type === "transfer" || type === "bill_payment";
 
 /** Income or expense with no category: needs one before it shows properly in cash flow. */
-export const needsCategory = (txn: Transaction): boolean => !isMovement(txn.type) && txn.type !== "investment" && txn.type !== "investment_sale" && txn.type !== "loan_payment" && !isDebt(txn.type) && txn.categoryId === null;
+export const needsCategory = (txn: Transaction): boolean => !isMovement(txn.type) && txn.type !== "investment" && txn.type !== "investment_sale" && txn.type !== "loan_payment" && !isDebt(txn.type) && !isPartner(txn.type) && txn.categoryId === null;
 
 export const amountTone = (type: Transaction["type"]): string =>
-  type === "income" ? "text-good" : isMovement(type) || type === "investment" || type === "investment_sale" || type === "loan_payment" || isDebt(type) ? "text-soft" : "";
+  type === "income" ? "text-good" : isMovement(type) || type === "investment" || type === "investment_sale" || type === "loan_payment" || isDebt(type) || isPartner(type) ? "text-soft" : "";
 
 export const amountSign = (type: Transaction["type"]): string =>
-  type === "income" || type === "debt_in" || type === "investment_sale" ? "+" : type === "expense" || type === "investment" || type === "loan_payment" || type === "debt_out" ? "−" : "";
+  type === "income" || type === "debt_in" || type === "investment_sale" || type === "partner_in" ? "+" : type === "expense" || type === "investment" || type === "loan_payment" || type === "debt_out" || type === "partner_out" ? "−" : "";
 
 /** Where an entry is managed when it is not edited like the others: lent and borrowed, an investment sale, or a loan instalment. */
 export function managedAt(txn: Pick<Transaction, "type" | "source">): string | null {
   if (txn.source === "loan" || txn.type === "loan_payment") return "/money?view=commitments#loans";
   if (isDebt(txn.type)) return "/money?view=commitments";
-  if (txn.type === "investment_sale") return "/money?view=investments";
+  if (txn.type === "investment_sale" || isPartner(txn.type)) return "/money?view=investments";
   return null;
 }

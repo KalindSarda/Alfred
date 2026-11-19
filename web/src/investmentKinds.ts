@@ -83,9 +83,10 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 /** Totals and the purchase list for the active holdings of one kind. */
 export function kindSummary(kindKey: string, kindName: string, holdings: Holding[]): KindSummary {
   const mine = holdings.filter((h) => h.kind === kindKey && h.status === "active");
-  const valuePaise = mine.reduce((s, h) => s + h.valuePaise, 0);
-  const investedPaise = mine.reduce((s, h) => s + h.investedPaise, 0);
-  const gainPaise = mine.reduce((s, h) => s + h.gainPaise, 0);
+  // Only your share counts: a holding shared with others adds what is yours of it.
+  const valuePaise = mine.reduce((s, h) => s + h.myValuePaise, 0);
+  const investedPaise = mine.reduce((s, h) => s + h.myInvestedPaise, 0);
+  const gainPaise = mine.reduce((s, h) => s + h.myGainPaise, 0);
   const counted = mine.filter((h) => h.tracking === "units");
 
   const withRate = counted.filter((h) => h.ratePaise !== null);

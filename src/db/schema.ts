@@ -77,7 +77,7 @@ export const transactions = sqliteTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull().references(() => users.id),
-    type: text("type", { enum: ["expense", "income", "transfer", "bill_payment", "investment", "investment_sale", "loan_payment", "debt_out", "debt_in"] }).notNull(),
+    type: text("type", { enum: ["expense", "income", "transfer", "bill_payment", "investment", "investment_sale", "loan_payment", "debt_out", "debt_in", "partner_in", "partner_out"] }).notNull(),
     amountPaise: integer("amount_paise").notNull(),
     txnDate: text("txn_date").notNull(),
     accountId: text("account_id").notNull().references(() => accounts.id),
@@ -677,6 +677,28 @@ export const holdingContributions = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (t) => [uniqueIndex("holding_contributions_recurring_uq").on(t.recurringRuleId, t.recurringOn), index("holding_contributions_holding_idx").on(t.holdingId), index("holding_contributions_link_idx").on(t.linkId), check("holding_contributions_amounts", sql`${t.ownPaise} >= 0 AND ${t.employerPaise} >= 0 AND ${t.ownPaise} + ${t.employerPaise} > 0`)],
+);
+
+/**
+ * Another person's money in a shared investment, or a payout back to them. "in" is what they put in (it gives them a share of the
+ * holding in proportion to the money put in); "out" is what was paid back. The bank entry (a partner_in or partner_out) is linked
+ * by `txnId`; an earlier stake with no bank entry has none.
+ */
+export const holdingPartnerEntries = sqliteTable(
+  "holding_partner_entries",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    holdingId: text("holding_id").notNull().references(() => holdings.id),
+    contactId: text("contact_id").notNull().references(() => contacts.id),
+    kind: text("kind", { enum: ["in", "out"] }).notNull(),
+    date: text("date").notNull(),
+    amountPaise: integer("amount_paise").notNull(),
+    txnId: text("txn_id"),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("holding_partner_holding_idx").on(t.holdingId), index("holding_partner_contact_idx").on(t.contactId), check("holding_partner_amount_positive", sql`${t.amountPaise} > 0`)],
 );
 
 /**

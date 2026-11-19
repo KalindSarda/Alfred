@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, isNull, lt, notInArray, or, sql, type SQL } fro
 import type { LedgerTxn } from "../domain/balances";
 import type { ListTransactionsData, TransactionDto } from "../schemas/transaction";
 import { ValidationError } from "../config/errors";
-import { DEBT_TYPES, FLOW_TYPES } from "../domain/txnTypes";
+import { DEBT_TYPES, FLOW_TYPES, PARTNER_TYPES } from "../domain/txnTypes";
 import type { Db } from "./client";
 import { transactions } from "./schema";
 
@@ -207,7 +207,7 @@ export async function lastTransactionRowBySource(
     .select()
     .from(transactions)
     // Lent and borrowed entries are undone from there, not with /undo.
-    .where(and(eq(transactions.userId, userId), eq(transactions.source, source), isNull(transactions.deletedAt), notInArray(transactions.type, [...DEBT_TYPES])))
+    .where(and(eq(transactions.userId, userId), eq(transactions.source, source), isNull(transactions.deletedAt), notInArray(transactions.type, [...DEBT_TYPES, ...PARTNER_TYPES])))
     .orderBy(desc(transactions.createdAt), desc(transactions.id))
     .limit(1);
   return row;

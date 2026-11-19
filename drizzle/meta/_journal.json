@@ -267,6 +267,13 @@
       "when": 1795092289557,
       "tag": "0037_contribution_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1795094384047,
+      "tag": "0038_holding_partners",
+      "breakpoints": true
     }
   ]
 }

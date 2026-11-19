@@ -10,9 +10,11 @@
  *   expense. Made only by the loans feature.
  * - debt_out and debt_in are money lent or repaid out of a bank account, and money borrowed or repaid into one. They are
  *   made only by the lent and borrowed feature, and are never income or expense.
+ * - partner_in and partner_out are money another person puts into a shared investment through your bank account, and a payout
+ *   back to them. They are made only by the shared investments feature, and are never income or expense.
  * Transfers and bill payments are "movements": they never count as income or expense.
  */
-export const TXN_TYPES = ["expense", "income", "transfer", "bill_payment", "investment", "investment_sale", "loan_payment", "debt_out", "debt_in"] as const;
+export const TXN_TYPES = ["expense", "income", "transfer", "bill_payment", "investment", "investment_sale", "loan_payment", "debt_out", "debt_in", "partner_in", "partner_out"] as const;
 export type TxnType = (typeof TXN_TYPES)[number];
 
 export const MOVEMENT_TYPES = ["transfer", "bill_payment"] as const;
@@ -23,5 +25,8 @@ export const isMovement = (type: TxnType): boolean => type === "transfer" || typ
 export const DEBT_TYPES = ["debt_out", "debt_in"] as const;
 export const isDebtType = (type: TxnType): boolean => type === "debt_out" || type === "debt_in";
 
+export const PARTNER_TYPES = ["partner_in", "partner_out"] as const;
+export const isPartnerType = (type: TxnType): boolean => type === "partner_in" || type === "partner_out";
+
 /** Movements, investments and loans are not income or expense, so they carry no category. */
-export const hasNoCategory = (type: TxnType): boolean => isMovement(type) || type === "investment" || type === "investment_sale" || type === "loan_payment" || isDebtType(type);
+export const hasNoCategory = (type: TxnType): boolean => isMovement(type) || type === "investment" || type === "investment_sale" || type === "loan_payment" || isDebtType(type) || isPartnerType(type);

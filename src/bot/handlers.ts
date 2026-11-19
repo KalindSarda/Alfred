@@ -522,7 +522,8 @@ async function fixEmiAmount(deps: BotDeps, who: Actor, txnId: string, paise: num
 
 async function cmdInvest(deps: BotDeps, who: Actor, today: IstDate): Promise<void> {
   const o = await listHoldings(deps.db, who.userId, today, "active");
-  await deps.telegram.sendMessage(who.chatId, investReply(o.holdings));
+  // Your share only: a holding shared with others counts for what is yours of it.
+  await deps.telegram.sendMessage(who.chatId, investReply(o.holdings.map((h) => ({ ...h, valuePaise: h.myValuePaise, gainPaise: h.myGainPaise }))));
 }
 
 /** Types what a holding is worth now: "/value tata 15200". Which one is asked about when the words fit none or several. */
@@ -843,7 +844,7 @@ async function cmdUndo(deps: BotDeps, who: Actor, c: BotContext): Promise<void> 
 function summaryOfTxn(t: ReturnType<typeof toDto>, c: BotContext): string {
   return describeEntry({
     // An investment reads like a spend in a short summary: the amount, what it was for, and the account.
-    type: t.type === "investment" || t.type === "investment_sale" || t.type === "loan_payment" || t.type === "debt_out" || t.type === "debt_in" ? "expense" : t.type,
+    type: t.type === "investment" || t.type === "investment_sale" || t.type === "loan_payment" || t.type === "debt_out" || t.type === "debt_in" || t.type === "partner_in" || t.type === "partner_out" ? "expense" : t.type,
     amountPaise: t.amountPaise,
     merchant: t.merchant,
     categoryName: t.categoryId ? (c.categoryNames.get(t.categoryId) ?? null) : null,

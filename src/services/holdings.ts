@@ -5,7 +5,8 @@ import { getAccount } from "../db/accounts";
 import { getHoldingRow, type HoldingRow } from "../db/holdings";
 import { getKindByKey, getKindRow, type HoldingKindRow, kindsByKey } from "../db/holdingKinds";
 import { getRuleRow, parseSkips } from "../db/recurring";
-import { accounts, holdingContributions, holdingLots, holdings, holdingValues, investmentAccounts, recurringRules, transactions } from "../db/schema";
+import { accounts, contacts, holdingContributions, holdingLots, holdingPartnerEntries, holdings, holdingValues, investmentAccounts, recurringRules, transactions } from "../db/schema";
+import { type Stake, splitHolding } from "../domain/partners";
 import { type IstDate, isValidIstDate } from "../domain/dates";
 import { formatRupees } from "../domain/money";
 import { avgCostPaise, gainPaise, gainPct, type HoldingFacts, type UnitsFacts, investedPaise, latestRate, latestValue, soldPaise, staleDays, unitOne, unitsHeldE4, valueAtRate, valuePaise } from "../domain/holdings";
@@ -42,6 +43,31 @@ export interface HoldingContributionDto {
   note: string | null;
   /** The entry it is linked to. This entry's own role: "primary" is the one the person made (its pension share went to the linked investment); "pension" is the one created from the other investment's entry. */
   linked: { role: "pension" | "primary"; holdingId: string; holdingName: string; paise: number } | null;
+}
+
+/** One thing another person did on a shared holding: put money in, or was paid back. */
+export interface PartnerEntryDto {
+  id: string;
+  kind: "in" | "out";
+  date: IstDate;
+  amountPaise: number;
+  /** Whether a bank entry was made for it. */
+  bank: boolean;
+  note: string | null;
+}
+
+/** One other person's part of a shared holding. */
+export interface HoldingPartnerDto {
+  contactId: string;
+  name: string;
+  putInPaise: number;
+  paidOutPaise: number;
+  sharePct: number;
+  valuePaise: number;
+  gainPaise: number;
+  /** What you would still pay them if it were all sold at today's value. */
+  owedPaise: number;
+  entries: PartnerEntryDto[];
 }
 
 export interface HoldingDto {
@@ -89,12 +115,41 @@ export interface HoldingDto {
   contributions: HoldingContributionDto[];
   /** Buys or sells with no quantity, which the held quantity cannot count. */
   missingUnits: number;
+  /** Your part of it: all of it when it is not shared, otherwise your share of the money put in. */
+  myInvestedPaise: number;
+  myValuePaise: number;
+  myGainPaise: number;
+  /** The other people in it, or null when it is only yours. */
+  shared: { partners: HoldingPartnerDto[]; mySharePct: number } | null;
+}
+
+export interface Totals {
+  valuePaise: number;
+  investedPaise: number;
+  gainPaise: number;
+}
+
+/** One other person across every shared holding. */
+export interface SharedPerson {
+  contactId: string;
+  name: string;
+  holdings: number;
+  putInPaise: number;
+  valuePaise: number;
+  gainPaise: number;
+  paidOutPaise: number;
+  owedPaise: number;
 }
 
 export interface HoldingsOverview {
+  /** The whole of every holding, other people's money in it too. */
   totalValuePaise: number;
   totalInvestedPaise: number;
   gainPaise: number;
+  /** Only your share of everything, and the part of it that is not shared. */
+  mine: Totals;
+  personal: Totals;
+  shared: { count: number; wholeValuePaise: number; wholeInvestedPaise: number; my: Totals; othersValuePaise: number; othersInvestedPaise: number; people: SharedPerson[] };
   holdings: HoldingDto[];
 }
 
@@ -116,11 +171,15 @@ export interface LoadedHoldings {
   kinds: Map<string, HoldingKindRow>;
   /** The person's broker accounts, by id. */
   brokers: Map<string, string>;
+  /** The other people in each holding, for splitting it. */
+  stakes: Map<string, Stake[]>;
+  /** The same people's entries, for showing them. */
+  partnerEntries: Map<string, (PartnerEntryDto & { contactId: string })[]>;
 }
 
 /** Everything about a person's holdings in three queries: the holdings, their typed values, and their linked entries. */
 export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldings> {
-  const [rows, values, txns, accountRows, lotRows, kinds, brokerRows, contributionRows] = await Promise.all([
+  const [rows, values, txns, accountRows, lotRows, kinds, brokerRows, contributionRows, partnerRows, contactRows] = await Promise.all([
     db.select().from(holdings).where(eq(holdings.userId, userId)),
     db.select().from(holdingValues).where(eq(holdingValues.userId, userId)),
     db
@@ -132,6 +191,8 @@ export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldin
     kindsByKey(db, userId),
     db.select({ id: investmentAccounts.id, name: investmentAccounts.name }).from(investmentAccounts).where(eq(investmentAccounts.userId, userId)),
     db.select().from(holdingContributions).where(eq(holdingContributions.userId, userId)),
+    db.select().from(holdingPartnerEntries).where(eq(holdingPartnerEntries.userId, userId)),
+    db.select({ id: contacts.id, name: contacts.name }).from(contacts).where(eq(contacts.userId, userId)),
   ]);
   const accountName = new Map(accountRows.map((a) => [a.id, a.name]));
   type Mutable = {
@@ -194,10 +255,33 @@ export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldin
     });
     contributions.set(c.holdingId, list);
   }
-  return { rows, facts: facts as Map<string, HoldingFacts>, entries, lots, contributions, kinds, brokers: new Map(brokerRows.map((b) => [b.id, b.name])) };
+  const contactName = new Map(contactRows.map((c) => [c.id, c.name]));
+  const stakes = new Map<string, Stake[]>();
+  const partnerEntries = new Map<string, (PartnerEntryDto & { contactId: string })[]>();
+  for (const p of partnerRows) {
+    if (!facts.has(p.holdingId)) continue;
+    const list = stakes.get(p.holdingId) ?? [];
+    let stake = list.find((s) => s.contactId === p.contactId);
+    if (!stake) {
+      stake = { contactId: p.contactId, name: contactName.get(p.contactId) ?? "", entries: [] };
+      list.push(stake);
+    }
+    (stake.entries as { date: IstDate; kind: "in" | "out"; amountPaise: number }[]).push({ date: p.date, kind: p.kind, amountPaise: p.amountPaise });
+    stakes.set(p.holdingId, list);
+    const shown = partnerEntries.get(p.holdingId) ?? [];
+    shown.push({ id: p.id, contactId: p.contactId, kind: p.kind, date: p.date, amountPaise: p.amountPaise, bank: p.txnId !== null, note: p.note });
+    partnerEntries.set(p.holdingId, shown);
+  }
+  return { rows, facts: facts as Map<string, HoldingFacts>, entries, lots, contributions, kinds, brokers: new Map(brokerRows.map((b) => [b.id, b.name])), stakes, partnerEntries };
 }
 
-function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lots: HoldingLotDto[], contributions: HoldingContributionDto[], today: IstDate, kind?: HoldingKindRow, brokerName: string | null = null): HoldingDto {
+/** What your own share of a holding is worth on a day (all of it when it is not shared). */
+export function myValueAt(loaded: LoadedHoldings, id: string, asOf: IstDate): number {
+  return splitHolding(loaded.facts.get(id) as HoldingFacts, loaded.stakes.get(id) ?? [], asOf).myValuePaise;
+}
+
+function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lots: HoldingLotDto[], contributions: HoldingContributionDto[], today: IstDate, kind?: HoldingKindRow, brokerName: string | null = null, stakes: Stake[] = [], partnerEntries: (PartnerEntryDto & { contactId: string })[] = []): HoldingDto {
+  const split = splitHolding(f, stakes, today);
   const rate = f.units ? latestRate(f.units, today) : null;
   const latest = f.units ? rate : latestValue(f, today);
   const unit = f.units ? (kind?.unit ?? null) : null;
@@ -235,29 +319,70 @@ function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lot
     lots: [...lots].sort((a, b) => b.date.localeCompare(a.date)),
     contributions: [...contributions].sort((a, b) => b.date.localeCompare(a.date)),
     missingUnits: f.units ? entries.filter((e) => e.unitsE4 === null).length : 0,
+    myInvestedPaise: split.myPutInPaise,
+    myValuePaise: split.myValuePaise,
+    myGainPaise: split.myGainPaise,
+    shared: split.shared
+      ? {
+          mySharePct: split.mySharePct,
+          partners: split.partners.map((p) => ({
+            contactId: p.contactId,
+            name: p.name,
+            putInPaise: p.putInPaise,
+            paidOutPaise: p.paidOutPaise,
+            sharePct: p.sharePct,
+            valuePaise: p.valuePaise,
+            gainPaise: p.gainPaise,
+            owedPaise: p.owedPaise,
+            entries: partnerEntries.filter((e) => e.contactId === p.contactId).map(({ contactId: _omit, ...e }) => e).sort((a, b) => b.date.localeCompare(a.date)),
+          })),
+        }
+      : null,
   };
 }
 
 /** Active holdings first, the most valuable first; closed ones after when asked for. */
 export async function listHoldings(db: Db, userId: string, today: IstDate, status: "active" | "all"): Promise<HoldingsOverview> {
-  const { rows, facts, entries, lots, contributions, kinds, brokers } = await loadHoldings(db, userId);
+  const { rows, facts, entries, lots, contributions, kinds, brokers, stakes, partnerEntries } = await loadHoldings(db, userId);
   const dtos = rows
     .filter((r) => status === "all" || r.status === "active")
-    .map((r) => toDto(r, facts.get(r.id) as HoldingFacts, entries.get(r.id) ?? [], lots.get(r.id) ?? [], contributions.get(r.id) ?? [], today, kinds.get(r.kind), r.investmentAccountId ? (brokers.get(r.investmentAccountId) ?? null) : null))
+    .map((r) => toDto(r, facts.get(r.id) as HoldingFacts, entries.get(r.id) ?? [], lots.get(r.id) ?? [], contributions.get(r.id) ?? [], today, kinds.get(r.kind), r.investmentAccountId ? (brokers.get(r.investmentAccountId) ?? null) : null, stakes.get(r.id) ?? [], partnerEntries.get(r.id) ?? []))
     .sort((a, b) => (a.status === b.status ? 0 : a.status === "active" ? -1 : 1) || b.valuePaise - a.valuePaise || a.name.localeCompare(b.name));
   const live = dtos.filter((h) => h.status === "active");
+  const sum = (list: HoldingDto[], pick: (h: HoldingDto) => number) => list.reduce((s, h) => s + pick(h), 0);
+  const totals = (list: HoldingDto[]): Totals => ({ valuePaise: sum(list, (h) => h.myValuePaise), investedPaise: sum(list, (h) => h.myInvestedPaise), gainPaise: sum(list, (h) => h.myGainPaise) });
+  const sharedLive = live.filter((h) => h.shared !== null);
+  const people = new Map<string, SharedPerson>();
+  for (const h of sharedLive) {
+    for (const p of h.shared?.partners ?? []) {
+      const cur = people.get(p.contactId) ?? { contactId: p.contactId, name: p.name, holdings: 0, putInPaise: 0, valuePaise: 0, gainPaise: 0, paidOutPaise: 0, owedPaise: 0 };
+      people.set(p.contactId, { ...cur, holdings: cur.holdings + 1, putInPaise: cur.putInPaise + p.putInPaise, valuePaise: cur.valuePaise + p.valuePaise, gainPaise: cur.gainPaise + p.gainPaise, paidOutPaise: cur.paidOutPaise + p.paidOutPaise, owedPaise: cur.owedPaise + p.owedPaise });
+    }
+  }
+  const othersValue = (h: HoldingDto) => h.valuePaise - h.myValuePaise;
   return {
-    totalValuePaise: live.reduce((s, h) => s + h.valuePaise, 0),
-    totalInvestedPaise: live.reduce((s, h) => s + h.investedPaise, 0),
-    gainPaise: live.reduce((s, h) => s + h.gainPaise, 0),
+    totalValuePaise: sum(live, (h) => h.valuePaise),
+    totalInvestedPaise: sum(live, (h) => h.investedPaise),
+    gainPaise: sum(live, (h) => h.gainPaise),
+    mine: totals(live),
+    personal: totals(live.filter((h) => h.shared === null)),
+    shared: {
+      count: sharedLive.length,
+      wholeValuePaise: sum(sharedLive, (h) => h.valuePaise),
+      wholeInvestedPaise: sum(sharedLive, (h) => h.investedPaise),
+      my: totals(sharedLive),
+      othersValuePaise: sum(sharedLive, othersValue),
+      othersInvestedPaise: sum(sharedLive, (h) => h.investedPaise - h.myInvestedPaise),
+      people: [...people.values()].sort((a, b) => b.valuePaise - a.valuePaise || a.name.localeCompare(b.name)),
+    },
     holdings: dtos,
   };
 }
 
 /** What the active holdings are worth now, for net worth. */
 export async function holdingsValue(db: Db, userId: string, today: IstDate): Promise<number> {
-  const { rows, facts } = await loadHoldings(db, userId);
-  return rows.filter((r) => r.status === "active").reduce((s, r) => s + valuePaise(facts.get(r.id) as HoldingFacts, today), 0);
+  const loaded = await loadHoldings(db, userId);
+  return loaded.rows.filter((r) => r.status === "active").reduce((s, r) => s + myValueAt(loaded, r.id, today), 0);
 }
 
 export async function getHolding(db: Db, userId: string, id: string, today: IstDate): Promise<HoldingDto> {
@@ -747,7 +872,7 @@ export async function deleteHolding(db: Db, userId: string, id: string): Promise
   if (!row) throw new NotFoundError("Holding not found");
   const linked = await db.select({ id: transactions.id }).from(transactions).where(and(eq(transactions.userId, userId), eq(transactions.holdingId, id), isNull(transactions.deletedAt))).limit(1);
   if (linked.length > 0) throw new ConflictError("Entries are linked to this holding. Close it instead.");
-  await db.batch([db.delete(recurringRules).where(and(eq(recurringRules.userId, userId), eq(recurringRules.type, "contribution"), eq(recurringRules.holdingId, id))), db.delete(holdingContributions).where(and(eq(holdingContributions.holdingId, id), eq(holdingContributions.userId, userId))), db.delete(holdingLots).where(and(eq(holdingLots.holdingId, id), eq(holdingLots.userId, userId))), db.delete(holdingValues).where(and(eq(holdingValues.holdingId, id), eq(holdingValues.userId, userId))), db.delete(holdings).where(and(eq(holdings.id, id), eq(holdings.userId, userId)))]);
+  await db.batch([db.delete(recurringRules).where(and(eq(recurringRules.userId, userId), eq(recurringRules.type, "contribution"), eq(recurringRules.holdingId, id))), db.delete(holdingPartnerEntries).where(and(eq(holdingPartnerEntries.holdingId, id), eq(holdingPartnerEntries.userId, userId))), db.delete(holdingContributions).where(and(eq(holdingContributions.holdingId, id), eq(holdingContributions.userId, userId))), db.delete(holdingLots).where(and(eq(holdingLots.holdingId, id), eq(holdingLots.userId, userId))), db.delete(holdingValues).where(and(eq(holdingValues.holdingId, id), eq(holdingValues.userId, userId))), db.delete(holdings).where(and(eq(holdings.id, id), eq(holdings.userId, userId)))]);
 }
 
 /**
