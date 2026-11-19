@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { morningPushLines } from "../alfred/botVoice";
+import { botVoice, morningPushLines } from "../alfred/botVoice";
 import type { TelegramApi } from "../bot/telegramApi";
 import type { Db } from "../db/client";
 import { checkinLog, salaryLog } from "../db/schema";
@@ -7,6 +7,7 @@ import { addDays, todayIst } from "../domain/dates";
 import { pushLines } from "../domain/salaryPlan";
 import { newId, nowIso } from "../utils/id";
 import { logger } from "../utils/logger";
+import { getAllowance } from "./allowance";
 import { getBriefing } from "./alfred";
 import { chatsFor } from "./recurringJob";
 import { buildSalaryPlan, salaryEntries } from "./salary";
@@ -77,7 +78,14 @@ export async function runMorningPush(deps: PlanJobDeps): Promise<{ sent: number 
       if (attention.length === 0) continue;
       const claimed = await db.insert(checkinLog).values({ id: newId(), userId, kind: "morning", day: today, createdAt: nowIso() }).onConflictDoNothing().returning({ id: checkinLog.id });
       if (claimed.length === 0) continue;
-      const safe = briefing.lines.find((l) => l.key === "position")?.text ?? null;
+      let safe = briefing.lines.find((l) => l.key === "position")?.text ?? null;
+      // The week's allowance rides along, when there is one; a failure here must not stop the briefing.
+      try {
+        const a = await getAllowance(db, userId, today);
+        if (a.week) safe = [safe, botVoice.weekSummary(a.week, a.pace?.aheadPaise ?? null, a.streak.current)].filter(Boolean).join("\n");
+      } catch (error) {
+        logger.error("morning_allowance_failed", { error: error instanceof Error ? error.message : "unknown" });
+      }
       try {
         await telegram.sendMessage(chat, morningPushLines(briefing.greeting, safe, attention.map((l) => l.text)).join("\n"));
         sent += 1;

@@ -753,6 +753,17 @@ export const botVoice = {
   /** A month added to an investment by a contribution rule, with the pension share if there was one. */
   contributionAdded: (holdingName: string, ownPaise: number, employerPaise: number, pensionPaise: number, pensionHoldingName: string | null, pensionLeftOut: boolean) =>
     `Added your ${holdingName} month: ${rupees(ownPaise + employerPaise)}${pensionPaise > 0 ? ` and ${rupees(pensionPaise)} to ${pensionHoldingName ?? "the pension investment"}` : ""}. ${pensionLeftOut ? "The pension share was left out, since its investment is closed. " : ""}Check it against your passbook; if it differs, edit it in Alfred.`,
+  /** This week's allowance in a line or two, with the pace of the period and the no-spend run. */
+  weekSummary: (w: { budgetPaise: number; leftPaise: number; overPaise: number; perDayPaise: number }, aheadPaise: number | null, streakDays: number) =>
+    [
+      w.overPaise > 0 ? `This week is ${rupees(w.overPaise)} over its ${rupees(w.budgetPaise)}, so the weeks after will be a little tighter.` : `This week: ${rupees(w.leftPaise)} left of ${rupees(w.budgetPaise)}, about ${rupees(w.perDayPaise)} a day.`,
+      aheadPaise === null ? null : aheadPaise >= 0 ? `You are ${rupees(aheadPaise)} under the pace for the period.` : `You are ${rupees(-aheadPaise)} over the pace for the period.`,
+      streakDays >= 2 ? `${streakDays} no-spend days in a row.` : null,
+    ]
+      .filter((x): x is string => x !== null)
+      .join(" "),
+  /** Said after "Nothing today" once there is a run worth naming. */
+  noSpendRun: (days: number, best: number) => (days >= 2 ? ` That makes ${days} no-spend days in a row${days >= best ? ", your best yet" : `, against your best of ${best}`}.` : ""),
   recurringConfirmed: (title: string) => `Confirmed. ${title} now counts in your records.`,
   recurringDiscarded: (title: string) => `Removed. ${title} for that day is gone from your records.`,
   recurringSettled: "That one has already been settled.",

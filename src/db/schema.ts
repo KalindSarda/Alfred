@@ -702,6 +702,23 @@ export const holdingPartnerEntries = sqliteTable(
 );
 
 /**
+ * Money to move out first each period, before anything is called spendable: a transfer to a savings account, money to invest.
+ * It repeats every period; `doneFor` is the period start it was last moved for, so it counts as still to move until then.
+ */
+export const periodReserves = sqliteTable(
+  "period_reserves",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    name: text("name").notNull(),
+    amountPaise: integer("amount_paise").notNull(),
+    doneFor: text("done_for"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("period_reserves_user_idx").on(t.userId), check("period_reserves_amount_positive", sql`${t.amountPaise} > 0`)],
+);
+
+/**
  * A bank loan. What is still owed is `principalPaise` (outstanding when tracking began) less the principal repaid since,
  * which comes from the loan_payment entries; interest is each month's outstanding at the rate. Instalments are added on
  * the due date from the paying bank.

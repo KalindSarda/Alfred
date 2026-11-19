@@ -4,6 +4,7 @@ import { rupeesCompact } from "../format";
 import { planPath } from "../planView";
 import { useBudgets, useEmergencyFund, useFire, useGoals, useLadder, useProtection } from "../queries";
 import { Link } from "../router";
+import { MoveFirstCard } from "./Allowance";
 import { Card, Icon } from "./ui";
 
 function Bar({ pct, color = BLUE }: { pct: number | null; color?: string }) {
@@ -50,6 +51,7 @@ export function PlanOverview() {
 
   return (
     <div className="space-y-3">
+      <MoveFirstCard />
       {ladder && (
         <Card id="foundations" className="space-y-3">
           <div className="flex items-baseline justify-between gap-3">

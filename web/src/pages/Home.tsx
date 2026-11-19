@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { daysBetween, inDays } from "../../../src/alfred/voice";
 import type { CardAccount } from "../api";
 import { AlfredPanel } from "../components/Alfred";
+import { AllowanceCard } from "../components/Allowance";
 import { Breakdown } from "../components/Breakdown";
 import { CashflowCard } from "../components/CashflowCard";
 import { CashflowToday } from "../components/CashflowToday";
@@ -161,6 +162,7 @@ export function Home() {
       <div className="space-y-6">
         <h1 className="sr-only">Today</h1>
         {panel}
+        <AllowanceCard />
         <CommitmentsCard />
         <CashflowToday period={period} />
         {overview.data && <NetWorthToday overview={overview.data} />}
@@ -176,6 +178,7 @@ export function Home() {
     <div className="space-y-6">
       <h1 className="sr-only">Today</h1>
       {panel}
+      <AllowanceCard />
       <CommitmentsCard />
       {overview.data && <Shortcuts overview={overview.data} />}
       <CashflowTiles period={period} />

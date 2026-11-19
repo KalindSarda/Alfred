@@ -41,6 +41,7 @@ import { balanceOverview, setArchived, toAccountDto } from "../services/accounts
 import { getCashflow } from "../services/cashflow";
 import { createCategory } from "../services/categories";
 import { listPlans } from "../services/emi";
+import { getStreak } from "../services/allowance";
 import { listRules } from "../services/recurring";
 import { createDebt, deleteDebt, listDebts, settleDebt, updateDebt } from "../services/debts";
 import { getDebtRow } from "../db/debts";
@@ -1133,7 +1134,8 @@ async function handleCallback(deps: BotDeps, query: NonNullable<TelegramUpdateDa
       const today = todayIst(new Date(deps.now()));
       if (id === "n") {
         await deps.db.insert(checkinLog).values({ id: newId(), userId, kind: "none_today", day: today, createdAt: nowIso() }).onConflictDoNothing();
-        await reply(deps, to, botVoice.noneToday);
+        const run = await getStreak(deps.db, userId, today);
+        await reply(deps, to, `${botVoice.noneToday}${botVoice.noSpendRun(run.current, run.best)}`);
       } else {
         const until = addDays(today, 7);
         await updateSettings(deps.db, userId, { logNudgeUntil: until });

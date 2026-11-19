@@ -648,6 +648,44 @@ export interface InvestmentAccountsOverview {
   totalValuePaise: number;
 }
 
+/** Money to move out first each period. */
+export interface Reserve {
+  id: string;
+  name: string;
+  amountPaise: number;
+  /** Already moved this period. */
+  moved: boolean;
+}
+
+/** The weekly allowance, the pace of the period, and the no-spend streak. */
+export interface Allowance {
+  from: string;
+  until: string;
+  basis: "salary" | "month";
+  today: string;
+  freeToSpendPaise: number;
+  goalsPaise: number;
+  reservesPaise: number;
+  flexiblePaise: number;
+  week: {
+    index: number;
+    of: number;
+    from: string;
+    to: string;
+    budgetPaise: number;
+    spentPaise: number;
+    leftPaise: number;
+    overPaise: number;
+    perDayPaise: number;
+    daysLeft: number;
+    nextWeekPaise: number | null;
+  } | null;
+  pace: { spentPaise: number; expectedPaise: number; aheadPaise: number } | null;
+  streak: { current: number; best: number; todayCounts: boolean };
+  nothingToday: boolean;
+  reserves: Reserve[];
+}
+
 export interface HoldingTotals {
   valuePaise: number;
   investedPaise: number;

@@ -129,6 +129,17 @@ describe("the evening check-in", () => {
     expect(mine(w).length).toBe(sent + 1);
   });
 
+  it("Nothing today names the run of no-spend days once there is one", async () => {
+    const w = await world();
+    await expense(w);
+    await loggedOn(w, "2026-10-24");
+    for (const day of ["2026-10-25", "2026-10-26"]) await db.insert(checkinLog).values({ id: newId(), userId: w.user.id, kind: "none_today", day, createdAt: nowIso() });
+    await night(w, "2026-10-27");
+    const m = mine(w).at(-1)!;
+    await w.press(w.button(m, "Nothing today"), m.id);
+    expect(m.text).toBe("Understood. A quiet day, noted. I shall not ask again tonight. That makes 3 no-spend days in a row, your best yet.");
+  });
+
   it("the Sunday balance check replaces the evening check-in", async () => {
     const w = await world();
     await expense(w, { txnDate: "2026-10-26" });

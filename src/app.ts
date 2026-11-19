@@ -25,6 +25,7 @@ import { commitmentRoutes } from "./routes/commitments";
 import { holdingKindRoutes } from "./routes/holdingKinds";
 import { contactRoutes, debtRoutes } from "./routes/debts";
 import { partnerRoutes } from "./routes/partners";
+import { allowanceRoutes } from "./routes/allowance";
 import { goalRoutes } from "./routes/goals";
 import { hintRoutes } from "./routes/hints";
 import { holdingRoutes } from "./routes/holdings";
@@ -120,6 +121,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/recurring", recurringRoutes);
   app.route("/api/debts", debtRoutes);
   app.route("/api/partners", partnerRoutes);
+  app.route("/api/allowance", allowanceRoutes);
   app.route("/api/contacts", contactRoutes);
   app.route("/api/goals", goalRoutes);
   app.route("/api/entry-hints", hintRoutes);
