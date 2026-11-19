@@ -83,7 +83,7 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
     .sort((x, y) => x.dueDate.localeCompare(y.dueDate));
   const attention = goalOverview.goals.filter((g) => g.needsAttention && g.targetDate).sort((x, y) => (x.targetDate as string).localeCompare(y.targetDate as string))[0];
   const soon = rules
-    .filter((r) => r.status === "active" && r.nextDate !== null && daysBetween(today, r.nextDate) <= 7)
+    .filter((r) => r.type !== "contribution" && r.status === "active" && r.nextDate !== null && daysBetween(today, r.nextDate) <= 7)
     .sort((a, b) => (a.nextDate as string).localeCompare(b.nextDate as string))[0];
   const upcoming = emiPlans.filter((p) => p.status === "active" && p.nextDate !== null && p.nextAmountPaise !== null).sort((a, b) => (a.nextDate as string).localeCompare(b.nextDate as string))[0];
   const cards = figures.flatMap((a) =>
@@ -129,7 +129,7 @@ export async function getBriefing(db: Db, userId: string, today: IstDate, now: D
         count: goalOverview.goals.length,
         attention: attention ? { name: attention.name, remainingPaise: attention.remainingPaise, targetDate: attention.targetDate as string } : null,
       },
-      recurring: soon ? { title: soon.title, type: soon.type, amountPaise: soon.amountPaise, date: soon.nextDate as string } : null,
+      recurring: soon && soon.type !== "contribution" ? { title: soon.title, type: soon.type, amountPaise: soon.amountPaise, date: soon.nextDate as string } : null,
       emi: {
         toComePaise: balanceOverview(figures).emiToComePaise,
         next: upcoming ? { title: upcoming.title, amountPaise: upcoming.nextAmountPaise as number, date: upcoming.nextDate as string } : null,

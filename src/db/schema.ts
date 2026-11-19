@@ -312,9 +312,11 @@ export const recurringRules = sqliteTable(
     id: text("id").primaryKey(),
     userId: text("user_id").notNull().references(() => users.id),
     title: text("title").notNull(),
-    type: text("type", { enum: ["expense", "income", "investment"] }).notNull(),
+    type: text("type", { enum: ["expense", "income", "investment", "contribution"] }).notNull(),
+    /** For a contribution, the own and employer shares together. */
     amountPaise: integer("amount_paise").notNull(),
-    accountId: text("account_id").notNull().references(() => accounts.id),
+    /** No account for a contribution: it adds to an investment valued by typing, with no bank entry. */
+    accountId: text("account_id").references(() => accounts.id),
     categoryId: text("category_id").references(() => categories.id),
     frequency: text("frequency", { enum: ["weekly", "monthly", "yearly"] }).notNull(),
     /** Weekly: 1 (Monday) to 7 (Sunday). Monthly and yearly: the day of the month, a day the month lacks becoming its last. */
@@ -333,6 +335,11 @@ export const recurringRules = sqliteTable(
     pausedAt: text("paused_at"),
     /** An investment rule (a SIP) can add to a holding: the entries it makes carry the link. */
     holdingId: text("holding_id"),
+    /** A contribution rule's parts: the person's share, the employer's, and a pension share that goes to another investment. */
+    ownPaise: integer("own_paise").notNull().default(0),
+    employerPaise: integer("employer_paise").notNull().default(0),
+    pensionPaise: integer("pension_paise").notNull().default(0),
+    pensionHoldingId: text("pension_holding_id"),
     createdAt: text("created_at").notNull(),
   },
   (t) => [
@@ -664,9 +671,12 @@ export const holdingContributions = sqliteTable(
     /** "primary" for the entry the person made, "pension" for the one it created. */
     linkRole: text("link_role", { enum: ["primary", "pension"] }),
     note: text("note"),
+    /** The recurring rule and due day that made this entry, so a due day gets one entry. Only on the primary entry of a pair. */
+    recurringRuleId: text("recurring_rule_id"),
+    recurringOn: text("recurring_on"),
     createdAt: text("created_at").notNull(),
   },
-  (t) => [index("holding_contributions_holding_idx").on(t.holdingId), index("holding_contributions_link_idx").on(t.linkId), check("holding_contributions_amounts", sql`${t.ownPaise} >= 0 AND ${t.employerPaise} >= 0 AND ${t.ownPaise} + ${t.employerPaise} > 0`)],
+  (t) => [uniqueIndex("holding_contributions_recurring_uq").on(t.recurringRuleId, t.recurringOn), index("holding_contributions_holding_idx").on(t.holdingId), index("holding_contributions_link_idx").on(t.linkId), check("holding_contributions_amounts", sql`${t.ownPaise} >= 0 AND ${t.employerPaise} >= 0 AND ${t.ownPaise} + ${t.employerPaise} > 0`)],
 );
 
 /**

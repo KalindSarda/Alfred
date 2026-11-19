@@ -41,7 +41,7 @@ export async function runRecurring(deps: RecurringJobDeps): Promise<RecurringJob
   const today = todayIst(new Date(deps.now()));
   const result: RecurringJobResult = { added: 0, sent: 0 };
 
-  const { added, drafts } = await materializeAllRules(db, today, (error) => logger.error("recurring_user_failed", { error: error instanceof Error ? error.message : "unknown" }));
+  const { added, drafts, contributions } = await materializeAllRules(db, today, (error) => logger.error("recurring_user_failed", { error: error instanceof Error ? error.message : "unknown" }));
   result.added = added;
   const chats = await chatsFor(db);
 
@@ -55,6 +55,17 @@ export async function runRecurring(deps: RecurringJobDeps): Promise<RecurringJob
       result.sent += 1;
     } catch (error) {
       logger.error("recurring_draft_message_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+  }
+
+  for (const c of contributions) {
+    const chat = chats.get(c.userId);
+    if (!chat) continue;
+    try {
+      await telegram.sendMessage(chat, botVoice.contributionAdded(c.holdingName, c.ownPaise, c.employerPaise, c.pensionPaise, c.pensionHoldingName, c.pensionLeftOut));
+      result.sent += 1;
+    } catch (error) {
+      logger.error("recurring_contribution_message_failed", { error: error instanceof Error ? error.message : "unknown" });
     }
   }
 

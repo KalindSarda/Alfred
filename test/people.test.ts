@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { invitationMessages } from "../src/alfred/messages";
-import { accounts, categories, invites, sessions, transactions, users } from "../src/db/schema";
+import { accounts, categories, holdingContributions, holdings, investmentAccounts, invites, recurringRules, sessions, transactions, users } from "../src/db/schema";
 import { linkTelegram, login, makeApp, registeredUser, uniqueEmail, type TestApp } from "./api-helpers";
 import { db } from "./helpers";
 
@@ -230,6 +230,21 @@ describe("deleting a person's data", () => {
     expect(await db.select().from(sessions).where(eq(sessions.userId, m.id))).toHaveLength(0);
     expect(((await bystander.api("GET", "/api/accounts")).json.items as Json[]).map((a) => a.name)).toEqual(["Theirs"]);
     expect(((await bystander.api("GET", "/api/categories")).json.items as Json[]).length).toBeGreaterThan(20);
+  });
+
+  it("removes their investment contributions, broker accounts and contribution rules too", async () => {
+    const o = await owner();
+    const m = await invitedMember(o);
+    const epf = (await m.api("POST", "/api/holdings", { name: "EPF", kind: "retirement", investedPaise: 0, valuePaise: 10_000_00, valueDate: "2026-10-01" })).json;
+    await m.api("POST", `/api/holdings/${epf.id}/contributions`, { date: "2026-10-15", ownPaise: 1_800_00, employerPaise: 550_00 });
+    await m.api("POST", "/api/recurring", { type: "contribution", holdingId: epf.id, ownPaise: 1_800_00, employerPaise: 550_00, frequency: "monthly", day: 15, startDate: "2026-12-15" });
+    await m.api("POST", "/api/investment-accounts", { name: "Groww" });
+    await o.api("POST", `/api/people/${m.id}/disable`);
+    expect((await o.api("DELETE", `/api/people/${m.id}`)).status).toBe(204);
+    expect(await db.select().from(holdingContributions).where(eq(holdingContributions.userId, m.id))).toHaveLength(0);
+    expect(await db.select().from(investmentAccounts).where(eq(investmentAccounts.userId, m.id))).toHaveLength(0);
+    expect(await db.select().from(recurringRules).where(eq(recurringRules.userId, m.id))).toHaveLength(0);
+    expect(await db.select().from(holdings).where(eq(holdings.userId, m.id))).toHaveLength(0);
   });
 
   it("does not let the deleted person back in, until they are invited again", async () => {

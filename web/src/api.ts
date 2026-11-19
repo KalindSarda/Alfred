@@ -168,13 +168,21 @@ export interface EmiPlan {
 export interface RecurringRule {
   id: string;
   title: string;
-  type: "expense" | "income" | "investment";
+  type: "expense" | "income" | "investment" | "contribution";
+  /** For a contribution, your share and the employer's together. */
   amountPaise: number;
-  accountId: string;
-  accountName: string;
+  /** Null on a contribution: it adds to an investment, with no bank entry. */
+  accountId: string | null;
+  accountName: string | null;
   categoryId: string | null;
   categoryName: string | null;
   holdingId: string | null;
+  holdingName: string | null;
+  ownPaise: number;
+  employerPaise: number;
+  pensionPaise: number;
+  pensionHoldingId: string | null;
+  pensionHoldingName: string | null;
   frequency: "weekly" | "monthly" | "yearly";
   day: number;
   month: number | null;

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { type Holding, type HoldingContribution, type HoldingEntry, type HoldingKind, type HoldingLot, api, describeError } from "../api";
 import { rupeesToPaise } from "../filters";
 import { e4ToQty, paiseToInput, qtyToE4, rupees, rupeesCompact, shortDate, today } from "../format";
-import { useAccounts, useHoldingKinds, useHoldings, useInvestmentAccounts, useRefreshMoney } from "../queries";
+import { useAccounts, useHoldingKinds, useHoldings, useInvestmentAccounts, useRecurring, useRefreshMoney } from "../queries";
+import { Link } from "../router";
 import { byNewest, type KindPurchase, type KindSummary, looseByKind, purchasesOf, type WorthSegment, worthSegments } from "../investmentKinds";
 import { NewKindSheet } from "./InvestmentKinds";
 import { AccountSelect, AccountsSheet, MoveSheet } from "./InvestmentAccounts";
@@ -477,6 +478,10 @@ function ContributionSheet({ holding, editing, onClose }: { holding: Holding; ed
   const [pension, setPension] = useState(given ? paiseToInput(given.paise) : "");
   const [target, setTarget] = useState(given?.holdingId ?? others.find((h) => /pension|eps/i.test(h.name))?.id ?? "");
   const [note, setNote] = useState(editing?.note ?? "");
+  const rules = useRecurring().data ?? [];
+  const existingRule = rules.find((r) => r.type === "contribution" && r.holdingId === holding.id);
+  const [repeat, setRepeat] = useState(false);
+  const creditDay = Number(date.slice(8, 10)) || 1;
 
   const save = () => {
     const mine = own.trim() ? rupeesToPaise(own) : 0;
@@ -486,10 +491,18 @@ function ContributionSheet({ holding, editing, onClose }: { holding: Holding; ed
     if (mine + theirs <= 0) return setError("Enter your share or the employer's.");
     if (pens > 0 && !target) return setError("Choose the investment the pension share goes to, or leave the pension share empty.");
     const body = { date, ...(mine ? { ownPaise: mine } : {}), ...(theirs ? { employerPaise: theirs } : {}), ...(pens > 0 ? { pensionPaise: pens, pensionHoldingId: target } : {}), ...(note.trim() ? { note: note.trim() } : {}) };
-    void run(
-      () => (editing ? api.patch(`/api/holdings/${holding.id}/contributions/${editing.id}`, body) : api.post(`/api/holdings/${holding.id}/contributions`, body)),
-      editing ? "Saved." : "Contribution added.",
-    );
+    // Repeating: the next month's credit day is where the rule starts, so the month just typed is not added twice.
+    const first = new Date(`${date}T00:00:00Z`);
+    first.setUTCDate(1);
+    first.setUTCMonth(first.getUTCMonth() + 1);
+    const startDate = first.toISOString().slice(0, 10);
+    void run(async () => {
+      if (editing) return api.patch(`/api/holdings/${holding.id}/contributions/${editing.id}`, body);
+      await api.post(`/api/holdings/${holding.id}/contributions`, body);
+      if (repeat && !existingRule) {
+        await api.post("/api/recurring", { type: "contribution", holdingId: holding.id, ownPaise: mine, employerPaise: theirs, pensionPaise: pens, pensionHoldingId: pens > 0 ? target : null, frequency: "monthly", day: creditDay, startDate });
+      }
+    }, editing ? "Saved." : repeat && !existingRule ? "Contribution added. It will repeat every month." : "Contribution added.");
   };
 
   return (
@@ -530,6 +543,17 @@ function ContributionSheet({ holding, editing, onClose }: { holding: Holding; ed
         <Field label="Note (optional)">
           <input className={inputClass} maxLength={200} autoComplete="off" placeholder="Wage month Nov" value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
+        {!editing && !existingRule && (
+          <label className="flex min-h-11 items-start gap-3 text-sm">
+            <input type="checkbox" className="mt-1 size-4" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} />
+            <span>
+              Repeat every month on the {creditDay}
+              {creditDay > 28 ? " (or the last day)" : ""}
+              <span className="block text-xs text-soft">Alfred adds the same amounts by itself from next month and tells you on Telegram.</span>
+            </span>
+          </label>
+        )}
+        {!editing && existingRule && <p className="text-xs text-soft">This one already repeats every month ({existingRule.repeat.charAt(0).toLowerCase()}{existingRule.repeat.slice(1)}).</p>}
         <ErrorText>{error}</ErrorText>
         <Button type="submit" className="w-full" disabled={busy}>
           {editing ? "Save" : "Add"}
@@ -809,6 +833,7 @@ function HoldingButtons({ h, onAct }: { h: Holding; onAct: (what: Act) => void }
   const kindUnit = unitOfKind((useHoldingKinds().data ?? []).find((k) => k.key === h.kind));
   // Retirement money, or anything that already has entries, offers contributions up front; the rest keep it under More.
   const prominentContribution = h.kind === "retirement" || h.contributions.length > 0;
+  const repeating = (useRecurring().data ?? []).find((r) => r.type === "contribution" && r.holdingId === h.id);
 
   if (h.status !== "active") {
     return (
@@ -843,6 +868,17 @@ function HoldingButtons({ h, onAct }: { h: Holding; onAct: (what: Act) => void }
           More <Chevron open={more} className="ml-1 inline" />
         </Button>
       </div>
+      {repeating && (
+        <p className="text-xs text-soft">
+          Repeats: {rupees(repeating.amountPaise)} {repeating.repeat.charAt(0).toLowerCase()}
+          {repeating.repeat.slice(1)}
+          {repeating.status === "paused" ? " (paused)" : ""}
+          {repeating.pensionPaise > 0 ? ` and ${rupees(repeating.pensionPaise)} to ${repeating.pensionHoldingName ?? "pension"}` : ""} ·{" "}
+          <Link to="/plan?view=recurring" className="text-brand hover:underline">
+            Manage
+          </Link>
+        </p>
+      )}
       {more && (
         <div className="flex flex-wrap gap-2">
           <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("edit")}>

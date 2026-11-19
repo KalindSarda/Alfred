@@ -1,15 +1,16 @@
-import { and, count, eq, isNull } from "drizzle-orm";
+import { and, count, eq, isNotNull, isNull } from "drizzle-orm";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
 import { getHoldingRow } from "../db/holdings";
 import { getAccount } from "../db/accounts";
 import { getCategory } from "../db/categories";
 import { getRuleRow, parseSkips, type RuleRow, toRuleShape } from "../db/recurring";
-import { accounts, categories, recurringRules, transactions } from "../db/schema";
+import { accounts, categories, holdingContributions, holdings, recurringRules, transactions } from "../db/schema";
 import { addDays, type IstDate, isValidIstDate, toIstDate } from "../domain/dates";
 import { occurrencesBetween, repeatLabel, ruleDayIsValid } from "../domain/recurring";
 import type { CreateRecurringData, UpdateRecurringData } from "../schemas/recurring";
 import { newId, nowIso } from "../utils/id";
+import { contributionRows } from "./holdings";
 
 /** A rule that starts long ago adds only its latest this many missed entries, so one rule never floods the ledger. */
 export const MAX_BACKFILL = 36;
@@ -17,14 +18,23 @@ export const MAX_BACKFILL = 36;
 export interface RecurringDto {
   id: string;
   title: string;
-  type: "expense" | "income" | "investment";
+  type: "expense" | "income" | "investment" | "contribution";
+  /** For a contribution, your share and the employer's together. */
   amountPaise: number;
-  accountId: string;
-  accountName: string;
+  /** Null on a contribution: it adds to an investment, with no bank entry. */
+  accountId: string | null;
+  accountName: string | null;
   categoryId: string | null;
   categoryName: string | null;
-  /** The holding a SIP adds to, if any. */
+  /** The holding a SIP or a contribution adds to, if any. */
   holdingId: string | null;
+  holdingName: string | null;
+  /** A contribution's parts, and where a pension share goes. */
+  ownPaise: number;
+  employerPaise: number;
+  pensionPaise: number;
+  pensionHoldingId: string | null;
+  pensionHoldingName: string | null;
   frequency: "weekly" | "monthly" | "yearly";
   day: number;
   month: number | null;
@@ -46,11 +56,22 @@ export interface RecurringDto {
 const invalid = (path: string, message: string) => new ValidationError("Request validation failed", [{ path, message }]);
 
 async function madeDates(db: Db, userId: string, ruleId: string): Promise<Set<string>> {
-  const rows = await db
-    .select({ on: transactions.recurringOn })
-    .from(transactions)
-    .where(and(eq(transactions.userId, userId), eq(transactions.recurringRuleId, ruleId)));
-  return new Set(rows.flatMap((r) => (r.on ? [r.on] : [])));
+  const [rows, contributions] = await Promise.all([
+    db.select({ on: transactions.recurringOn }).from(transactions).where(and(eq(transactions.userId, userId), eq(transactions.recurringRuleId, ruleId))),
+    db.select({ on: holdingContributions.recurringOn }).from(holdingContributions).where(and(eq(holdingContributions.userId, userId), eq(holdingContributions.recurringRuleId, ruleId))),
+  ]);
+  return new Set([...rows, ...contributions].flatMap((r) => (r.on ? [r.on] : [])));
+}
+
+/** Every rule's made due dates: the bank entries it added, and the contributions it added. */
+async function madeByRule(db: Db, userId: string): Promise<Map<string, Set<string>>> {
+  const [made, contributions] = await Promise.all([
+    db.select({ ruleId: transactions.recurringRuleId, on: transactions.recurringOn }).from(transactions).where(and(eq(transactions.userId, userId), eq(transactions.source, "recurring"))),
+    db.select({ ruleId: holdingContributions.recurringRuleId, on: holdingContributions.recurringOn }).from(holdingContributions).where(and(eq(holdingContributions.userId, userId), isNotNull(holdingContributions.recurringRuleId))),
+  ]);
+  const byRule = new Map<string, Set<string>>();
+  for (const m of [...made, ...contributions]) if (m.ruleId && m.on) (byRule.get(m.ruleId) ?? byRule.set(m.ruleId, new Set()).get(m.ruleId)!).add(m.on);
+  return byRule;
 }
 
 /** Due dates from today on that have no entry yet. */
@@ -77,25 +98,21 @@ export async function outflowOccurrences(
   from: IstDate,
   to: IstDate,
 ): Promise<{ id: string; title: string; amountPaise: number; accountId: string; accountName: string; dates: IstDate[] }[]> {
-  const [rows, made] = await Promise.all([
+  const [rows, byRule] = await Promise.all([
     db
       .select({ rule: recurringRules, accountName: accounts.name })
       .from(recurringRules)
       .innerJoin(accounts, eq(accounts.id, recurringRules.accountId))
       .where(and(eq(recurringRules.userId, userId), isNull(recurringRules.pausedAt))),
-    db
-      .select({ ruleId: transactions.recurringRuleId, on: transactions.recurringOn })
-      .from(transactions)
-      .where(and(eq(transactions.userId, userId), eq(transactions.source, "recurring"))),
+    madeByRule(db, userId),
   ]);
-  const byRule = new Map<string, Set<string>>();
-  for (const m of made) if (m.ruleId && m.on) (byRule.get(m.ruleId) ?? byRule.set(m.ruleId, new Set()).get(m.ruleId)!).add(m.on);
+  // A contribution has no account (the join leaves it out): it adds to an investment and is no money leaving a bank.
   return rows
-    .filter((r) => r.rule.type !== "income")
+    .filter((r) => r.rule.type !== "income" && r.rule.type !== "contribution")
     .map((r) => {
       const done = byRule.get(r.rule.id) ?? new Set<string>();
       const dates = occurrencesBetween(toRuleShape(r.rule), from, addDays(to, -1)).filter((d) => !done.has(d));
-      return { id: r.rule.id, title: r.rule.title, amountPaise: r.rule.amountPaise, accountId: r.rule.accountId, accountName: r.accountName, dates };
+      return { id: r.rule.id, title: r.rule.title, amountPaise: r.rule.amountPaise, accountId: r.rule.accountId as string, accountName: r.accountName, dates };
     })
     .filter((r) => r.dates.length > 0);
 }
@@ -105,7 +122,7 @@ export async function nextDue(db: Db, row: RuleRow, today: IstDate): Promise<Ist
   return upcomingFor(row, await madeDates(db, row.userId, row.id), today, 1)[0] ?? null;
 }
 
-function toDto(row: RuleRow, accountName: string, categoryName: string | null, made: Set<string>, today: IstDate): RecurringDto {
+function toDto(row: RuleRow, accountName: string | null, categoryName: string | null, holdingNames: Map<string, string>, made: Set<string>, today: IstDate): RecurringDto {
   const upcoming = upcomingFor(row, made, today, 3);
   const nextDate = upcoming[0] ?? null;
   return {
@@ -118,6 +135,12 @@ function toDto(row: RuleRow, accountName: string, categoryName: string | null, m
     categoryId: row.categoryId,
     categoryName,
     holdingId: row.holdingId,
+    holdingName: row.holdingId ? (holdingNames.get(row.holdingId) ?? null) : null,
+    ownPaise: row.ownPaise,
+    employerPaise: row.employerPaise,
+    pensionPaise: row.pensionPaise,
+    pensionHoldingId: row.pensionHoldingId,
+    pensionHoldingName: row.pensionHoldingId ? (holdingNames.get(row.pensionHoldingId) ?? null) : null,
     frequency: row.frequency,
     day: row.day,
     month: row.month,
@@ -135,23 +158,20 @@ function toDto(row: RuleRow, accountName: string, categoryName: string | null, m
 
 /** Running rules first, soonest due first; then paused; then ended. */
 export async function listRules(db: Db, userId: string, today: IstDate): Promise<RecurringDto[]> {
-  const [rows, made] = await Promise.all([
+  const [rows, byRule, held] = await Promise.all([
     db
       .select({ rule: recurringRules, accountName: accounts.name, categoryName: categories.name })
       .from(recurringRules)
-      .innerJoin(accounts, eq(accounts.id, recurringRules.accountId))
+      .leftJoin(accounts, eq(accounts.id, recurringRules.accountId))
       .leftJoin(categories, eq(categories.id, recurringRules.categoryId))
       .where(eq(recurringRules.userId, userId)),
-    db
-      .select({ ruleId: transactions.recurringRuleId, on: transactions.recurringOn })
-      .from(transactions)
-      .where(and(eq(transactions.userId, userId), eq(transactions.source, "recurring"))),
+    madeByRule(db, userId),
+    db.select({ id: holdings.id, name: holdings.name }).from(holdings).where(eq(holdings.userId, userId)),
   ]);
-  const byRule = new Map<string, Set<string>>();
-  for (const m of made) if (m.ruleId && m.on) (byRule.get(m.ruleId) ?? byRule.set(m.ruleId, new Set()).get(m.ruleId)!).add(m.on);
+  const holdingNames = new Map(held.map((h) => [h.id, h.name]));
   const rank = { active: 0, paused: 1, ended: 2 } as const;
   return rows
-    .map((r) => toDto(r.rule, r.accountName, r.categoryName, byRule.get(r.rule.id) ?? new Set(), today))
+    .map((r) => toDto(r.rule, r.accountName, r.categoryName, holdingNames, byRule.get(r.rule.id) ?? new Set(), today))
     .sort((a, b) => rank[a.status] - rank[b.status] || (a.nextDate ?? "9999").localeCompare(b.nextDate ?? "9999") || a.title.localeCompare(b.title));
 }
 
@@ -161,7 +181,7 @@ async function dtoFor(db: Db, userId: string, id: string, today: IstDate): Promi
   return found;
 }
 
-async function checkReferences(db: Db, userId: string, rule: { type: RuleRow["type"]; accountId: string; categoryId: string | null; holdingId?: string | null }) {
+async function checkReferences(db: Db, userId: string, rule: { type: Exclude<RuleRow["type"], "contribution">; accountId: string; categoryId: string | null; holdingId?: string | null }) {
   const account = await getAccount(db, userId, rule.accountId);
   if (!account) throw new NotFoundError("Account not found");
   if (account.archivedAt) throw invalid("accountId", "That account is archived");
@@ -196,6 +216,7 @@ function checkSchedule(r: { frequency: RuleRow["frequency"]; day: number; month:
  * Returns what was added.
  */
 async function materializeRule(db: Db, row: RuleRow, today: IstDate): Promise<{ id: string; date: IstDate }[]> {
+  if (row.type === "contribution") return (await materializeContribution(db, row, today)).map((m) => ({ id: m.id, date: m.date }));
   if (row.pausedAt) return [];
   const made = await madeDates(db, row.userId, row.id);
   const missing = occurrencesBetween(toRuleShape(row), row.startDate, today).filter((d) => !made.has(d)).slice(-MAX_BACKFILL);
@@ -204,10 +225,10 @@ async function materializeRule(db: Db, row: RuleRow, today: IstDate): Promise<{ 
   const rows = missing.map((date) => ({
     id: newId(),
     userId: row.userId,
-    type: row.type,
+    type: row.type as "expense" | "income" | "investment",
     amountPaise: row.amountPaise,
     txnDate: date,
-    accountId: row.accountId,
+    accountId: row.accountId as string,
     toAccountId: null,
     categoryId: row.categoryId,
     holdingId: row.holdingId,
@@ -229,6 +250,65 @@ async function materializeRule(db: Db, row: RuleRow, today: IstDate): Promise<{ 
   return added;
 }
 
+export interface NewContribution {
+  userId: string;
+  id: string;
+  date: IstDate;
+  holdingName: string;
+  ownPaise: number;
+  employerPaise: number;
+  /** The pension share that was added, 0 when there is none or its investment is closed. */
+  pensionPaise: number;
+  pensionHoldingName: string | null;
+  /** The pension share was left out because its investment is closed, gone, or counted by quantity. */
+  pensionLeftOut: boolean;
+}
+
+/**
+ * Adds, to an investment valued by typing, the contribution of every due date up to today that has none yet, with the pension share
+ * as a linked entry on its investment. A closed investment is left alone. A due day gets one entry, and one the person removed is
+ * skipped, not brought back.
+ */
+async function materializeContribution(db: Db, row: RuleRow, today: IstDate): Promise<NewContribution[]> {
+  if (row.pausedAt || !row.holdingId) return [];
+  const holding = await getHoldingRow(db, row.userId, row.holdingId);
+  if (!holding || holding.status !== "active" || holding.tracking !== "value") return [];
+  const made = await madeDates(db, row.userId, row.id);
+  const missing = occurrencesBetween(toRuleShape(row), row.startDate, today).filter((d) => !made.has(d)).slice(-MAX_BACKFILL);
+  if (missing.length === 0) return [];
+  let target = row.pensionPaise > 0 && row.pensionHoldingId ? ((await getHoldingRow(db, row.userId, row.pensionHoldingId)) ?? null) : null;
+  if (target && (target.status !== "active" || target.tracking !== "value")) target = null;
+  const added: NewContribution[] = [];
+  for (const date of missing) {
+    const rows = contributionRows(row.userId, holding.id, date, row.ownPaise, row.employerPaise, target ? { holdingId: target.id, pensionPaise: row.pensionPaise } : null, "Recurring", { ruleId: row.id, on: date });
+    const [first, ...rest] = rows;
+    const [inserted] = await db.insert(holdingContributions).values(first as (typeof rows)[number]).onConflictDoNothing().returning({ id: holdingContributions.id });
+    if (!inserted) continue;
+    if (rest.length > 0) await db.insert(holdingContributions).values(rest);
+    added.push({ userId: row.userId, id: inserted.id, date, holdingName: holding.name, ownPaise: row.ownPaise, employerPaise: row.employerPaise, pensionPaise: target ? row.pensionPaise : 0, pensionHoldingName: target ? target.name : null, pensionLeftOut: row.pensionPaise > 0 && !target });
+  }
+  return added;
+}
+
+/** The investment a contribution rule adds to and its pension target, checked. Returns the names for a default title. */
+async function checkContribution(db: Db, userId: string, c: { holdingId: string | null; ownPaise: number; employerPaise: number; pensionPaise: number; pensionHoldingId: string | null }): Promise<{ holdingName: string }> {
+  if (!c.holdingId) throw invalid("holdingId", "Choose the investment it adds to");
+  const holding = await getHoldingRow(db, userId, c.holdingId);
+  if (!holding) throw new NotFoundError("Holding not found");
+  if (holding.status !== "active") throw invalid("holdingId", "That holding is closed");
+  if (holding.tracking !== "value") throw invalid("holdingId", `${holding.name} is counted by quantity, so it cannot take a contribution`);
+  if (c.ownPaise + c.employerPaise <= 0) throw invalid("ownPaise", "Enter your share or the employer's");
+  if (c.pensionPaise > 0) {
+    if (!c.pensionHoldingId) throw invalid("pensionHoldingId", "Choose the investment the pension share goes to");
+    if (c.pensionHoldingId === c.holdingId) throw invalid("pensionHoldingId", "The pension share goes to a different investment");
+    const target = await getHoldingRow(db, userId, c.pensionHoldingId);
+    if (!target) throw new NotFoundError("Holding not found");
+    if (target.status !== "active") throw invalid("pensionHoldingId", `${target.name} is closed`);
+    if (target.tracking !== "value") throw invalid("pensionHoldingId", `${target.name} is counted by quantity, so it cannot take a contribution`);
+  }
+  return { holdingName: holding.name };
+}
+
 export async function createRule(db: Db, userId: string, input: CreateRecurringData, today: IstDate): Promise<RecurringDto> {
   const rule = {
     frequency: input.frequency,
@@ -238,16 +318,44 @@ export async function createRule(db: Db, userId: string, input: CreateRecurringD
     endDate: input.endDate ?? null,
   };
   checkSchedule(rule);
-  await checkReferences(db, userId, { type: input.type, accountId: input.accountId, categoryId: input.categoryId ?? null, holdingId: input.holdingId ?? null });
+
+  if (input.type === "contribution") {
+    const parts = { holdingId: input.holdingId ?? null, ownPaise: input.ownPaise ?? 0, employerPaise: input.employerPaise ?? 0, pensionPaise: input.pensionPaise ?? 0, pensionHoldingId: input.pensionHoldingId ?? null };
+    const { holdingName } = await checkContribution(db, userId, parts);
+    const id = newId();
+    await db.insert(recurringRules).values({
+      id,
+      userId,
+      title: input.title ?? `${holdingName} contribution`,
+      type: "contribution",
+      amountPaise: parts.ownPaise + parts.employerPaise,
+      accountId: null,
+      categoryId: null,
+      holdingId: parts.holdingId,
+      ownPaise: parts.ownPaise,
+      employerPaise: parts.employerPaise,
+      pensionPaise: parts.pensionPaise,
+      pensionHoldingId: parts.pensionPaise > 0 ? parts.pensionHoldingId : null,
+      ...rule,
+      mode: "auto",
+      remindDaysBefore: null,
+      createdAt: nowIso(),
+    });
+    await materializeRule(db, (await getRuleRow(db, userId, id))!, today);
+    return dtoFor(db, userId, id, today);
+  }
+
+  const accountId = input.accountId as string;
+  await checkReferences(db, userId, { type: input.type, accountId, categoryId: input.categoryId ?? null, holdingId: input.holdingId ?? null });
 
   const id = newId();
   await db.insert(recurringRules).values({
     id,
     userId,
-    title: input.title,
+    title: input.title as string,
     type: input.type,
-    amountPaise: input.amountPaise,
-    accountId: input.accountId,
+    amountPaise: input.amountPaise as number,
+    accountId,
     categoryId: input.type === "investment" ? null : (input.categoryId ?? null),
     holdingId: input.type === "investment" ? (input.holdingId ?? null) : null,
     ...rule,
@@ -278,7 +386,39 @@ export async function updateRule(db: Db, userId: string, id: string, patch: Upda
     endDate: patch.endDate === undefined ? row.endDate : patch.endDate,
   };
   checkSchedule(next);
-  const accountId = patch.accountId ?? row.accountId;
+  const hasShares = patch.ownPaise !== undefined || patch.employerPaise !== undefined || patch.pensionPaise !== undefined || patch.pensionHoldingId !== undefined;
+
+  if (row.type === "contribution") {
+    if (patch.accountId !== undefined || (patch.categoryId !== undefined && patch.categoryId !== null) || patch.amountPaise !== undefined) throw invalid("accountId", "A contribution has no account, category or single amount: change your share and the employer's");
+    if (patch.mode === "draft") throw invalid("mode", "A contribution is always added by itself");
+    if (frequency !== "monthly") throw invalid("frequency", "A contribution repeats every month");
+    if (patch.holdingId !== undefined && patch.holdingId !== row.holdingId) throw invalid("holdingId", "To add to another investment, make a new rule");
+    const parts = {
+      holdingId: row.holdingId,
+      ownPaise: patch.ownPaise ?? row.ownPaise,
+      employerPaise: patch.employerPaise ?? row.employerPaise,
+      pensionPaise: patch.pensionPaise ?? row.pensionPaise,
+      pensionHoldingId: patch.pensionHoldingId === undefined ? row.pensionHoldingId : patch.pensionHoldingId,
+    };
+    await checkContribution(db, userId, parts);
+    await db
+      .update(recurringRules)
+      .set({
+        title: patch.title ?? row.title,
+        amountPaise: parts.ownPaise + parts.employerPaise,
+        ownPaise: parts.ownPaise,
+        employerPaise: parts.employerPaise,
+        pensionPaise: parts.pensionPaise,
+        pensionHoldingId: parts.pensionPaise > 0 ? parts.pensionHoldingId : null,
+        ...next,
+      })
+      .where(and(eq(recurringRules.userId, userId), eq(recurringRules.id, id)));
+    await materializeRule(db, (await getRuleRow(db, userId, id))!, today);
+    return dtoFor(db, userId, id, today);
+  }
+  if (hasShares) throw invalid("ownPaise", "Only a contribution has shares");
+
+  const accountId = patch.accountId ?? (row.accountId as string);
   const categoryId = patch.categoryId === undefined ? row.categoryId : patch.categoryId;
   const holdingId = patch.holdingId === undefined ? row.holdingId : patch.holdingId;
   await checkReferences(db, userId, { type: row.type, accountId, categoryId, holdingId });
@@ -353,7 +493,7 @@ export interface NewDraft {
 }
 
 /** One person's rules: adds what has come due. Returns the drafts that now wait for a confirmation. */
-export async function materializeRules(db: Db, userId: string, today: IstDate): Promise<{ added: number; drafts: NewDraft[] }> {
+export async function materializeRules(db: Db, userId: string, today: IstDate): Promise<{ added: number; drafts: NewDraft[]; contributions: NewContribution[] }> {
   const rows = await db
     .select({ rule: recurringRules, accountName: accounts.name })
     .from(recurringRules)
@@ -368,24 +508,29 @@ export async function materializeRules(db: Db, userId: string, today: IstDate): 
       for (const m of made) drafts.push({ userId, txnId: m.id, date: m.date, title: rule.title, amountPaise: rule.amountPaise, accountName });
     }
   }
-  return { added, drafts };
+  const contributionRules = await db.select().from(recurringRules).where(and(eq(recurringRules.userId, userId), eq(recurringRules.type, "contribution"), isNull(recurringRules.pausedAt)));
+  const contributions: NewContribution[] = [];
+  for (const rule of contributionRules) contributions.push(...(await materializeContribution(db, rule, today)));
+  return { added: added + contributions.length, drafts, contributions };
 }
 
 /** The daily job: everyone's rules. One person failing does not stop the rest. */
-export async function materializeAllRules(db: Db, today: IstDate, onError: (error: unknown) => void = () => undefined): Promise<{ added: number; drafts: NewDraft[] }> {
+export async function materializeAllRules(db: Db, today: IstDate, onError: (error: unknown) => void = () => undefined): Promise<{ added: number; drafts: NewDraft[]; contributions: NewContribution[] }> {
   const owners = await db.selectDistinct({ userId: recurringRules.userId }).from(recurringRules).where(isNull(recurringRules.pausedAt));
   let added = 0;
   const drafts: NewDraft[] = [];
+  const contributions: NewContribution[] = [];
   for (const { userId } of owners) {
     try {
       const r = await materializeRules(db, userId, today);
       added += r.added;
       drafts.push(...r.drafts);
+      contributions.push(...r.contributions);
     } catch (error) {
       onError(error);
     }
   }
-  return { added, drafts };
+  return { added, drafts, contributions };
 }
 
 /** Rules that start on an account, for refusing to delete, archive or empty it. */

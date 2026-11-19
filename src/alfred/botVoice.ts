@@ -163,9 +163,11 @@ export function emiReply(items: EmiLine[]): string {
 
 export interface RecurringLine {
   title: string;
-  type: "expense" | "income" | "investment";
+  type: "expense" | "income" | "investment" | "contribution";
   amountPaise: number;
-  accountName: string;
+  accountName: string | null;
+  /** What a contribution adds to. */
+  holdingName?: string | null;
   repeat: string;
   nextDate: string | null;
   mode: "auto" | "draft";
@@ -179,7 +181,8 @@ export function recurringReply(items: RecurringLine[]): string {
   const lines = ["What repeats:"];
   for (const r of running) {
     const verb = r.type === "income" ? "in" : "from";
-    lines.push(`${r.title}: ${rupees(r.amountPaise)} ${verb} ${r.accountName}, ${r.repeat.charAt(0).toLowerCase()}${r.repeat.slice(1)}, next ${shortDate(r.nextDate as string)}${r.mode === "draft" ? " (I will ask you to confirm it)" : ""}`);
+    const where = r.type === "contribution" ? `added to ${r.holdingName ?? "an investment"}` : `${verb} ${r.accountName}`;
+    lines.push(`${r.title}: ${rupees(r.amountPaise)} ${where}, ${r.repeat.charAt(0).toLowerCase()}${r.repeat.slice(1)}, next ${shortDate(r.nextDate as string)}${r.mode === "draft" ? " (I will ask you to confirm it)" : ""}`);
   }
   return lines.join("\n");
 }
@@ -747,6 +750,9 @@ export const botVoice = {
     `${title} came due. I have added ${rupees(amountPaise)} on ${accountName} as a draft, since that amount can vary. Is it right? If not, correct it in the app.`,
   recurringReminder: (title: string, amountPaise: number, accountName: string, date: string, days: number) =>
     `A word ahead of time: ${title}, ${rupees(amountPaise)} on ${accountName}, comes up on ${shortDate(date)}, in ${days} ${days === 1 ? "day" : "days"}.`,
+  /** A month added to an investment by a contribution rule, with the pension share if there was one. */
+  contributionAdded: (holdingName: string, ownPaise: number, employerPaise: number, pensionPaise: number, pensionHoldingName: string | null, pensionLeftOut: boolean) =>
+    `Added your ${holdingName} month: ${rupees(ownPaise + employerPaise)}${pensionPaise > 0 ? ` and ${rupees(pensionPaise)} to ${pensionHoldingName ?? "the pension investment"}` : ""}. ${pensionLeftOut ? "The pension share was left out, since its investment is closed. " : ""}Check it against your passbook; if it differs, edit it in Alfred.`,
   recurringConfirmed: (title: string) => `Confirmed. ${title} now counts in your records.`,
   recurringDiscarded: (title: string) => `Removed. ${title} for that day is gone from your records.`,
   recurringSettled: "That one has already been settled.",

@@ -268,3 +268,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-12-11: holding lines show a chevron and open to their own entries; a kind with several holdings has no merged list (one holding keeps the single card).
 - 2026-12-12: slice 49 noted: edit/remove for every entry of an investment (bank buys and sales, lots, contributions, opening balance, typed values).
 - 2026-12-13: Investments worth-now bar is one stacked bar by broker account and kind (worthSegments).
+- 2026-12-14: slice 50 noted: contribution rules reuse recurring rules (type `contribution`, no account); the daily job adds the month to the investment instead of a bank entry. Export and delete-a-person now cover contributions, broker accounts, policies and the plans.

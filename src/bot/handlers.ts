@@ -562,7 +562,7 @@ async function cmdRecurring(deps: BotDeps, who: Actor, today: IstDate): Promise<
   const rules = await listRules(deps.db, who.userId, today);
   await deps.telegram.sendMessage(
     who.chatId,
-    recurringReply(rules.map((r) => ({ title: r.title, type: r.type, amountPaise: r.amountPaise, accountName: r.accountName, repeat: r.repeat, nextDate: r.nextDate, mode: r.mode, status: r.status }))),
+    recurringReply(rules.map((r) => ({ title: r.title, type: r.type, amountPaise: r.amountPaise, accountName: r.accountName, holdingName: r.holdingName, repeat: r.repeat, nextDate: r.nextDate, mode: r.mode, status: r.status }))),
   );
 }
 

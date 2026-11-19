@@ -13,6 +13,7 @@ const KINDS = [
   { value: "expense", label: "Expense" },
   { value: "income", label: "Income" },
   { value: "investment", label: "Investment" },
+  { value: "contribution", label: "EPF, NPS, PPF" },
 ] as const;
 
 function useAction(onClose: () => void) {
@@ -36,14 +37,14 @@ function useAction(onClose: () => void) {
   return { run, error, setError, busy };
 }
 
-function RuleSheet({ rule, onClose }: { rule: RecurringRule | null; onClose: () => void }) {
+function RuleSheet({ rule, onClose, onContribution }: { rule: RecurringRule | null; onClose: () => void; onContribution: () => void }) {
   const accounts = useAccounts();
   const categories = useCategories();
   const { run, error, setError, busy } = useAction(onClose);
   const editing = rule !== null;
 
   const [title, setTitle] = useState(rule?.title ?? "");
-  const [type, setType] = useState<RecurringRule["type"]>(rule?.type ?? "expense");
+  const [type, setType] = useState<Exclude<RecurringRule["type"], "contribution">>(rule?.type === "contribution" ? "expense" : (rule?.type ?? "expense"));
   const [amount, setAmount] = useState(rule ? paiseToInput(rule.amountPaise) : "");
   const [accountId, setAccountId] = useState(rule?.accountId ?? "");
   const [categoryId, setCategoryId] = useState(rule?.categoryId ?? "");
@@ -104,7 +105,7 @@ function RuleSheet({ rule, onClose }: { rule: RecurringRule | null; onClose: () 
           <input className={inputClass} maxLength={80} autoComplete="off" placeholder="Rent" value={title} onChange={(e) => setTitle(e.target.value)} />
         </Field>
         {!editing && (
-          <div role="radiogroup" aria-label="Kind" className="grid grid-cols-3 gap-1 rounded-xl bg-sunk p-1">
+          <div role="radiogroup" aria-label="Kind" className="grid grid-cols-2 gap-1 rounded-xl bg-sunk p-1 sm:grid-cols-4">
             {KINDS.map((k) => (
               <button
                 key={k.value}
@@ -112,6 +113,7 @@ function RuleSheet({ rule, onClose }: { rule: RecurringRule | null; onClose: () 
                 role="radio"
                 aria-checked={type === k.value}
                 onClick={() => {
+                  if (k.value === "contribution") return onContribution();
                   setType(k.value);
                   setCategoryId("");
                 }}
@@ -256,6 +258,142 @@ function RuleSheet({ rule, onClose }: { rule: RecurringRule | null; onClose: () 
   );
 }
 
+/**
+ * A monthly contribution that adds itself, such as EPF: on its day your share, the employer's and a pension share for another
+ * investment are added to an investment valued by typing. No bank entry is made.
+ */
+function ContributionRuleSheet({ rule, onClose }: { rule: RecurringRule | null; onClose: () => void }) {
+  const { run, error, setError, busy } = useAction(onClose);
+  const editing = rule !== null;
+  const all = useHoldings("active").data?.holdings ?? [];
+  const valued = all.filter((h) => h.tracking === "value");
+  const [holdingId, setHoldingId] = useState(rule?.holdingId ?? valued.find((h) => h.kind === "retirement")?.id ?? valued[0]?.id ?? "");
+  const [own, setOwn] = useState(rule ? paiseToInput(rule.ownPaise) : "");
+  const [employer, setEmployer] = useState(rule && rule.employerPaise > 0 ? paiseToInput(rule.employerPaise) : "");
+  const [pension, setPension] = useState(rule && rule.pensionPaise > 0 ? paiseToInput(rule.pensionPaise) : "");
+  const others = valued.filter((h) => h.id !== holdingId);
+  const [target, setTarget] = useState(rule?.pensionHoldingId ?? valued.find((h) => /pension|eps/i.test(h.name))?.id ?? "");
+  const [day, setDay] = useState(rule?.day ?? 15);
+  const [startDate, setStartDate] = useState(rule?.startDate ?? today());
+  const [endDate, setEndDate] = useState(rule?.endDate ?? "");
+  const holdingName = valued.find((h) => h.id === holdingId)?.name ?? rule?.holdingName ?? "";
+
+  const shape: RuleShape = { frequency: "monthly", day, month: null, startDate: editing ? today() : startDate, endDate: endDate || null };
+  const upcoming = occurrencesBetween(shape, today(), "2100-01-01").slice(0, 3);
+  const missed = !editing && startDate < today() ? occurrencesBetween(shape, startDate, today()).length : 0;
+
+  const save = () => {
+    const mine = own.trim() ? rupeesToPaise(own) : 0;
+    const theirs = employer.trim() ? rupeesToPaise(employer) : 0;
+    const pens = pension.trim() ? rupeesToPaise(pension) : 0;
+    if (!holdingId) return setError("Choose the investment it adds to. Add one first if you have none, valued by typing.");
+    if (mine === null || theirs === null || pens === null) return setError("An amount looks wrong. Use a number such as 3000, or leave it empty.");
+    if (mine + theirs <= 0) return setError("Enter your share or the employer's.");
+    if (pens > 0 && !target) return setError("Choose the investment the pension share goes to, or leave the pension share empty.");
+    const parts = { ownPaise: mine, employerPaise: theirs, pensionPaise: pens, pensionHoldingId: pens > 0 ? target : null };
+    void run(
+      () =>
+        rule
+          ? api.patch(`/api/recurring/${rule.id}`, { ...parts, day, endDate: endDate || null })
+          : api.post("/api/recurring", { type: "contribution", holdingId, ...parts, frequency: "monthly", day, startDate, endDate: endDate || null }),
+      rule ? "Saved." : missed > 0 ? `Added, with ${Math.min(missed, 36)} earlier ${Math.min(missed, 36) === 1 ? "month" : "months"}.` : "Added.",
+    );
+  };
+
+  return (
+    <Sheet title={editing ? `${holdingName || "Contribution"}: edit` : "Add a monthly contribution"} onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
+        <p className="text-sm text-soft">For EPF, NPS or PPF: each month Alfred adds your share, the employer&apos;s and a pension share by itself, and tells you on Telegram so you can check it against the passbook.</p>
+        <Field label="Adds to">
+          {editing ? (
+            <p className="min-h-11 py-2.5 text-sm font-medium">{holdingName}</p>
+          ) : (
+            <select className={inputClass} value={holdingId} onChange={(e) => setHoldingId(e.target.value)}>
+              {valued.length === 0 && <option value="">No investment valued by typing</option>}
+              {valued.map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+        <Field label="Your share (₹)" hint="What is taken from your salary each month.">
+          <AmountInput className={inputClass} autoComplete="off" placeholder="3000" value={own} onChange={(e) => setOwn(e.target.value)} />
+        </Field>
+        <Field label="Employer's share (₹)">
+          <AmountInput className={inputClass} autoComplete="off" placeholder="917" value={employer} onChange={(e) => setEmployer(e.target.value)} />
+        </Field>
+        <Field label="Pension share (₹)" hint="Optional. The employer's pension (EPS) part, recorded on another investment.">
+          <AmountInput className={inputClass} autoComplete="off" placeholder="2083" value={pension} onChange={(e) => setPension(e.target.value)} />
+        </Field>
+        {pension.trim() && (
+          <Field label="Add the pension share to">
+            <select className={inputClass} value={target} onChange={(e) => setTarget(e.target.value)}>
+              <option value="">Choose an investment</option>
+              {others.map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Credited on the">
+            <select className={inputClass} value={day} onChange={(e) => setDay(Number(e.target.value))}>
+              {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                <option key={d} value={d}>
+                  {d === 31 ? "31 (or the last day)" : d}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {!editing && (
+            <Field label="First month from">
+              <input className={inputClass} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            </Field>
+          )}
+        </div>
+        <Field label="Ends on (optional)">
+          <input className={inputClass} type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        </Field>
+        {upcoming.length > 0 && <p className="rounded-lg bg-sunk px-3 py-2 text-sm">Next: {upcoming.map((d) => shortDate(d)).join(", ")}.</p>}
+        {missed > 0 && (
+          <p className="rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn-ink">
+            That start is in the past, so {Math.min(missed, 36)} earlier {Math.min(missed, 36) === 1 ? "month is" : "months are"} added now{missed > 36 ? " (the latest 36)" : ""}.
+          </p>
+        )}
+        {editing && <p className="text-xs text-soft">Changes apply to the next months. Ones already added stay as they are. A month you remove from the investment is not added again.</p>}
+        <ErrorText>{error}</ErrorText>
+        <div className="flex gap-3">
+          <Button type="submit" className="flex-1" disabled={busy}>
+            Save
+          </Button>
+          {rule && (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={busy}
+              onClick={() => {
+                if (window.confirm(`Delete ${rule.title}? Months it already added stay.`)) void run(() => api.del(`/api/recurring/${rule.id}`), "Deleted.");
+              }}
+            >
+              Delete
+            </Button>
+          )}
+        </div>
+      </form>
+    </Sheet>
+  );
+}
+
 function Row({ rule, onEdit, onAct }: { rule: RecurringRule; onEdit: () => void; onAct: (what: "pause" | "resume" | "skip") => void }) {
   return (
     <li className="space-y-2 px-4 py-3">
@@ -272,9 +410,15 @@ function Row({ rule, onEdit, onAct }: { rule: RecurringRule; onEdit: () => void;
         </span>
       </div>
       <p className="text-sm text-soft">
-        {rule.repeat} · {rule.type === "income" ? "into" : "from"} {rule.accountName}
+        {rule.repeat} · {rule.type === "contribution" ? `adds to ${rule.holdingName ?? "an investment"}` : `${rule.type === "income" ? "into" : "from"} ${rule.accountName}`}
         {rule.nextDate && rule.status !== "ended" && <> · next {shortDate(rule.nextDate)}</>}
       </p>
+      {rule.type === "contribution" && (
+        <p className="text-sm text-soft">
+          Your {rupees(rule.ownPaise)}, employer {rupees(rule.employerPaise)}
+          {rule.pensionPaise > 0 && <>, pension {rupees(rule.pensionPaise)} to {rule.pensionHoldingName ?? "another investment"}</>}
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
         <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={onEdit}>
           Edit
@@ -305,7 +449,7 @@ export function Recurring() {
   const accounts = useAccounts();
   const refresh = useRefreshMoney();
   const toast = useToast();
-  const [sheet, setSheet] = useState<{ rule: RecurringRule | null } | null>(null);
+  const [sheet, setSheet] = useState<{ rule: RecurringRule | null; contribution?: boolean } | null>(null);
   const [error, setError] = useState("");
 
   if (!(accounts.data ?? []).some((a) => !a.archived)) return null;
@@ -334,13 +478,14 @@ export function Recurring() {
         <Card pad="p-0">
           <ul className="divide-y divide-line">
             {items.map((r) => (
-              <Row key={r.id} rule={r} onEdit={() => setSheet({ rule: r })} onAct={(what) => void act(r, what)} />
+              <Row key={r.id} rule={r} onEdit={() => setSheet({ rule: r, contribution: r.type === "contribution" })} onAct={(what) => void act(r, what)} />
             ))}
           </ul>
         </Card>
       )}
       {error && <ErrorText>{error}</ErrorText>}
-      {sheet && <RuleSheet key={sheet.rule?.id ?? "new"} rule={sheet.rule} onClose={() => setSheet(null)} />}
+      {sheet && !sheet.contribution && <RuleSheet key={sheet.rule?.id ?? "new"} rule={sheet.rule} onClose={() => setSheet(null)} onContribution={() => setSheet({ rule: null, contribution: true })} />}
+      {sheet?.contribution && <ContributionRuleSheet key={sheet.rule?.id ?? "new-contribution"} rule={sheet.rule} onClose={() => setSheet(null)} />}
     </div>
   );
 }

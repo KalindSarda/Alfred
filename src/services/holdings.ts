@@ -4,7 +4,8 @@ import type { Db } from "../db/client";
 import { getAccount } from "../db/accounts";
 import { getHoldingRow, type HoldingRow } from "../db/holdings";
 import { getKindByKey, getKindRow, type HoldingKindRow, kindsByKey } from "../db/holdingKinds";
-import { accounts, holdingContributions, holdingLots, holdings, holdingValues, investmentAccounts, transactions } from "../db/schema";
+import { getRuleRow, parseSkips } from "../db/recurring";
+import { accounts, holdingContributions, holdingLots, holdings, holdingValues, investmentAccounts, recurringRules, transactions } from "../db/schema";
 import { type IstDate, isValidIstDate } from "../domain/dates";
 import { formatRupees } from "../domain/money";
 import { avgCostPaise, gainPaise, gainPct, type HoldingFacts, type UnitsFacts, investedPaise, latestRate, latestValue, soldPaise, staleDays, unitOne, unitsHeldE4, valueAtRate, valuePaise } from "../domain/holdings";
@@ -441,20 +442,44 @@ export async function addContribution(db: Db, userId: string, id: string, input:
     target = await requireActive(db, userId, input.pensionHoldingId);
     if (target.tracking !== "value") throw invalid("pensionHoldingId", `${target.name} is counted by quantity, so it cannot take a contribution`);
   }
-  const linkId = target ? newId() : null;
-  const make = (holdingId: string, ownPaise: number, employerPaise: number, linkRole: "primary" | "pension" | null) =>
-    ({ id: newId(), userId, holdingId, date: input.date, ownPaise, employerPaise, linkId, linkRole, note: input.note?.trim() || null, createdAt: nowIso() }) satisfies typeof holdingContributions.$inferInsert;
-  const rows = [make(id, own, employer, target ? "primary" : null)];
-  if (target) rows.push(make(target.id, 0, pension, "pension"));
-  await db.insert(holdingContributions).values(rows);
+  await db.insert(holdingContributions).values(contributionRows(userId, id, input.date, own, employer, target ? { holdingId: target.id, pensionPaise: pension } : null, input.note?.trim() || null));
   return getHolding(db, userId, id, today);
+}
+
+/**
+ * The rows of one contribution: the entry on the investment, and the pension entry on another when there is a pension share
+ * (the two share a link). `recurring` marks the entry a rule made for a due day, on the entry itself and never on the pension one.
+ */
+export function contributionRows(
+  userId: string,
+  holdingId: string,
+  date: IstDate,
+  ownPaise: number,
+  employerPaise: number,
+  pension: { holdingId: string; pensionPaise: number } | null,
+  note: string | null,
+  recurring?: { ruleId: string; on: IstDate },
+) {
+  const linkId = pension ? newId() : null;
+  const make = (h: string, own: number, employer: number, linkRole: "primary" | "pension" | null) =>
+    ({ id: newId(), userId, holdingId: h, date, ownPaise: own, employerPaise: employer, linkId, linkRole, note, createdAt: nowIso() }) satisfies typeof holdingContributions.$inferInsert;
+  const primary = { ...make(holdingId, ownPaise, employerPaise, pension ? "primary" : null), recurringRuleId: recurring?.ruleId ?? null, recurringOn: recurring?.on ?? null };
+  return pension ? [primary, make(pension.holdingId, 0, pension.pensionPaise, "pension")] : [primary];
 }
 
 /** Removes a contribution, and the pension entry it created (or the entry a pension share came from). */
 export async function removeContribution(db: Db, userId: string, id: string, contributionId: string, today: IstDate): Promise<HoldingDto> {
   const [found] = await db.select().from(holdingContributions).where(and(eq(holdingContributions.userId, userId), eq(holdingContributions.holdingId, id), eq(holdingContributions.id, contributionId))).limit(1);
   if (!found) throw new NotFoundError("Contribution not found");
+  const pair = found.linkId ? await db.select().from(holdingContributions).where(and(eq(holdingContributions.userId, userId), eq(holdingContributions.linkId, found.linkId))) : [found];
   await db.delete(holdingContributions).where(and(eq(holdingContributions.userId, userId), found.linkId ? eq(holdingContributions.linkId, found.linkId) : eq(holdingContributions.id, found.id)));
+  // A month a rule made and the person removed is skipped by that rule, so the next daily run does not make it again.
+  for (const made of pair.filter((c) => c.recurringRuleId && c.recurringOn)) {
+    const rule = await getRuleRow(db, userId, made.recurringRuleId as string);
+    if (!rule) continue;
+    const skips = [...new Set([...parseSkips(rule.skipsJson), made.recurringOn as string])].sort();
+    await db.update(recurringRules).set({ skipsJson: JSON.stringify(skips) }).where(and(eq(recurringRules.userId, userId), eq(recurringRules.id, rule.id)));
+  }
   return getHolding(db, userId, id, today);
 }
 
@@ -722,7 +747,7 @@ export async function deleteHolding(db: Db, userId: string, id: string): Promise
   if (!row) throw new NotFoundError("Holding not found");
   const linked = await db.select({ id: transactions.id }).from(transactions).where(and(eq(transactions.userId, userId), eq(transactions.holdingId, id), isNull(transactions.deletedAt))).limit(1);
   if (linked.length > 0) throw new ConflictError("Entries are linked to this holding. Close it instead.");
-  await db.batch([db.delete(holdingContributions).where(and(eq(holdingContributions.holdingId, id), eq(holdingContributions.userId, userId))), db.delete(holdingLots).where(and(eq(holdingLots.holdingId, id), eq(holdingLots.userId, userId))), db.delete(holdingValues).where(and(eq(holdingValues.holdingId, id), eq(holdingValues.userId, userId))), db.delete(holdings).where(and(eq(holdings.id, id), eq(holdings.userId, userId)))]);
+  await db.batch([db.delete(recurringRules).where(and(eq(recurringRules.userId, userId), eq(recurringRules.type, "contribution"), eq(recurringRules.holdingId, id))), db.delete(holdingContributions).where(and(eq(holdingContributions.holdingId, id), eq(holdingContributions.userId, userId))), db.delete(holdingLots).where(and(eq(holdingLots.holdingId, id), eq(holdingLots.userId, userId))), db.delete(holdingValues).where(and(eq(holdingValues.holdingId, id), eq(holdingValues.userId, userId))), db.delete(holdings).where(and(eq(holdings.id, id), eq(holdings.userId, userId)))]);
 }
 
 /**
