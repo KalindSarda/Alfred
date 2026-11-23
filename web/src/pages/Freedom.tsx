@@ -9,6 +9,7 @@ import { readFireAssumptions, readFundSettings, readPercent } from "../../../src
 import { paiseToInput, rupeesCompact as rupees, shortDate } from "../format";
 import { useEmergencyFund, useFire, useLadder, useMoneyHealth, useTransferSuggestion } from "../queries";
 import { Link } from "../router";
+import { fireGroups, type CorpusGroup } from "../investmentKinds";
 
 const BAND: Record<string, { label: string; tone: string }> = {
   strong: { label: "Strong", tone: "text-good" },
@@ -619,25 +620,7 @@ function FireCard() {
       )}
 
       <div>
-        <p className="text-xs tracking-wide text-soft uppercase">What counts</p>
-        <ul className="divide-y divide-line text-sm">
-          <li className="flex justify-between gap-3 py-1.5">
-            <span>
-              Bank money
-              <span className="block text-xs text-faint">{f.corpus.emergencyNotMarked ? "All of it, since no emergency fund is marked" : "Beyond your emergency fund"}</span>
-            </span>
-            <span className="tabular-nums">{rupees(f.corpus.bankPaise)}</span>
-          </li>
-          {f.corpus.holdings.map((h) => (
-            <li key={h.id} className={`flex justify-between gap-3 py-1.5 ${h.counts && !h.inEmergencyFund ? "" : "text-faint"}`}>
-              <span>
-                {h.name}
-                <span className="block text-xs text-faint">{h.inEmergencyFund ? "In your emergency fund" : h.counts ? h.kindName : "Not counted"}</span>
-              </span>
-              <span className="tabular-nums">{rupees(h.paise)}</span>
-            </li>
-          ))}
-        </ul>
+        <WhatCounts corpus={f.corpus} />
         <p className="mt-1 text-xs text-faint">Change what counts in each investment's Edit sheet. EPF, PPF and NPS are counted at their full value, though much of it cannot be touched before retirement age.</p>
       </div>
 
@@ -708,5 +691,65 @@ export function Freedom({ embedded = false }: { embedded?: boolean } = {}) {
         </>
       )}
     </div>
+  );
+}
+
+/** One line of "what counts": a kind (or bank money), its total and share, opening to what is inside it. */
+function CountLine({ group, faded = false }: { group: CorpusGroup; faded?: boolean }) {
+  const n = group.holdings.length;
+  return (
+    <li className={faded ? "text-faint" : ""}>
+      <details className="group">
+        <summary className="flex min-h-11 cursor-pointer list-none items-start justify-between gap-3 py-1.5">
+          <span className="min-w-0">
+            <span className="mr-1 inline-block text-faint transition-transform group-open:rotate-90">›</span>
+            {group.label}
+            <span className="block pl-3.5 text-xs text-faint">
+              {n} {n === 1 ? "investment" : "investments"}
+            </span>
+          </span>
+          <span className="shrink-0 text-right tabular-nums">
+            {rupees(group.paise)}
+            {group.pct !== null && <span className="block text-xs text-faint">{group.pct}%</span>}
+          </span>
+        </summary>
+        <ul className="mb-2 ml-3 space-y-1 border-l-2 border-line pl-3 text-xs">
+          {group.holdings.map((h) => (
+            <li key={h.id} className="flex justify-between gap-3">
+              <span className="min-w-0 truncate">{h.name}</span>
+              <span className="shrink-0 tabular-nums">{rupees(h.paise)}</span>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </li>
+  );
+}
+
+/** What counts toward the number: bank money, then one line per kind of investment with its share, then what is left out. */
+function WhatCounts({ corpus }: { corpus: FireView["corpus"] }) {
+  const g = fireGroups(corpus);
+  const bankPct = corpus.totalPaise > 0 ? Math.round((corpus.bankPaise / corpus.totalPaise) * 1000) / 10 : null;
+  return (
+    <>
+      <p className="text-xs tracking-wide text-soft uppercase">What counts</p>
+      <ul className="divide-y divide-line text-sm">
+        <li className="flex min-h-11 justify-between gap-3 py-1.5">
+          <span>
+            Bank money
+            <span className="block text-xs text-faint">{corpus.emergencyNotMarked ? "All of it, since no emergency fund is marked" : "Beyond your emergency fund"}</span>
+          </span>
+          <span className="shrink-0 text-right tabular-nums">
+            {rupees(corpus.bankPaise)}
+            {bankPct !== null && <span className="block text-xs text-faint">{bankPct}%</span>}
+          </span>
+        </li>
+        {g.counted.map((k) => (
+          <CountLine key={k.key} group={k} />
+        ))}
+        {g.emergency && <CountLine group={g.emergency} faded />}
+        {g.notCounted && <CountLine group={g.notCounted} faded />}
+      </ul>
+    </>
   );
 }

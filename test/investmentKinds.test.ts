@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Holding } from "../web/src/api";
-import { BROKER_COLORS, EXTRA_KIND_COLORS, KIND_COLORS, findDuplicateHolding, kindSummary, looseByKind, purchasesOf, worthSegments } from "../web/src/investmentKinds";
+import { BROKER_COLORS, EXTRA_KIND_COLORS, KIND_COLORS, findDuplicateHolding, fireGroups, kindSummary, totalsOf, looseByKind, purchasesOf, worthSegments } from "../web/src/investmentKinds";
 
 const E4 = 10_000;
 
@@ -168,6 +168,59 @@ describe("holdings outside a broker account, by kind", () => {
   it("treats an account that no longer exists as no account", () => {
     const h = holding({ id: "g", investmentAccountId: "gone", valuePaise: 1_000_00 });
     expect(looseByKind([h], new Set(["acc1"]))).toHaveLength(1);
+  });
+});
+
+describe("totals of a set of holdings", () => {
+  it("adds up only your share, with the gain as a percentage of what was put in", () => {
+    const a = holding({ id: "a", myInvestedPaise: 1_00_000_00, myValuePaise: 1_50_000_00, myGainPaise: 50_000_00 });
+    const b = holding({ id: "b", myInvestedPaise: 50_000_00, myValuePaise: 45_000_00, myGainPaise: -5_000_00 });
+    expect(totalsOf([a, b])).toEqual({ investedPaise: 1_50_000_00, valuePaise: 1_95_000_00, gainPaise: 45_000_00, gainPct: 30 });
+  });
+
+  it("has no percentage when nothing was put in, and zeros for nothing", () => {
+    expect(totalsOf([holding({ id: "a", myInvestedPaise: 0, myValuePaise: 5_000_00, myGainPaise: 0 })]).gainPct).toBeNull();
+    expect(totalsOf([])).toEqual({ investedPaise: 0, valuePaise: 0, gainPaise: 0, gainPct: null });
+  });
+});
+
+describe("what counts toward financial independence, by kind", () => {
+  const row = (id: string, name: string, kindName: string, paise: number, over: { counts?: boolean; inEmergencyFund?: boolean } = {}) => ({ id, name, kindName, paise, counts: true, inEmergencyFund: false, ...over });
+  const corpus = {
+    totalPaise: 10_00_000_00,
+    bankPaise: 2_00_000_00,
+    holdingsPaise: 8_00_000_00,
+    emergencyNotMarked: false,
+    holdings: [
+      row("1", "TVS Motor", "Stock or IPO", 4_00_000_00),
+      row("2", "SBI", "Stock or IPO", 2_00_000_00),
+      row("3", "Brick", "Silver", 1_00_000_00),
+      row("4", "EPF", "Retirement", 1_00_000_00),
+      row("5", "Liquid fund", "Mutual fund", 3_00_000_00, { inEmergencyFund: true }),
+      row("6", "Old gold", "Gold", 50_000_00, { counts: false }),
+    ],
+  };
+
+  it("makes one line per kind, biggest first, with its share of what counts", () => {
+    const g = fireGroups(corpus);
+    expect(g.counted.map((k) => [k.label, k.paise, k.pct])).toEqual([
+      ["Stock or IPO", 6_00_000_00, 60],
+      ["Retirement", 1_00_000_00, 10],
+      ["Silver", 1_00_000_00, 10],
+    ]);
+    expect(g.counted[0]?.holdings.map((h) => h.name)).toEqual(["TVS Motor", "SBI"]);
+  });
+
+  it("keeps the emergency fund and switched-off investments out of the counted lines, each as one line without a share", () => {
+    const g = fireGroups(corpus);
+    expect(g.emergency).toMatchObject({ label: "In your emergency fund", paise: 3_00_000_00, pct: null });
+    expect(g.notCounted).toMatchObject({ label: "Not counted", paise: 50_000_00, pct: null });
+    expect(g.counted.some((k) => k.label === "Mutual fund" || k.label === "Gold")).toBe(false);
+  });
+
+  it("has no lines, and no share, when nothing is held", () => {
+    const g = fireGroups({ totalPaise: 0, bankPaise: 0, holdingsPaise: 0, holdings: [], emergencyNotMarked: true });
+    expect(g).toEqual({ counted: [], emergency: null, notCounted: null });
   });
 });
 

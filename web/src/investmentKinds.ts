@@ -1,4 +1,4 @@
-import type { Holding } from "./api";
+import type { FireView, Holding } from "./api";
 import { rupees } from "./format";
 
 /**
@@ -90,6 +90,60 @@ export function purchasesOf(h: Holding): KindPurchase[] {
 export const byNewest = (list: KindPurchase[]): KindPurchase[] => [...list].sort((x, y) => y.date.localeCompare(x.date) || x.key.localeCompare(y.key));
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
+
+/** What a set of holdings put in, is worth now, and the gain, counting only your share of each. */
+export interface Totals {
+  investedPaise: number;
+  valuePaise: number;
+  gainPaise: number;
+  /** Gain as a share of what was put in, one decimal; null when nothing was put in. */
+  gainPct: number | null;
+}
+
+export function totalsOf(holdings: readonly Holding[]): Totals {
+  const investedPaise = holdings.reduce((s, h) => s + h.myInvestedPaise, 0);
+  const valuePaise = holdings.reduce((s, h) => s + h.myValuePaise, 0);
+  const gainPaise = holdings.reduce((s, h) => s + h.myGainPaise, 0);
+  return { investedPaise, valuePaise, gainPaise, gainPct: investedPaise > 0 ? round1((gainPaise / investedPaise) * 100) : null };
+}
+
+type FireHolding = FireView["corpus"]["holdings"][number];
+
+/** One line of "what counts" toward financial independence: a kind of investment, with what is in it. */
+export interface CorpusGroup {
+  key: string;
+  label: string;
+  paise: number;
+  /** Its share of everything that counts, one decimal; null when nothing counts. */
+  pct: number | null;
+  holdings: FireHolding[];
+}
+
+/**
+ * The holdings behind the financial-independence number, one line per kind (Stock or IPO, Silver…) with its total and share of
+ * what counts, biggest first. Investments in the emergency fund or switched off do not count: each of those is one separate line.
+ */
+export function fireGroups(corpus: FireView["corpus"]): { counted: CorpusGroup[]; emergency: CorpusGroup | null; notCounted: CorpusGroup | null } {
+  const share = (paise: number) => (corpus.totalPaise > 0 ? round1((paise / corpus.totalPaise) * 100) : null);
+  const byKind = new Map<string, FireHolding[]>();
+  const emergency: FireHolding[] = [];
+  const off: FireHolding[] = [];
+  for (const h of corpus.holdings) {
+    if (h.inEmergencyFund) emergency.push(h);
+    else if (!h.counts) off.push(h);
+    else byKind.set(h.kindName, [...(byKind.get(h.kindName) ?? []), h]);
+  }
+  const make = (key: string, label: string, holdings: FireHolding[], pct: boolean): CorpusGroup => {
+    const paise = holdings.reduce((s, h) => s + h.paise, 0);
+    return { key, label, paise, pct: pct ? share(paise) : null, holdings: [...holdings].sort((a, b) => b.paise - a.paise || a.name.localeCompare(b.name)) };
+  };
+  const counted = [...byKind.entries()].map(([name, list]) => make(name, name, list, true)).sort((a, b) => b.paise - a.paise || a.label.localeCompare(b.label));
+  return {
+    counted,
+    emergency: emergency.length > 0 ? make("emergency", "In your emergency fund", emergency, false) : null,
+    notCounted: off.length > 0 ? make("off", "Not counted", off, false) : null,
+  };
+}
 
 /** Totals and the purchase list for the active holdings of one kind. */
 export function kindSummary(kindKey: string, kindName: string, holdings: Holding[]): KindSummary {

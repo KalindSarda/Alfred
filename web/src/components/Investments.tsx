@@ -4,7 +4,7 @@ import { rupeesToPaise } from "../filters";
 import { e4ToQty, paiseToInput, qtyToE4, rupees, rupeesCompact, shortDate, today } from "../format";
 import { useAccounts, useDebts, useHoldingKinds, useHoldings, useInvestmentAccounts, usePartners, useRecurring, useRefreshMoney } from "../queries";
 import { Link } from "../router";
-import { byNewest, findDuplicateHolding, type KindPurchase, type KindSummary, looseByKind, purchasesOf, type WorthSegment, worthSegments } from "../investmentKinds";
+import { byNewest, findDuplicateHolding, type KindPurchase, type KindSummary, looseByKind, purchasesOf, totalsOf, type WorthSegment, worthSegments } from "../investmentKinds";
 import { NewKindSheet } from "./InvestmentKinds";
 import { AccountSelect, AccountsSheet, MoveSheet } from "./InvestmentAccounts";
 import { useToast } from "./toast";
@@ -46,6 +46,7 @@ function useAction(onClose: () => void) {
 
 const signed = (paise: number) => `${paise > 0 ? "+" : paise < 0 ? "−" : ""}${rupees(Math.abs(paise))}`;
 const tone = (paise: number) => (paise > 0 ? "text-good" : paise < 0 ? "text-bad" : "text-soft");
+const signedCompact = (paise: number) => `${paise > 0 ? "+" : paise < 0 ? "−" : ""}${rupeesCompact(Math.abs(paise))}`;
 const ago = (days: number | null) => (days === null ? "no value typed yet" : days === 0 ? "valued today" : `valued ${days} ${days === 1 ? "day" : "days"} ago`);
 
 function BankPick({ value, onChange, label }: { value: string; onChange: (id: string) => void; label: string }) {
@@ -1281,6 +1282,52 @@ function PayoutPicker({ holding, partners, first, onClose }: { holding: Holding;
   );
 }
 
+/**
+ * The one column layout every card header and holding row shares, so the figures line up like a table: name, put in, worth now,
+ * gain, and the chevron. On a phone the three figures stack under each other instead.
+ */
+const ROW_GRID = "grid grid-cols-[minmax(0,1fr)_auto_1.25rem] items-start gap-x-3 sm:grid-cols-[minmax(0,1fr)_6rem_6rem_7rem_1.25rem]";
+
+/** The column titles, once above the cards (from the `sm` width up; a phone has no columns). */
+function ColumnHead() {
+  return (
+    <div className="hidden grid-cols-[minmax(0,1fr)_6rem_6rem_7rem_1.25rem] gap-x-3 px-[calc(1rem+1px)] text-xs tracking-wide text-soft uppercase sm:grid" aria-hidden="true">
+      <span />
+      <span className="text-right">Invested</span>
+      <span className="text-right">Value</span>
+      <span className="text-right">Gain</span>
+      <span />
+    </div>
+  );
+}
+
+/** What was put in, what it is worth, and the gain with its percentage. `compact` writes ₹27.65 L for the cards' totals; rows give whole figures. */
+function Figures({ invested, value, gain, pct, compact = false }: { invested: number; value: number; gain: number; pct: number | null; compact?: boolean }) {
+  const money = (p: number) => (compact ? <Amount paise={p} /> : rupees(p));
+  const change = compact ? signedCompact(gain) : signed(gain);
+  return (
+    <>
+      <span className="hidden text-right tabular-nums text-soft sm:block">{money(invested)}</span>
+      <span className="hidden text-right font-semibold tabular-nums sm:block">{money(value)}</span>
+      <span className={`hidden text-right tabular-nums sm:block ${tone(gain)}`}>
+        {change}
+        {pct !== null && <span className="block text-xs">{pct}%</span>}
+      </span>
+      <span className="block text-right sm:hidden">
+        <span className="block font-semibold tabular-nums">{money(value)}</span>
+        <span className={`block text-xs ${tone(gain)}`}>
+          {change}
+          {pct !== null && ` (${pct}%)`}
+        </span>
+        <span className="block text-xs text-soft">Put in {money(invested)}</span>
+      </span>
+    </>
+  );
+}
+
+/** What is inside an opened card: tinted and set in from the left edge, so it reads as the drawer of the card above it. */
+const DRAWER = "border-t border-line bg-sunk/50 shadow-[inset_3px_0_0_0_var(--color-brass)]";
+
 function HoldingLine({ h, onAct, showKind = false }: { h: Holding; onAct: (what: Act) => void; showKind?: boolean }) {
   const [open, setOpen] = useState(false);
   const active = h.status === "active";
@@ -1291,7 +1338,7 @@ function HoldingLine({ h, onAct, showKind = false }: { h: Holding; onAct: (what:
   const second = counted && unit ? (h.ratePaise ? `${heldText(h)} at ${rupees(h.ratePaise)} ${rateWord(unit)}` : `${heldText(h)} · no rate typed yet`) : ago(h.staleDays);
   return (
     <li>
-      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex min-h-14 w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-hover">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className={`${ROW_GRID} min-h-14 w-full py-2.5 pr-4 pl-7 text-left text-sm hover:bg-hover`}>
         <span className="min-w-0">
           <span className="block truncate font-medium">
             {h.name}
@@ -1309,17 +1356,11 @@ function HoldingLine({ h, onAct, showKind = false }: { h: Holding; onAct: (what:
             </span>
           )}
         </span>
-        <span className="shrink-0 text-right">
-          <span className="block font-semibold tabular-nums">{rupees(h.myValuePaise)}</span>
-          <span className={`block text-xs ${tone(h.myGainPaise)}`}>
-            {signed(h.myGainPaise)}
-            {myPct !== null && ` (${myPct}%)`}
-          </span>
-        </span>
-        <Chevron open={open} className="mt-1.5 text-soft" />
+        <Figures invested={h.myInvestedPaise} value={h.myValuePaise} gain={h.myGainPaise} pct={myPct} />
+        <Chevron open={open} className="mt-1 text-soft" />
       </button>
       {open && (
-        <div className="space-y-3 pb-3">
+        <div className="space-y-3 pb-3 pl-3">
           <div className="px-4">
             {h.missingUnits > 0 && <p className="mb-2 text-xs font-medium text-warn-ink">{h.missingUnits} {h.missingUnits === 1 ? "entry has" : "entries have"} no quantity. Add it below, or the quantity held will be short.</p>}
             <HoldingButtons h={h} onAct={onAct} />
@@ -1402,9 +1443,9 @@ function KindCard({ summary: s, sort, open, onToggle, onAct, onRate, onAssign }:
   const named = single && single.name.trim().toLowerCase() !== s.kindName.trim().toLowerCase() ? single.name : null;
   return (
     <Card pad="p-0">
-      <button type="button" className="flex min-h-14 w-full items-start justify-between gap-3 px-4 py-3 text-left" onClick={onToggle} aria-expanded={open}>
+      <button type="button" className={`${ROW_GRID} min-h-14 w-full px-4 py-3 text-left`} onClick={onToggle} aria-expanded={open}>
         <span className="min-w-0">
-          <span className="block font-medium">{s.kindName}</span>
+          <span className="block font-semibold">{s.kindName}</span>
           <span className="block text-xs text-soft">
             {[named, single ? null : `${s.holdings.length} holdings`, quantity].filter(Boolean).join(" · ")}
           </span>
@@ -1416,19 +1457,11 @@ function KindCard({ summary: s, sort, open, onToggle, onAct, onRate, onAssign }:
             </span>
           )}
         </span>
-        <span className="shrink-0 text-right">
-          <span className="block font-semibold tabular-nums">
-            <Amount paise={s.valuePaise} />
-          </span>
-          <span className={`block text-xs ${tone(s.gainPaise)}`}>
-            {signed(s.gainPaise)}
-            {s.gainPct !== null && ` (${s.gainPct}%)`}
-          </span>
-        </span>
-        <Chevron open={open} className="mt-1.5 text-soft" />
+        <Figures invested={s.investedPaise} value={s.valuePaise} gain={s.gainPaise} pct={s.gainPct} compact />
+        <Chevron open={open} className="mt-1 text-soft" />
       </button>
       {open && (
-        <>
+        <div className={`${DRAWER} pt-3`}>
           {single ? (
             <div className="px-4 pb-3">
               <HoldingButtons h={single} onAct={onAct(single)} />
@@ -1464,7 +1497,7 @@ function KindCard({ summary: s, sort, open, onToggle, onAct, onRate, onAssign }:
             </div>
           )}
           {single && <PurchaseList purchases={s.purchases} investedPaise={s.investedPaise} unitLabel={s.unitLabel} showHolding={false} holdings={s.holdings} />}
-        </>
+        </div>
       )}
     </Card>
   );
@@ -1476,46 +1509,36 @@ const TOP = 5;
 /** One broker account (or what is not in one yet): its totals, and its holdings, the first few at first. */
 function Group({ title, note, holdings, sort, open, onToggle, onAct, actions }: { title: string; note: string | null; holdings: Holding[]; sort: Sort; open: boolean; onToggle: () => void; onAct: (h: Holding) => (what: Act) => void; actions?: React.ReactNode }) {
   const [all, setAll] = useState(false);
-  const value = holdings.reduce((s, h) => s + h.myValuePaise, 0);
-  const put = holdings.reduce((s, h) => s + h.myInvestedPaise, 0);
-  const gain = holdings.reduce((s, h) => s + h.myGainPaise, 0);
+  const total = totalsOf(holdings);
   const sorted = sortHoldings(holdings, sort);
   const shown = all ? sorted : sorted.slice(0, TOP);
   return (
     <Card pad="p-0">
-      <button type="button" className="flex min-h-14 w-full items-start justify-between gap-3 px-4 py-3 text-left" onClick={onToggle} aria-expanded={open}>
+      <button type="button" className={`${ROW_GRID} min-h-14 w-full px-4 py-3 text-left`} onClick={onToggle} aria-expanded={open}>
         <span className="min-w-0">
-          <span className="block font-medium">{title}</span>
+          <span className="block font-semibold">{title}</span>
           <span className="block text-xs text-soft">
             {holdings.length} {holdings.length === 1 ? "holding" : "holdings"}
             {note ? ` · ${note}` : ""}
           </span>
         </span>
-        <span className="shrink-0 text-right">
-          <span className="block font-semibold tabular-nums">
-            <Amount paise={value} />
-          </span>
-          <span className={`block text-xs ${tone(gain)}`}>
-            {signed(gain)}
-            {put > 0 && ` (${Math.round((gain / put) * 1000) / 10}%)`}
-          </span>
-        </span>
-        <Chevron open={open} className="mt-1.5 text-soft" />
+        <Figures invested={total.investedPaise} value={total.valuePaise} gain={total.gainPaise} pct={total.gainPct} compact />
+        <Chevron open={open} className="mt-1 text-soft" />
       </button>
       {open && (
-        <>
-          <ul className="divide-y divide-line border-t border-line">
+        <div className={DRAWER}>
+          <ul className="divide-y divide-line">
             {shown.map((h) => (
               <HoldingLine key={h.id} h={h} onAct={onAct(h)} showKind />
             ))}
           </ul>
           {sorted.length > TOP && (
-            <button type="button" className="min-h-11 w-full border-t border-line px-4 text-sm text-brand" onClick={() => setAll((v) => !v)}>
+            <button type="button" className="min-h-11 w-full border-t border-line pl-7 text-left text-sm text-brand" onClick={() => setAll((v) => !v)}>
               {all ? "Show fewer" : `Show ${sorted.length - TOP} more`}
             </button>
           )}
           {actions}
-        </>
+        </div>
       )}
     </Card>
   );
@@ -1719,7 +1742,8 @@ export function Investments() {
   const [manage, setManage] = useState<"accounts" | "move" | null>(null);
   const [rateKind, setRateKind] = useState<KindSummary | null>(null);
   const [sort, setSort] = useState<Sort>("value");
-  const [shut, setShut] = useState<Set<string>>(new Set());
+  // Every card starts closed; this holds the ones opened.
+  const [opened, setOpened] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<"all" | "personal" | "shared">("all");
 
   if (query.isPending) return <p className="py-8 text-center text-sm text-soft">Loading…</p>;
@@ -1742,7 +1766,7 @@ export function Investments() {
   const inAccount = (id: string) => active.filter((h) => h.investmentAccountId === id);
   const loose = active.filter((h) => !h.investmentAccountId || !known.has(h.investmentAccountId));
   const toggle = (key: string) =>
-    setShut((prev) => {
+    setOpened((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -1838,8 +1862,9 @@ export function Investments() {
             </p>
           )}
 
+          <ColumnHead />
           {accounts.map((a) => (
-            <Group key={a.id} title={a.name} note={a.purpose} holdings={inAccount(a.id)} sort={sort} open={!shut.has(a.id)} onToggle={() => toggle(a.id)} onAct={act} />
+            <Group key={a.id} title={a.name} note={a.purpose} holdings={inAccount(a.id)} sort={sort} open={opened.has(a.id)} onToggle={() => toggle(a.id)} onAct={act} />
           ))}
           {/* Investments that are in no broker account (gold coins, a property) are simply listed, with no card to open. */}
           {loose.length > 0 && (
@@ -1850,7 +1875,7 @@ export function Investments() {
                   key={k.kindKey}
                   summary={k}
                   sort={sort}
-                  open={!shut.has(`kind:${k.kindKey}`)}
+                  open={opened.has(`kind:${k.kindKey}`)}
                   onToggle={() => toggle(`kind:${k.kindKey}`)}
                   onAct={act}
                   onRate={() => setRateKind(k)}
