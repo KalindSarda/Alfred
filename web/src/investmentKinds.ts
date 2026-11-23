@@ -1,6 +1,17 @@
 import type { Holding } from "./api";
 import { rupees } from "./format";
 
+/**
+ * An active holding with this name in the same broker account (or, with no account, none): the one a new investment would
+ * duplicate. The same stock in another account is a separate holding, such as Jio Financial Services in Groww and ICICI Direct.
+ */
+export function findDuplicateHolding(all: readonly Holding[], name: string, brokerId: string): Holding | undefined {
+  const tidy = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
+  const key = tidy(name);
+  if (!key) return undefined;
+  return all.find((h) => h.status === "active" && tidy(h.name) === key && (h.investmentAccountId ?? "") === brokerId);
+}
+
 /** One line in a kind's purchase list: a buy, a sale, a purchase from before tracking (a lot), or what was held at the start. */
 export interface KindPurchase {
   key: string;

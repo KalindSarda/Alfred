@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Holding } from "../web/src/api";
-import { BROKER_COLORS, EXTRA_KIND_COLORS, KIND_COLORS, kindSummary, looseByKind, purchasesOf, worthSegments } from "../web/src/investmentKinds";
+import { BROKER_COLORS, EXTRA_KIND_COLORS, KIND_COLORS, findDuplicateHolding, kindSummary, looseByKind, purchasesOf, worthSegments } from "../web/src/investmentKinds";
 
 const E4 = 10_000;
 
@@ -168,6 +168,26 @@ describe("holdings outside a broker account, by kind", () => {
   it("treats an account that no longer exists as no account", () => {
     const h = holding({ id: "g", investmentAccountId: "gone", valuePaise: 1_000_00 });
     expect(looseByKind([h], new Set(["acc1"]))).toHaveLength(1);
+  });
+});
+
+describe("adding something you already hold", () => {
+  const jio = holding({ id: "j", name: "Jio Financial Services", kind: "stock", investmentAccountId: "icici" });
+
+  it("warns for the same name in the same broker account, ignoring case and spacing", () => {
+    expect(findDuplicateHolding([jio], "  jio  financial SERVICES ", "icici")?.id).toBe("j");
+  });
+
+  it("lets the same stock be held in another broker account", () => {
+    expect(findDuplicateHolding([jio], "Jio Financial Services", "groww")).toBeUndefined();
+  });
+
+  it("matches only holdings with no account when none is chosen, and ignores closed ones and empty names", () => {
+    const gold = holding({ id: "g", name: "Gold coins" });
+    expect(findDuplicateHolding([gold], "Gold coins", "")?.id).toBe("g");
+    expect(findDuplicateHolding([jio], "Jio Financial Services", "")).toBeUndefined();
+    expect(findDuplicateHolding([{ ...jio, status: "closed" }], "Jio Financial Services", "icici")).toBeUndefined();
+    expect(findDuplicateHolding([jio], "   ", "icici")).toBeUndefined();
   });
 });
 

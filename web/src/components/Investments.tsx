@@ -4,7 +4,7 @@ import { rupeesToPaise } from "../filters";
 import { e4ToQty, paiseToInput, qtyToE4, rupees, rupeesCompact, shortDate, today } from "../format";
 import { useAccounts, useDebts, useHoldingKinds, useHoldings, useInvestmentAccounts, usePartners, useRecurring, useRefreshMoney } from "../queries";
 import { Link } from "../router";
-import { byNewest, type KindPurchase, type KindSummary, looseByKind, purchasesOf, type WorthSegment, worthSegments } from "../investmentKinds";
+import { byNewest, findDuplicateHolding, type KindPurchase, type KindSummary, looseByKind, purchasesOf, type WorthSegment, worthSegments } from "../investmentKinds";
 import { NewKindSheet } from "./InvestmentKinds";
 import { AccountSelect, AccountsSheet, MoveSheet } from "./InvestmentAccounts";
 import { useToast } from "./toast";
@@ -86,8 +86,7 @@ function HoldingSheet({ holding, all, onBuyInstead, onClose }: { holding: Holdin
   const brokerUse = kinds.find((k) => k.key === kind)?.brokerUse ?? "optional";
   const unit = unitOfKind(kinds.find((k) => k.key === kind));
   const counted = !holding && !!unit && !typed;
-  const key = name.trim().replace(/\s+/g, " ").toLowerCase();
-  const dupe = !holding && key ? all.find((h) => h.status === "active" && h.name.trim().replace(/\s+/g, " ").toLowerCase() === key) : undefined;
+  const dupe = holding ? undefined : findDuplicateHolding(all, name, brokerId);
 
   const save = () => {
     if (!name.trim()) return setError("Name it, such as Gold coins or Tata Technologies.");
