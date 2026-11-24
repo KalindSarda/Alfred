@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
+import { DemoBanner } from "./components/DemoBanner";
 import { InviteSwitch } from "./components/InviteSwitch";
 import { JumpSearch } from "./components/JumpSearch";
 import { MoreMenu } from "./components/MoreMenu";
 import { QuickAddSheet } from "./components/QuickAddSheet";
 import { SideNav } from "./components/SideNav";
+import { TourChip } from "./components/TourChip";
 import { Icon, Spinner } from "./components/ui";
 import { Accounts } from "./pages/Accounts";
 import { Categories } from "./pages/Categories";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { Setup } from "./pages/Setup";
+import { Tour } from "./pages/Tour";
 import { You } from "./pages/You";
 import { Settings } from "./pages/Settings";
 import { Plan } from "./pages/Plan";
@@ -46,6 +49,8 @@ function Page({ path }: { path: string }) {
       return <Settings />;
     case "/categories":
       return <Categories />;
+    case "/tour":
+      return <Tour />;
     default:
       return <Home />;
   }
@@ -194,6 +199,7 @@ export function App() {
           </div>
         </header>
         <div className={current === "today" ? "" : "max-w-3xl"}>
+          <DemoBanner />
           <Page path={path} />
         </div>
       </main>
@@ -215,6 +221,7 @@ export function App() {
         ))}
       </nav>
 
+      <TourChip />
       {adding && <QuickAddSheet onClose={() => setAdding(false)} />}
       {finding && <JumpSearch onClose={() => setFinding(false)} />}
       {menu && <MoreMenu path={path} search={search} reviewCount={reviewTotal} onClose={() => setMenu(false)} />}

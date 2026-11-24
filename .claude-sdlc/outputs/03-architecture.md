@@ -272,3 +272,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-12-15: slice 51 noted: shared investments. Ownership by money put in (holding_partner_entries, partner_in and partner_out entries); one `splitHolding` (src/domain/partners.ts) feeds the DTO and every net-worth consumer.
 - 2026-12-16: slice 52 noted: payouts (partner_out), /api/partners, share history on each shared holding.
 - 2026-12-17: slice 53 noted: weekly allowance (src/domain/allowance.ts, src/services/allowance.ts), period_reserves for pay-yourself-first, no-spend streak from entries and none_today.
+- 2026-11-24: slice 54 noted: the sample life (src/services/demo.ts) is seeded through the real services and recorded in demo_items for exact removal; the tour is web/src/tour.ts with a guide card (TourChip) and a banner (DemoBanner).

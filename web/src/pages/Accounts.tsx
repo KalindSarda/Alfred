@@ -119,7 +119,7 @@ export function Accounts() {
         <Empty title="Could not load accounts">Check your connection and reload.</Empty>
       ) : (accounts.data ?? []).length === 0 ? (
         <Empty title="No accounts yet">
-          Add a bank account or credit card to start, or load demo data from You, then Settings.
+          Add a bank account or credit card to start, or take the tour with sample data from You.
         </Empty>
       ) : (
         view === "investments" ? (

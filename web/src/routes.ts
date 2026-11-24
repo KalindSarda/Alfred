@@ -13,7 +13,7 @@ export function hubOf(path: string): Hub {
   if (path === "/activity" || path === "/trends") return "activity";
   if (path === "/money") return "money";
   if (path === "/plan") return "plan";
-  if (path === "/you" || path === "/settings" || path === "/categories") return "you";
+  if (path === "/you" || path === "/settings" || path === "/categories" || path === "/tour") return "you";
   return "today";
 }
 

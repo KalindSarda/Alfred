@@ -5,6 +5,7 @@ import { AccountForm } from "../components/AccountForm";
 import { Orb } from "../components/Alfred";
 import { TelegramCard } from "../components/TelegramCard";
 import { Button, ErrorText, Field, Sheet, inputClass } from "../components/ui";
+import { useLoadDemo } from "../demo";
 import { rupees } from "../format";
 import { useAccounts, useMe } from "../queries";
 import { navigate } from "../router";
@@ -73,6 +74,7 @@ export function Setup() {
   const [adding, setAdding] = useState<"bank" | "card" | null>(null);
   const step: Step = STEPS[stepIndex] ?? "welcome";
 
+  const sample = useLoadDemo();
   const finish = useMutation({
     mutationFn: () => api.post<Me>("/api/me/onboarded"),
     onSuccess: (data) => {
@@ -112,7 +114,21 @@ export function Setup() {
         <Field label="What shall I call you?" hint="I use it in greetings. You can change it any time.">
           <input className={inputClass} maxLength={40} value={value} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <ErrorText>{error}</ErrorText>
+        <div className="space-y-2 rounded-2xl border border-line bg-card p-4">
+          <p className="text-sm font-medium">Just want a look around?</p>
+          <p className="text-sm text-soft">I can load a small made-up life with a guided tour, so you see how everything works. One tap clears it afterwards.</p>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={sample.pending || finish.isPending}
+            onClick={() => {
+              void sample.load().then(() => finish.mutate());
+            }}
+          >
+            Explore with sample data first
+          </Button>
+        </div>
+        <ErrorText>{error || sample.error}</ErrorText>
       </Shell>
     );
   }

@@ -345,16 +345,18 @@ describe("demo data", () => {
     const { api } = await session();
     const loaded = await api("POST", "/api/demo-data");
     expect(loaded.status).toBe(201);
-    expect(loaded.json.created).toBe(13);
+    expect(loaded.json.created).toBeGreaterThan(40);
+    expect((await api("GET", "/api/demo-data")).json).toEqual({ loaded: true });
 
     const accounts = (await api("GET", "/api/accounts")).json.items as Json[];
-    expect(accounts.map((a) => a.name).sort()).toEqual(["Demo Card", "Demo Savings", "Demo Salary Account"].sort());
-    expect(((await api("GET", "/api/transactions?limit=200")).json.items as Json[]).every((t) => t.source === "seed")).toBe(true);
+    expect(accounts.map((a) => a.name).sort()).toEqual(["Demo Card", "Demo Cash", "Demo Savings", "Demo Salary Account"].sort());
+    expect(((await api("GET", "/api/transactions?limit=200")).json.items as Json[]).some((t) => t.source === "seed")).toBe(true);
 
     expect((await api("POST", "/api/demo-data")).status).toBe(409);
 
     const cleared = await api("DELETE", "/api/demo-data");
-    expect(cleared.json.deleted).toBe(13);
+    expect(cleared.json.deleted).toBe(loaded.json.created);
+    expect((await api("GET", "/api/demo-data")).json).toEqual({ loaded: false });
     expect((await api("GET", "/api/accounts?includeArchived=true")).json.items).toEqual([]);
     expect((await api("GET", "/api/transactions")).json.items).toEqual([]);
   });
@@ -383,6 +385,6 @@ describe("demo data", () => {
     await other.call("POST", "/api/demo-data");
     await api("POST", "/api/demo-data");
     await api("DELETE", "/api/demo-data");
-    expect(((await other.call("GET", "/api/accounts")).json.items as Json[]).length).toBe(3);
+    expect(((await other.call("GET", "/api/accounts")).json.items as Json[]).length).toBe(4);
   });
 });

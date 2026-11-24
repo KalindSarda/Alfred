@@ -5,7 +5,7 @@ import { addDays, type IstDate, toIstDate } from "../domain/dates";
 import type { UsualEntry } from "../domain/habits";
 
 /** Entries the person made themselves. Rent, EMIs, loan instalments and balance bookings are not logging. */
-export const MANUAL_SOURCES = ["web", "telegram", "ai"] as const;
+export const MANUAL_SOURCES = ["web", "telegram", "ai", "seed"] as const;
 
 /**
  * The day the person last logged something: the latest manual entry (by when it was entered, not the date on it), or a

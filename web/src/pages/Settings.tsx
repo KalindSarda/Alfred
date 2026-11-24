@@ -8,7 +8,8 @@ import { TelegramCard } from "../components/TelegramCard";
 import { shortDate, today } from "../format";
 import { endSession, useMe, useRefreshMoney } from "../queries";
 import { useState } from "react";
-import { Link } from "../router";
+import { useClearDemo, useDemoStatus, useLoadDemo } from "../demo";
+import { Link, navigate } from "../router";
 
 export function Settings() {
   const client = useQueryClient();
@@ -54,21 +55,9 @@ export function Settings() {
     },
   });
 
-  const loadDemo = useMutation({
-    mutationFn: () => api.post<{ created: number }>("/api/demo-data"),
-    onSuccess: async (r) => {
-      await refresh();
-      toast.show(`Loaded ${r.created} demo transactions`);
-    },
-  });
-
-  const clearDemo = useMutation({
-    mutationFn: () => api.del<{ deleted: number }>("/api/demo-data"),
-    onSuccess: async (r) => {
-      await refresh();
-      toast.show(`Removed demo data (${r.deleted} transactions)`);
-    },
-  });
+  const demo = useDemoStatus();
+  const loadDemo = useLoadDemo();
+  const clearDemo = useClearDemo();
 
   const signOut = useMutation({
     mutationFn: (everywhere: boolean) => api.post(everywhere ? "/api/auth/logout-all" : "/api/auth/logout"),
@@ -253,25 +242,35 @@ export function Settings() {
       </Card>
 
       <Card id="demo" className="space-y-3">
-        <h2 className="font-medium">Demo data</h2>
+        <h2 className="font-medium">Sample data</h2>
         <p className="text-sm text-soft">
-          Try the app with sample accounts and transactions. Clearing removes only the demo items, never your own entries.
+          {demo.data?.loaded
+            ? "A small made-up life is loaded: accounts, a salary, rent, a loan, goals and investments, all marked Demo. Clear it when you are ready to use Alfred for real."
+            : "Try Alfred with a small made-up life, with a guided tour. Everything is marked Demo, and clearing removes only that, never your own entries."}
         </p>
-        <div className="flex gap-3">
-          <Button variant="secondary" disabled={loadDemo.isPending} onClick={() => loadDemo.mutate()}>
-            Load demo data
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={clearDemo.isPending}
-            onClick={() => {
-              if (window.confirm("Remove all demo accounts and transactions?")) clearDemo.mutate();
-            }}
-          >
-            Clear demo data
-          </Button>
+        <div className="flex flex-wrap gap-3">
+          {demo.data?.loaded ? (
+            <>
+              <Link to="/tour" className="flex min-h-11 items-center rounded-xl border border-line bg-card px-4 py-2.5 text-base font-medium text-ink hover:bg-hover">
+                Take the tour
+              </Link>
+              <Button variant="secondary" disabled={clearDemo.pending} onClick={clearDemo.clear}>
+                Clear sample data and start fresh
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="secondary"
+              disabled={loadDemo.pending}
+              onClick={() => {
+                void loadDemo.load().then(() => navigate("/"));
+              }}
+            >
+              Load sample data
+            </Button>
+          )}
         </div>
-        <ErrorText>{loadDemo.isError ? describeError(loadDemo.error) : clearDemo.isError ? describeError(clearDemo.error) : ""}</ErrorText>
+        <ErrorText>{loadDemo.error || clearDemo.error}</ErrorText>
       </Card>
 
       <Card id="signout" className="space-y-3">

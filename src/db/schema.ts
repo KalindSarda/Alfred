@@ -830,3 +830,18 @@ export const investmentAccounts = sqliteTable(
   },
   (t) => [uniqueIndex("investment_accounts_user_name_uq").on(t.userId, t.name)],
 );
+
+/**
+ * What the sample ("demo") data made in tables that have no demo marker of their own: one row per thing, so clearing the sample
+ * removes exactly these and never anything the person added. Accounts are marked on the account itself (`is_demo`).
+ */
+export const demoItems = sqliteTable(
+  "demo_items",
+  {
+    userId: text("user_id").notNull().references(() => users.id),
+    /** The table the row is in: goals, holdings, contacts and so on. */
+    kind: text("kind").notNull(),
+    refId: text("ref_id").notNull(),
+  },
+  (t) => [uniqueIndex("demo_items_uq").on(t.userId, t.kind, t.refId)],
+);

@@ -29,6 +29,7 @@ import {
   loginCodes,
   merchantAliases,
   nudgeLog,
+  demoItems,
   recurringRules,
   holdingContributions,
   holdingPartnerEntries,
@@ -181,6 +182,7 @@ export async function enableMember(db: Db, ownerId: string, targetId: string): P
 async function eraseUser(db: Db, targetId: string): Promise<void> {
   await db.batch([
     db.delete(nudgeLog).where(eq(nudgeLog.userId, targetId)),
+    db.delete(demoItems).where(eq(demoItems.userId, targetId)),
     db.delete(periodReserves).where(eq(periodReserves.userId, targetId)),
     db.delete(budgets).where(eq(budgets.userId, targetId)),
     db.delete(merchantAliases).where(eq(merchantAliases.userId, targetId)),

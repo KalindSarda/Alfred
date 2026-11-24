@@ -65,6 +65,7 @@ export const NAV: NavSection[] = [
       { id: "features", label: "All features", to: "/you", path: "/you" },
       { id: "settings", label: "Settings", to: "/settings", path: "/settings" },
       { id: "categories", label: "Categories", to: "/categories", path: "/categories" },
+      { id: "tour", label: "Tour", to: "/tour", path: "/tour" },
     ],
   },
 ];

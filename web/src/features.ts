@@ -47,7 +47,8 @@ export const FEATURES: Feature[] = [
   { id: "kinds", title: "Investment kinds", blurb: "Add Silver, or rename and merge the kinds of investment", group: "Tidy up", to: "/categories?view=kinds", keywords: ["silver", "gold", "kind", "kinds", "unit", "gram", "investment type", "platinum", "coin"] },
   { id: "categories", title: "Categories", blurb: "Add, rename, merge or archive categories", group: "Tidy up", to: "/categories", keywords: ["category", "rename", "merge", "label", "tags"] },
   { id: "export", title: "Download your data", blurb: "Backup (JSON) and spreadsheet (CSV)", group: "Tidy up", to: "/settings#data", keywords: ["export", "backup", "csv", "json", "download", "spreadsheet", "excel"] },
-  { id: "demo", title: "Demo data", blurb: "Try Alfred with sample accounts and entries", group: "Tidy up", to: "/settings#demo", keywords: ["sample", "test", "clear demo", "try"] },
+  { id: "tour", title: "Take the tour", blurb: "A guided walk through every part of Alfred, with sample data to look at", group: "Tidy up", to: "/tour", keywords: ["tour", "guide", "learn", "help", "how", "walkthrough", "intro"] },
+  { id: "demo", title: "Sample data", blurb: "Try Alfred with a small made-up life, and clear it in one tap", group: "Tidy up", to: "/settings#demo", keywords: ["demo", "sample", "test", "clear demo", "try"] },
   { id: "setup", title: "Setup guide", blurb: "Walk through name, accounts, cards and Telegram again", group: "Tidy up", to: "/setup", keywords: ["onboarding", "start", "guide", "run setup"] },
 
   { id: "telegram", title: "Telegram", blurb: "Connect the chat and see what Alfred can do there", group: "You", to: "/settings#telegram", keywords: ["bot", "chat", "link", "connect", "commands", "notifications"] },
