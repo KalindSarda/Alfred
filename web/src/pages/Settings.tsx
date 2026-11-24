@@ -48,7 +48,7 @@ export function Settings() {
   });
 
   const saveHabit = useMutation({
-    mutationFn: (patch: Partial<Pick<Settings, "logNudge" | "balanceCheck" | "logNudgeUntil" | "morningPush" | "monthlyReview">>) => api.patch<Settings>("/api/settings", patch),
+    mutationFn: (patch: Partial<Pick<Settings, "logNudge" | "balanceCheck" | "logNudgeUntil" | "morningPush" | "monthlyReview" | "priceRefresh">>) => api.patch<Settings>("/api/settings", patch),
     onSuccess: (data) => {
       client.setQueryData(["settings"], data);
       toast.show("Saved");
@@ -182,6 +182,13 @@ export function Settings() {
                 </Button>
               </p>
             )}
+            <label className="flex min-h-11 items-start gap-3 text-sm">
+              <input type="checkbox" className="mt-1 size-5 accent-brand" checked={settings.data.priceRefresh} onChange={(e) => saveHabit.mutate({ priceRefresh: e.target.checked })} />
+              <span>
+                Refresh investment prices every week
+                <span className="block text-xs text-soft">On Saturday morning Alfred fetches the prices of investments you have linked (stocks, funds, gold, silver) and tells you on Telegram what changed.</span>
+              </span>
+            </label>
             <label className="flex min-h-11 items-start gap-3 text-sm">
               <input type="checkbox" className="mt-1 size-5 accent-brand" checked={settings.data.monthlyReview} onChange={(e) => saveHabit.mutate({ monthlyReview: e.target.checked })} />
               <span>

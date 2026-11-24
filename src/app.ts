@@ -38,6 +38,7 @@ import { exportRoutes } from "./routes/export";
 import { holdRoutes } from "./routes/holds";
 import { me } from "./routes/me";
 import { peopleRoutes } from "./routes/people";
+import { priceRoutes } from "./routes/prices";
 import { recurringRoutes } from "./routes/recurring";
 import { settingsRoutes } from "./routes/settings";
 import { transactionRoutes } from "./routes/transactions";
@@ -45,11 +46,12 @@ import type { AuthDeps } from "./services/auth";
 import { createTelegramApi, type TelegramApi } from "./bot/telegramApi";
 import { telegramLinkRoutes, telegramWebhook } from "./routes/telegram";
 import { createNotifiers, type Notifiers } from "./services/notifiers";
+import type { FetchFn } from "./services/prices/feeds";
 import { logger } from "./utils/logger";
 
 export type AppEnv = {
   Bindings: Bindings;
-  Variables: { requestId: string; auth: AuthDeps; telegram: TelegramApi; userId: string; sessionId: string };
+  Variables: { requestId: string; auth: AuthDeps; telegram: TelegramApi; priceFetch: FetchFn; userId: string; sessionId: string };
 };
 
 export interface AppOptions {
@@ -59,6 +61,8 @@ export interface AppOptions {
   telegram?: (config: Config) => TelegramApi;
   /** Test seam: replace the clock (epoch milliseconds). */
   now?: () => number;
+  /** Test seam: replace the fetch used for prices (Yahoo, AMFI, IBJA). */
+  fetch?: FetchFn;
 }
 
 export function createApp(options: AppOptions = {}) {
@@ -77,6 +81,7 @@ export function createApp(options: AppOptions = {}) {
       ...(options.now && { now: options.now }),
     });
     c.set("telegram", (options.telegram ?? ((cfg: Config) => createTelegramApi(cfg.TELEGRAM_BOT_TOKEN)))(config));
+    c.set("priceFetch", options.fetch ?? ((input, init) => fetch(input, init)));
     await next();
   });
   app.use("/api/*", dependencies);
@@ -122,6 +127,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/debts", debtRoutes);
   app.route("/api/partners", partnerRoutes);
   app.route("/api/allowance", allowanceRoutes);
+  app.route("/api/prices", priceRoutes);
   app.route("/api/contacts", contactRoutes);
   app.route("/api/goals", goalRoutes);
   app.route("/api/entry-hints", hintRoutes);

@@ -273,3 +273,4 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-12-16: slice 52 noted: payouts (partner_out), /api/partners, share history on each shared holding.
 - 2026-12-17: slice 53 noted: weekly allowance (src/domain/allowance.ts, src/services/allowance.ts), period_reserves for pay-yourself-first, no-spend streak from entries and none_today.
 - 2026-11-24: slice 54 noted: the sample life (src/services/demo.ts) is seeded through the real services and recorded in demo_items for exact removal; the tour is web/src/tour.ts with a guide card (TourChip) and a banner (DemoBanner).
+- 2026-11-24: slice 55 noted: live prices (src/services/prices/feeds.ts adapters for Yahoo, AMFI and IBJA; refresh.ts for the refresh, suggestions and links; priceJob.ts weekly on Saturdays); typed prices always win over fetched ones.

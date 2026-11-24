@@ -1,5 +1,5 @@
 import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type CommitmentsView, type EntryHints, type EmergencyFund, type FireView, type InvestmentAccountsOverview, type LadderView, type SpendByAccount, type MoneyHealth, type TransferView, type ProtectionView, type Runway, type HoldingKind, type Allowance, type HoldingsOverview, type Partner, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
+import { type Account, ApiError, type BalanceOverview, type Briefing, type Budgets, type Cashflow, type Category, type CommitmentsView, type EntryHints, type EmergencyFund, type FireView, type InvestmentAccountsOverview, type LadderView, type SpendByAccount, type MoneyHealth, type TransferView, type ProtectionView, type Runway, type HoldingKind, type Allowance, type HoldingsOverview, type Partner, type PriceStatus, type LoansOverview, type DebtsOverview, type EmiPlan, type GoalsOverview, type NetWorthPoint, type Hold, type Me, type RecurringRule, type Summary, type Transaction, api } from "./api";
 import { type TxnFilters, toApiParams } from "./filters";
 
 export const useMe = () =>
@@ -115,6 +115,9 @@ export const useEntryHints = () =>
 export const useHoldings = (status: "active" | "all" = "active") =>
   useQuery({ queryKey: ["holdings", status], queryFn: () => api.get<HoldingsOverview>(`/api/holdings?status=${status}`) });
 
+/** When prices were last fetched, and how many investments follow a feed. */
+export const usePriceStatus = () => useQuery({ queryKey: ["price-status"], queryFn: () => api.get<PriceStatus>("/api/prices/status") });
+
 /** The weekly allowance, the pace of the period, the no-spend streak and the money to move first. */
 export const useAllowance = () => useQuery({ queryKey: ["allowance"], queryFn: () => api.get<Allowance>("/api/allowance") });
 
@@ -184,6 +187,7 @@ export function useRefreshMoney() {
       client.invalidateQueries({ queryKey: ["holdings"] }),
       client.invalidateQueries({ queryKey: ["partners"] }),
       client.invalidateQueries({ queryKey: ["allowance"] }),
+      client.invalidateQueries({ queryKey: ["price-status"] }),
       client.invalidateQueries({ queryKey: ["holding-kinds"] }),
       client.invalidateQueries({ queryKey: ["commitments"] }),
       client.invalidateQueries({ queryKey: ["runway"] }),

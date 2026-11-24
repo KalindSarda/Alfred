@@ -29,6 +29,7 @@ import {
   mandateAlerts,
   nudgeLog,
   periodReserves,
+  priceLinks,
   protectionProfile,
   recurringRules,
   statementChecks,
@@ -210,7 +211,7 @@ async function seed(db: Db, userId: string, today: IstDate, track: (kind: Kind, 
   const shared = await createHolding(db, userId, { name: "Demo Shared Stock", kind: "stock", tracking: "units", unitsE4: 20 * 10_000, investedPaise: 10_000 * R, ratePaise: 600 * R, valueDate: d(3), investmentAccountId: broker.id }, today);
   track("holdings", shared.id);
   await addPartnerStake(db, userId, shared.id, { name: "Demo Ravi", amountPaise: 4_000 * R, date: d(30), note: "His share of the buy" }, today);
-  const gold = await createHolding(db, userId, { name: "Demo Gold", kind: "gold", tracking: "units", unitsE4: 5 * 10_000, investedPaise: 30_000 * R, ratePaise: 70_000 * R, valueDate: d(3) }, today);
+  const gold = await createHolding(db, userId, { name: "Demo Gold", kind: "gold", tracking: "units", unitsE4: 5 * 10_000, investedPaise: 55_000 * R, ratePaise: 1_20_000 * R, valueDate: d(3) }, today);
   track("holdings", gold.id);
   const epf = await createHolding(db, userId, { name: "Demo EPF", kind: "retirement", investedPaise: 1_20_000 * R, valuePaise: 1_50_000 * R, valueDate: d(5) }, today);
   track("holdings", epf.id);
@@ -368,6 +369,7 @@ export async function clearDemoData(db: Db, userId: string): Promise<{ deleted: 
           db.delete(holdingContributions).where(and(eq(holdingContributions.userId, userId), inArray(holdingContributions.holdingId, holdingIds))),
           db.delete(holdingLots).where(and(eq(holdingLots.userId, userId), inArray(holdingLots.holdingId, holdingIds))),
           db.delete(holdingValues).where(and(eq(holdingValues.userId, userId), inArray(holdingValues.holdingId, holdingIds))),
+          db.delete(priceLinks).where(and(eq(priceLinks.userId, userId), inArray(priceLinks.holdingId, holdingIds))),
           db.delete(holdings).where(and(eq(holdings.userId, userId), inArray(holdings.id, holdingIds))),
         ]
       : []),

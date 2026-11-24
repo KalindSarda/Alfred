@@ -8,7 +8,18 @@ export const BrokerUse = z.enum(["required", "optional", "never"]);
 export const CreateHoldingKind = z.object({ name: Name, unit: Unit.nullable().optional(), ratePer: RatePer.optional(), brokerUse: BrokerUse.optional() }).strict();
 export type CreateHoldingKindData = z.output<typeof CreateHoldingKind>;
 
-export const UpdateHoldingKind = z.object({ name: Name.optional(), unit: Unit.nullable().optional(), ratePer: RatePer.optional(), archived: z.boolean().optional(), brokerUse: BrokerUse.optional() }).strict();
+export const UpdateHoldingKind = z
+  .object({
+    name: Name.optional(),
+    unit: Unit.nullable().optional(),
+    ratePer: RatePer.optional(),
+    archived: z.boolean().optional(),
+    brokerUse: BrokerUse.optional(),
+    /** A price feed for holdings of this kind outside a broker, and what to add to its price (basis points, up to 50% either way). */
+    feed: z.enum(["gold", "silver"]).nullable().optional(),
+    feedAdjustBp: z.number().int().min(-5000).max(5000).optional(),
+  })
+  .strict();
 export type UpdateHoldingKindData = z.output<typeof UpdateHoldingKind>;
 
 export const MergeHoldingKind = z.object({ intoId: z.string().min(1).max(64) }).strict();
@@ -31,4 +42,7 @@ export interface HoldingKindDto {
   holdingCount: number;
   /** A holding counted by quantity uses it, so its unit and rate cannot change. */
   locked: boolean;
+  /** The price feed (gold or silver from IBJA) and the adjustment to it, in basis points; the feed is null when rates are typed. */
+  feed: "gold" | "silver" | null;
+  feedAdjustBp: number;
 }

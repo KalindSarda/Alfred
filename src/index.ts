@@ -11,6 +11,7 @@ import { runInsuranceReminders } from "./services/insuranceJob";
 import { runMorningPush, runSalaryPlans } from "./services/planJob";
 import { runMonthlyReview } from "./services/reviewJob";
 import { runStatementChecks } from "./services/statementJob";
+import { runPriceRefresh } from "./services/priceJob";
 import { runHoldingNudges, runUnitsCheckIns } from "./services/holdingsJob";
 import { runDebtReminders } from "./services/debtJob";
 import { runRecurring } from "./services/recurringJob";
@@ -110,6 +111,12 @@ export default {
       logger.info("holding_nudges_done", { ...valueResult });
     } catch (error) {
       logger.error("holding_nudges_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+    try {
+      const priceResult = await runPriceRefresh({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now, fetch: (input, init) => fetch(input, init) });
+      logger.info("price_refresh_done", { ...priceResult });
+    } catch (error) {
+      logger.error("price_refresh_failed", { error: error instanceof Error ? error.message : "unknown" });
     }
     try {
       const holdsResult = await runHoldReminders({ db, telegram: createTelegramApi(config.TELEGRAM_BOT_TOKEN), now });

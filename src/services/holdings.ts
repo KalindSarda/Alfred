@@ -5,7 +5,7 @@ import { getAccount } from "../db/accounts";
 import { getHoldingRow, type HoldingRow } from "../db/holdings";
 import { getKindByKey, getKindRow, type HoldingKindRow, kindsByKey } from "../db/holdingKinds";
 import { getRuleRow, parseSkips } from "../db/recurring";
-import { accounts, contacts, holdingContributions, holdingLots, holdingPartnerEntries, holdings, holdingValues, investmentAccounts, recurringRules, transactions } from "../db/schema";
+import { accounts, contacts, holdingContributions, holdingLots, holdingPartnerEntries, holdings, holdingValues, investmentAccounts, priceLinks, recurringRules, transactions } from "../db/schema";
 import { type Stake, splitHolding } from "../domain/partners";
 import { type IstDate, isValidIstDate } from "../domain/dates";
 import { formatRupees } from "../domain/money";
@@ -85,6 +85,13 @@ export interface PartnerHistoryDto {
   mySharePct: number;
 }
 
+/** What a holding is, so its price can be fetched: a Yahoo symbol, or a mutual fund's AMFI scheme code. */
+export interface PriceLinkDto {
+  feed: "yahoo" | "amfi";
+  code: string;
+  label: string | null;
+}
+
 export interface HoldingDto {
   id: string;
   name: string;
@@ -124,6 +131,10 @@ export interface HoldingDto {
   unitsHeldE4: number;
   /** The latest rate typed, and the average price paid quoted the same way. */
   ratePaise: number | null;
+  /** Linked to a price feed, or null. */
+  priceLink: PriceLinkDto | null;
+  /** Whether the latest value or rate was typed by the person or fetched automatically; null when there is none. */
+  rateSource: "typed" | "auto" | null;
   avgCostPaise: number | null;
   lots: HoldingLotDto[];
   /** Money put in with no bank entry, newest first. */
@@ -190,11 +201,15 @@ export interface LoadedHoldings {
   stakes: Map<string, Stake[]>;
   /** The same people's entries, for showing them. */
   partnerEntries: Map<string, (PartnerEntryDto & { contactId: string })[]>;
+  /** What each linked holding is, for fetching its price. */
+  links: Map<string, PriceLinkDto>;
+  /** Where each holding's values came from, by day: typed by the person or fetched. */
+  valueSource: Map<string, Map<IstDate, "typed" | "auto">>;
 }
 
 /** Everything about a person's holdings in three queries: the holdings, their typed values, and their linked entries. */
 export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldings> {
-  const [rows, values, txns, accountRows, lotRows, kinds, brokerRows, contributionRows, partnerRows, contactRows] = await Promise.all([
+  const [rows, values, txns, accountRows, lotRows, kinds, brokerRows, contributionRows, partnerRows, contactRows, linkRows] = await Promise.all([
     db.select().from(holdings).where(eq(holdings.userId, userId)),
     db.select().from(holdingValues).where(eq(holdingValues.userId, userId)),
     db
@@ -208,6 +223,7 @@ export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldin
     db.select().from(holdingContributions).where(eq(holdingContributions.userId, userId)),
     db.select().from(holdingPartnerEntries).where(eq(holdingPartnerEntries.userId, userId)),
     db.select({ id: contacts.id, name: contacts.name }).from(contacts).where(eq(contacts.userId, userId)),
+    db.select().from(priceLinks).where(eq(priceLinks.userId, userId)),
   ]);
   const accountName = new Map(accountRows.map((a) => [a.id, a.name]));
   type Mutable = {
@@ -224,9 +240,13 @@ export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldin
       return [r.id, f];
     }),
   );
+  const valueSource = new Map<string, Map<IstDate, "typed" | "auto">>();
   for (const v of values) {
     const f = facts.get(v.holdingId);
     if (!f) continue;
+    const days = valueSource.get(v.holdingId) ?? new Map<IstDate, "typed" | "auto">();
+    days.set(v.date, v.source);
+    valueSource.set(v.holdingId, days);
     f.values.push({ date: v.date, valuePaise: v.valuePaise });
     if (f.units && v.ratePaise !== null) f.units.rates.push({ date: v.date, ratePaise: v.ratePaise });
   }
@@ -287,7 +307,7 @@ export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldin
     shown.push({ id: p.id, contactId: p.contactId, kind: p.kind, date: p.date, amountPaise: p.amountPaise, bank: p.txnId !== null, note: p.note });
     partnerEntries.set(p.holdingId, shown);
   }
-  return { rows, facts: facts as Map<string, HoldingFacts>, entries, lots, contributions, kinds, brokers: new Map(brokerRows.map((b) => [b.id, b.name])), stakes, partnerEntries };
+  return { rows, facts: facts as Map<string, HoldingFacts>, entries, lots, contributions, kinds, brokers: new Map(brokerRows.map((b) => [b.id, b.name])), stakes, partnerEntries, links: new Map(linkRows.map((l) => [l.holdingId, { feed: l.feed, code: l.code, label: l.label }])), valueSource };
 }
 
 /** What your own share of a holding is worth on a day (all of it when it is not shared). */
@@ -295,7 +315,7 @@ export function myValueAt(loaded: LoadedHoldings, id: string, asOf: IstDate): nu
   return splitHolding(loaded.facts.get(id) as HoldingFacts, loaded.stakes.get(id) ?? [], asOf).myValuePaise;
 }
 
-function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lots: HoldingLotDto[], contributions: HoldingContributionDto[], today: IstDate, kind?: HoldingKindRow, brokerName: string | null = null, stakes: Stake[] = [], partnerEntries: (PartnerEntryDto & { contactId: string })[] = []): HoldingDto {
+function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lots: HoldingLotDto[], contributions: HoldingContributionDto[], today: IstDate, kind?: HoldingKindRow, brokerName: string | null = null, stakes: Stake[] = [], partnerEntries: (PartnerEntryDto & { contactId: string })[] = [], priceLink: PriceLinkDto | null = null, sourceByDay: Map<IstDate, "typed" | "auto"> | undefined = undefined): HoldingDto {
   const split = splitHolding(f, stakes, today);
   const rate = f.units ? latestRate(f.units, today) : null;
   const latest = f.units ? rate : latestValue(f, today);
@@ -330,6 +350,8 @@ function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lot
     ratePer: f.units?.ratePer ?? 1,
     unitsHeldE4: f.units ? unitsHeldE4(f.units, today) : 0,
     ratePaise: rate?.ratePaise ?? null,
+    priceLink,
+    rateSource: latest ? (sourceByDay?.get(latest.date) ?? "typed") : null,
     avgCostPaise: avgCostPaise(f, today),
     lots: [...lots].sort((a, b) => b.date.localeCompare(a.date)),
     contributions: [...contributions].sort((a, b) => b.date.localeCompare(a.date)),
@@ -365,10 +387,10 @@ function toDto(row: HoldingRow, f: HoldingFacts, entries: HoldingEntryDto[], lot
 
 /** Active holdings first, the most valuable first; closed ones after when asked for. */
 export async function listHoldings(db: Db, userId: string, today: IstDate, status: "active" | "all"): Promise<HoldingsOverview> {
-  const { rows, facts, entries, lots, contributions, kinds, brokers, stakes, partnerEntries } = await loadHoldings(db, userId);
+  const { rows, facts, entries, lots, contributions, kinds, brokers, stakes, partnerEntries, links, valueSource } = await loadHoldings(db, userId);
   const dtos = rows
     .filter((r) => status === "all" || r.status === "active")
-    .map((r) => toDto(r, facts.get(r.id) as HoldingFacts, entries.get(r.id) ?? [], lots.get(r.id) ?? [], contributions.get(r.id) ?? [], today, kinds.get(r.kind), r.investmentAccountId ? (brokers.get(r.investmentAccountId) ?? null) : null, stakes.get(r.id) ?? [], partnerEntries.get(r.id) ?? []))
+    .map((r) => toDto(r, facts.get(r.id) as HoldingFacts, entries.get(r.id) ?? [], lots.get(r.id) ?? [], contributions.get(r.id) ?? [], today, kinds.get(r.kind), r.investmentAccountId ? (brokers.get(r.investmentAccountId) ?? null) : null, stakes.get(r.id) ?? [], partnerEntries.get(r.id) ?? [], links.get(r.id) ?? null, valueSource.get(r.id)))
     .sort((a, b) => (a.status === b.status ? 0 : a.status === "active" ? -1 : 1) || b.valuePaise - a.valuePaise || a.name.localeCompare(b.name));
   const live = dtos.filter((h) => h.status === "active");
   const sum = (list: HoldingDto[], pick: (h: HoldingDto) => number) => list.reduce((s, h) => s + pick(h), 0);
@@ -447,7 +469,7 @@ function putValue(db: Db, userId: string, holdingId: string, date: IstDate, valu
   return db
     .insert(holdingValues)
     .values({ id: newId(), userId, holdingId, date, valuePaise: value, createdAt: nowIso() })
-    .onConflictDoUpdate({ target: [holdingValues.holdingId, holdingValues.date], set: { valuePaise: value, createdAt: nowIso() } });
+    .onConflictDoUpdate({ target: [holdingValues.holdingId, holdingValues.date], set: { valuePaise: value, source: "typed", createdAt: nowIso() } });
 }
 
 export async function createHolding(db: Db, userId: string, input: CreateHoldingData, today: IstDate): Promise<HoldingDto> {
@@ -529,7 +551,7 @@ function putRate(db: Db, userId: string, holdingId: string, date: IstDate, rateP
   return db
     .insert(holdingValues)
     .values({ id: newId(), userId, holdingId, date, valuePaise: value, ratePaise, createdAt: nowIso() })
-    .onConflictDoUpdate({ target: [holdingValues.holdingId, holdingValues.date], set: { valuePaise: value, ratePaise, createdAt: nowIso() } });
+    .onConflictDoUpdate({ target: [holdingValues.holdingId, holdingValues.date], set: { valuePaise: value, ratePaise, source: "typed", createdAt: nowIso() } });
 }
 
 async function requireCounted(db: Db, userId: string, id: string): Promise<HoldingRow> {
@@ -547,6 +569,35 @@ export async function setRate(db: Db, userId: string, id: string, input: SetHold
   const f = facts.get(id) as HoldingFacts;
   await putRate(db, userId, id, date, input.ratePaise, f.units ? unitsHeldE4(f.units, date) : 0, (await getKindByKey(db, userId, row.kind))?.ratePer ?? 1);
   return getHolding(db, userId, id, today);
+}
+
+/**
+ * Rates fetched from a price feed, written for one day. A value the person typed for the same day always stays: the fetch is left
+ * out and reported. Each result says what happened to that holding.
+ */
+export async function applyAutoRates(db: Db, userId: string, date: IstDate, items: readonly { holdingId: string; ratePaise: number }[]): Promise<Map<string, "written" | "typed_today" | "not_counted">> {
+  const result = new Map<string, "written" | "typed_today" | "not_counted">();
+  if (items.length === 0) return result;
+  const { rows, facts, kinds, valueSource } = await loadHoldings(db, userId);
+  for (const item of items) {
+    const row = rows.find((r) => r.id === item.holdingId);
+    const f = facts.get(item.holdingId);
+    if (!row || row.status !== "active" || row.tracking !== "units" || !f?.units) {
+      result.set(item.holdingId, "not_counted");
+      continue;
+    }
+    if (valueSource.get(item.holdingId)?.get(date) === "typed") {
+      result.set(item.holdingId, "typed_today");
+      continue;
+    }
+    const value = valueAtRate(unitsHeldE4(f.units, date), item.ratePaise, kinds.get(row.kind)?.ratePer ?? 1);
+    await db
+      .insert(holdingValues)
+      .values({ id: newId(), userId, holdingId: item.holdingId, date, valuePaise: value, ratePaise: item.ratePaise, source: "auto", createdAt: nowIso() })
+      .onConflictDoUpdate({ target: [holdingValues.holdingId, holdingValues.date], set: { valuePaise: value, ratePaise: item.ratePaise, source: "auto", createdAt: nowIso() } });
+    result.set(item.holdingId, "written");
+  }
+  return result;
 }
 
 /**
@@ -894,7 +945,7 @@ export async function deleteHolding(db: Db, userId: string, id: string): Promise
   if (!row) throw new NotFoundError("Holding not found");
   const linked = await db.select({ id: transactions.id }).from(transactions).where(and(eq(transactions.userId, userId), eq(transactions.holdingId, id), isNull(transactions.deletedAt))).limit(1);
   if (linked.length > 0) throw new ConflictError("Entries are linked to this holding. Close it instead.");
-  await db.batch([db.delete(recurringRules).where(and(eq(recurringRules.userId, userId), eq(recurringRules.type, "contribution"), eq(recurringRules.holdingId, id))), db.delete(holdingPartnerEntries).where(and(eq(holdingPartnerEntries.holdingId, id), eq(holdingPartnerEntries.userId, userId))), db.delete(holdingContributions).where(and(eq(holdingContributions.holdingId, id), eq(holdingContributions.userId, userId))), db.delete(holdingLots).where(and(eq(holdingLots.holdingId, id), eq(holdingLots.userId, userId))), db.delete(holdingValues).where(and(eq(holdingValues.holdingId, id), eq(holdingValues.userId, userId))), db.delete(holdings).where(and(eq(holdings.id, id), eq(holdings.userId, userId)))]);
+  await db.batch([db.delete(priceLinks).where(and(eq(priceLinks.holdingId, id), eq(priceLinks.userId, userId))), db.delete(recurringRules).where(and(eq(recurringRules.userId, userId), eq(recurringRules.type, "contribution"), eq(recurringRules.holdingId, id))), db.delete(holdingPartnerEntries).where(and(eq(holdingPartnerEntries.holdingId, id), eq(holdingPartnerEntries.userId, userId))), db.delete(holdingContributions).where(and(eq(holdingContributions.holdingId, id), eq(holdingContributions.userId, userId))), db.delete(holdingLots).where(and(eq(holdingLots.holdingId, id), eq(holdingLots.userId, userId))), db.delete(holdingValues).where(and(eq(holdingValues.holdingId, id), eq(holdingValues.userId, userId))), db.delete(holdings).where(and(eq(holdings.id, id), eq(holdings.userId, userId)))]);
 }
 
 /**

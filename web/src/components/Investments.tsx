@@ -6,6 +6,7 @@ import { useAccounts, useDebts, useHoldingKinds, useHoldings, useInvestmentAccou
 import { Link } from "../router";
 import { byNewest, findDuplicateHolding, type KindPurchase, type KindSummary, looseByKind, purchasesOf, totalsOf, type WorthSegment, worthSegments } from "../investmentKinds";
 import { NewKindSheet } from "./InvestmentKinds";
+import { KindFeedSheet, LinkPriceSheet, RefreshPrices } from "./PriceSheets";
 import { AccountSelect, AccountsSheet, MoveSheet } from "./InvestmentAccounts";
 import { useToast } from "./toast";
 import { Amount, AmountInput, Button, Card, Chevron, Empty, ErrorText, Field, Sheet, inputClass } from "./ui";
@@ -461,7 +462,7 @@ function TradeSheet({ holding, selling, onClose }: { holding: Holding; selling: 
   );
 }
 
-type Act = "value" | "rate" | "buy" | "sell" | "edit" | "convert" | "contribute" | "share";
+type Act = "value" | "rate" | "buy" | "sell" | "edit" | "convert" | "contribute" | "share" | "price";
 type SheetState = { kind: "edit"; holding: Holding | null } | { kind: Exclude<Act, "edit">; holding: Holding } | null;
 
 /**
@@ -1041,6 +1042,11 @@ function HoldingButtons({ h, onAct }: { h: Holding; onAct: (what: Act) => void }
               Count by quantity
             </Button>
           )}
+          {(h.kind === "stock" || h.kind === "fund" || h.accountName !== null || h.priceLink !== null) && (
+            <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={() => onAct("price")}>
+              {h.priceLink ? "Live price: change" : "Live price"}
+            </Button>
+          )}
           {h.values.length > 0 && (
             <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={() => setHistory(true)}>
               Rate history
@@ -1335,7 +1341,7 @@ function HoldingLine({ h, onAct, showKind = false }: { h: Holding; onAct: (what:
   const unit = unitOfHolding(h);
   const stale = active && (h.staleDays === null || h.staleDays > 35);
   const myPct = h.myInvestedPaise > 0 ? Math.round((h.myGainPaise / h.myInvestedPaise) * 1000) / 10 : null;
-  const second = counted && unit ? (h.ratePaise ? `${heldText(h)} at ${rupees(h.ratePaise)} ${rateWord(unit)}` : `${heldText(h)} · no rate typed yet`) : ago(h.staleDays);
+  const second = counted && unit ? (h.ratePaise ? `${heldText(h)} at ${rupees(h.ratePaise)} ${rateWord(unit)}${h.rateSource === "auto" ? " · fetched" : ""}` : `${heldText(h)} · no rate typed yet`) : ago(h.staleDays);
   return (
     <li>
       <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className={`${ROW_GRID} min-h-14 w-full py-2.5 pr-4 pl-7 text-left text-sm hover:bg-hover`}>
@@ -1433,7 +1439,7 @@ function KindRateSheet({ summary, onClose }: { summary: KindSummary; onClose: ()
  * hold, what it is worth, the gain, the rate, the buttons and the purchases. A kind with several shows its totals, one line per
  * holding, and the purchases of all of them.
  */
-function KindCard({ summary: s, sort, open, onToggle, onAct, onRate, onAssign }: { summary: KindSummary; sort: Sort; open: boolean; onToggle: () => void; onAct: (h: Holding) => (what: Act) => void; onRate: () => void; onAssign?: () => void }) {
+function KindCard({ summary: s, kind, sort, open, onToggle, onAct, onRate, onAssign, onFeed }: { summary: KindSummary; kind?: HoldingKind | undefined; sort: Sort; open: boolean; onToggle: () => void; onAct: (h: Holding) => (what: Act) => void; onRate: () => void; onAssign?: () => void; onFeed?: () => void }) {
   const single = s.holdings.length === 1 ? (s.holdings[0] as Holding) : null;
   const label = s.unitLabel ?? "";
   const quantity = s.unitsE4 !== null ? `${e4ToQty(s.unitsE4)} ${label}`.trim() : null;
@@ -1453,6 +1459,7 @@ function KindCard({ summary: s, sort, open, onToggle, onAct, onRate, onAssign }:
             <span className={`block text-xs ${stale ? "font-medium text-warn-ink" : "text-soft"}`}>
               {rupees(rate.paise)} {rateWord({ one: rate.unitOne, per: rate.per })}
               {rate.date ? `, ${shortDate(rate.date)}` : ""}
+              {kind?.feed ? " · from IBJA" : ""}
               {stale ? " · over a month old" : ""}
             </span>
           )}
@@ -1463,8 +1470,13 @@ function KindCard({ summary: s, sort, open, onToggle, onAct, onRate, onAssign }:
       {open && (
         <div className={`${DRAWER} pt-3`}>
           {single ? (
-            <div className="px-4 pb-3">
+            <div className="space-y-2 px-4 pb-3">
               <HoldingButtons h={single} onAct={onAct(single)} />
+              {onFeed && (
+                <Button variant="ghost" className="min-h-11 py-1.5 text-sm" onClick={onFeed}>
+                  {kind?.feed ? "Price feed: change" : "Follow a live price"}
+                </Button>
+              )}
             </div>
           ) : (
             <>
@@ -1473,6 +1485,11 @@ function KindCard({ summary: s, sort, open, onToggle, onAct, onRate, onAssign }:
                   {s.counted && (
                     <Button className="min-h-11 py-1.5 text-sm" onClick={onRate}>
                       Update rate
+                    </Button>
+                  )}
+                  {onFeed && (
+                    <Button variant="secondary" className="min-h-11 py-1.5 text-sm" onClick={onFeed}>
+                      {kind?.feed ? "Price feed: change" : "Follow a live price"}
                     </Button>
                   )}
                   {onAssign && (
@@ -1741,6 +1758,7 @@ export function Investments() {
   const [sheet, setSheet] = useState<SheetState>(null);
   const [manage, setManage] = useState<"accounts" | "move" | null>(null);
   const [rateKind, setRateKind] = useState<KindSummary | null>(null);
+  const [feedKind, setFeedKind] = useState<HoldingKind | null>(null);
   const [sort, setSort] = useState<Sort>("value");
   // Every card starts closed; this holds the ones opened.
   const [opened, setOpened] = useState<Set<string>>(new Set());
@@ -1835,6 +1853,8 @@ export function Investments() {
         </Card>
       )}
 
+      {view !== "shared" && active.length > 0 && <RefreshPrices />}
+
       {view === "shared" ? (
         <SharedView overview={overview} holdings={sharedActive} sort={sort} onAct={act} />
       ) : active.length === 0 ? (
@@ -1879,7 +1899,12 @@ export function Investments() {
                   onToggle={() => toggle(`kind:${k.kindKey}`)}
                   onAct={act}
                   onRate={() => setRateKind(k)}
+                  kind={kindsList.find((x) => x.key === k.kindKey)}
                   {...(accounts.length > 0 && kindsList.find((x) => x.key === k.kindKey)?.brokerUse === "required" ? { onAssign: () => setManage("move") } : {})}
+                  {...(() => {
+                    const kd = kindsList.find((x) => x.key === k.kindKey);
+                    return kd && kd.unit && (kd.unit === "g" || kd.unit === "kg") && kd.brokerUse === "never" ? { onFeed: () => setFeedKind(kd) } : {};
+                  })()}
                 />
               ))}
             </div>
@@ -1901,6 +1926,7 @@ export function Investments() {
       )}
 
       {rateKind && <KindRateSheet summary={rateKind} onClose={() => setRateKind(null)} />}
+      {feedKind && <KindFeedSheet key={feedKind.id} kind={feedKind} onClose={() => setFeedKind(null)} />}
       {manage === "accounts" && <AccountsSheet onClose={() => setManage(null)} />}
       {manage === "move" && <MoveSheet holdings={active} onClose={() => setManage(null)} />}
       {sheet?.kind === "edit" && <HoldingSheet holding={sheet.holding} all={holdings} onBuyInstead={(h) => setSheet({ kind: "buy", holding: h })} onClose={() => setSheet(null)} />}
@@ -1908,6 +1934,7 @@ export function Investments() {
       {sheet?.kind === "share" && <StakeSheet holding={sheet.holding} onClose={() => setSheet(null)} />}
       {sheet?.kind === "contribute" && <ContributionSheet holding={sheet.holding} onClose={() => setSheet(null)} />}
       {sheet?.kind === "convert" && <ConvertSheet holding={sheet.holding} onClose={() => setSheet(null)} />}
+      {sheet?.kind === "price" && <LinkPriceSheet key={sheet.holding.id} holding={sheet.holding} onClose={() => setSheet(null)} />}
       {sheet?.kind === "value" && <ValueSheet holding={sheet.holding} onClose={() => setSheet(null)} />}
       {(sheet?.kind === "buy" || sheet?.kind === "sell") && <TradeSheet holding={sheet.holding} selling={sheet.kind === "sell"} onClose={() => setSheet(null)} />}
     </div>

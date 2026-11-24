@@ -352,6 +352,7 @@ export interface Settings {
   logNudgeUntil: string | null;
   morningPush: boolean;
   monthlyReview: boolean;
+  priceRefresh: boolean;
   emergencyMonths: number;
   emergencyTargetPaise: number | null;
   emergencyHorizonMonths: number;
@@ -574,6 +575,9 @@ export interface Holding {
   ratePer: number;
   unitsHeldE4: number;
   ratePaise: number | null;
+  /** Linked to a price feed, or null; and whether the latest rate was typed or fetched. */
+  priceLink: PriceLink | null;
+  rateSource: "typed" | "auto" | null;
   avgCostPaise: number | null;
   lots: HoldingLot[];
   contributions: HoldingContribution[];
@@ -626,6 +630,59 @@ export interface HoldingKind {
   brokerUse: "required" | "optional" | "never";
   holdingCount: number;
   locked: boolean;
+  /** The price feed (gold or silver from IBJA) and the adjustment to it in basis points; null when rates are typed. */
+  feed: "gold" | "silver" | null;
+  feedAdjustBp: number;
+}
+
+/** What a holding is, so its price can be fetched. */
+export interface PriceLink {
+  feed: "yahoo" | "amfi";
+  code: string;
+  label: string | null;
+}
+
+export interface PriceCandidate {
+  feed: "yahoo" | "amfi";
+  code: string;
+  label: string;
+  paise: number | null;
+}
+
+export interface PriceOutcome {
+  holdingId: string;
+  name: string;
+  source: "Yahoo" | "AMFI" | "IBJA";
+  status: "updated" | "unchanged" | "typed_today" | "held" | "failed";
+  ratePaise: number | null;
+  previousPaise: number | null;
+  changePaise: number;
+  reason: string | null;
+}
+
+export interface PriceRefresh {
+  checkedAt: string;
+  items: PriceOutcome[];
+  updated: number;
+  unchanged: number;
+  typedToday: number;
+  held: number;
+  failed: number;
+  changePaise: number;
+}
+
+export interface PriceStatus {
+  checkedAt: string | null;
+  linked: number;
+  kinds: number;
+}
+
+export interface FeedPreview {
+  ratePaise: number;
+  date: string;
+  session: "AM" | "PM";
+  lastTypedPaise: number | null;
+  suggestedAdjustBp: number;
 }
 
 /** A broker or demat account and what it holds. */

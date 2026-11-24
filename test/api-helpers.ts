@@ -3,6 +3,7 @@ import { createApp } from "../src/app";
 import { telegramLinks } from "../src/db/schema";
 import type { Button, TelegramApi } from "../src/bot/telegramApi";
 import type { Notifiers } from "../src/services/notifiers";
+import type { FetchFn } from "../src/services/prices/feeds";
 import { newId } from "../src/utils/id";
 import { createUser, db } from "./helpers";
 
@@ -69,7 +70,7 @@ export interface CallOptions {
 }
 
 /** App with fake senders and a controllable clock. Each instance gets its own IP so rate limits do not collide. */
-export function makeApp(): TestApp {
+export function makeApp(options: { fetch?: FetchFn } = {}): TestApp {
   let nowMs = START;
   let telegramFails = false;
   const telegram = new FakeTelegram();
@@ -84,7 +85,7 @@ export function makeApp(): TestApp {
       sentTelegram.push({ chatId, text });
     },
   };
-  const app = createApp({ notifiers: () => notifiers, telegram: () => telegram, now: () => nowMs });
+  const app = createApp({ notifiers: () => notifiers, telegram: () => telegram, now: () => nowMs, ...(options.fetch && { fetch: options.fetch }) });
   const defaultIp = `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
 
   return {

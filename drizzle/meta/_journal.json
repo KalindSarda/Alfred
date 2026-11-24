@@ -288,6 +288,13 @@
       "when": 1795529863465,
       "tag": "0040_demo_items",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1795533627118,
+      "tag": "0041_prices",
+      "breakpoints": true
     }
   ]
 }

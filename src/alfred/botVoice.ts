@@ -829,3 +829,28 @@ export const botVoice = {
     return `Filed. ${summary}.`;
   },
 };
+
+/** A price outcome as the weekly message needs it. */
+interface PriceLine {
+  name: string;
+  status: "updated" | "unchanged" | "typed_today" | "held" | "failed";
+  ratePaise: number | null;
+  previousPaise: number | null;
+  reason: string | null;
+}
+
+/** The weekly price refresh in a few lines, exact figures, no view on what to do. Null when there was nothing to fetch. */
+export function priceRefreshText(r: { items: readonly PriceLine[]; updated: number; unchanged: number; changePaise: number }): string | null {
+  if (r.items.length === 0) return null;
+  const list = (items: readonly PriceLine[], say: (i: PriceLine) => string) => {
+    const shown = items.slice(0, 5).map(say).join(", ");
+    return items.length > 5 ? `${shown} and ${items.length - 5} more` : shown;
+  };
+  const held = r.items.filter((i) => i.status === "held");
+  const failed = r.items.filter((i) => i.status === "failed");
+  const lines = [`Prices refreshed: ${r.updated} changed, ${r.unchanged} the same.`];
+  if (r.changePaise !== 0) lines.push(`Together they are worth ${rupees(Math.abs(r.changePaise))} ${r.changePaise > 0 ? "more" : "less"} than at their last prices.`);
+  if (held.length > 0) lines.push(`Left for you to check, because the price moved a lot: ${list(held, (i) => `${i.name} (now ${rupees(i.ratePaise ?? 0)}, was ${i.previousPaise === null ? "unknown" : rupees(i.previousPaise)})`)}.`);
+  if (failed.length > 0) lines.push(`Could not get a price for: ${list(failed, (i) => `${i.name} (${i.reason ?? "no reason given"})`)}. They keep their last price.`);
+  return lines.join("\n");
+}

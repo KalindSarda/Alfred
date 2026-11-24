@@ -827,6 +827,7 @@ async function cmdSettings(deps: BotDeps, who: Actor): Promise<void> {
       settings.logNudge ? "I look in about 10:45 in the evening if nothing has been logged that day." : "I shall not check in on you in the evening.",
       settings.balanceCheck ? "On Sunday nights I ask what your banks show." : "I shall not ask for your bank balances on Sundays.",
       settings.monthlyReview ? "On the first morning of each month I send you a review of the one just ended." : "I shall not send a monthly review.",
+      settings.priceRefresh ? "On Saturday mornings I fetch the latest prices of the investments you have linked." : "I shall not fetch investment prices by myself.",
       settings.morningPush ? "I send your briefing here each morning when something needs attention." : "I shall not send a morning briefing here unless you ask me to, in Settings.",
       "",
       "These can be changed in the app, under You, then Settings.",

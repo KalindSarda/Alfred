@@ -489,6 +489,10 @@ export const appSettings = sqliteTable("app_settings", {
   morningPush: integer("morning_push", { mode: "boolean" }).notNull().default(false),
   /** On the first morning of each month, a review of the month just ended on Telegram. On unless switched off. */
   monthlyReview: integer("monthly_review", { mode: "boolean" }).notNull().default(true),
+  /** Fetch the prices of linked investments every week. */
+  priceRefresh: integer("price_refresh", { mode: "boolean" }).notNull().default(true),
+  /** When prices were last fetched, for "prices as of". */
+  pricesCheckedAt: text("prices_checked_at"),
   /** The emergency fund: how many months of essential spending it should cover, an optional typed target, and the months to close a gap over. */
   emergencyMonths: integer("emergency_months").notNull().default(6),
   emergencyTargetPaise: integer("emergency_target_paise"),
@@ -524,7 +528,7 @@ export const checkinLog = sqliteTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull().references(() => users.id),
-    kind: text("kind", { enum: ["evening", "balance", "none_today", "morning", "review"] }).notNull(),
+    kind: text("kind", { enum: ["evening", "balance", "none_today", "morning", "review", "prices"] }).notNull(),
     day: text("day").notNull(),
     createdAt: text("created_at").notNull(),
   },
@@ -615,6 +619,10 @@ export const holdingKinds = sqliteTable(
     isSystem: integer("is_system", { mode: "boolean" }).notNull().default(false),
     /** Whether a holding of this kind is held through a broker account: required (stocks, funds, crypto), optional (a gold ETF), or not used (gold coins, silver). */
     brokerUse: text("broker_use", { enum: ["required", "optional", "never"] }).notNull().default("never"),
+    /** A price feed for holdings of this kind outside a broker (gold or silver from the IBJA benchmark), or null for typed rates. */
+    feed: text("feed", { enum: ["gold", "silver"] }),
+    /** What to add to the feed's price, in basis points, to match what the person is paid or pays (a jeweller's, say). Can be negative. */
+    feedAdjustBp: integer("feed_adjust_bp").notNull().default(0),
     archivedAt: text("archived_at"),
     createdAt: text("created_at").notNull(),
   },
@@ -648,6 +656,8 @@ export const holdingValues = sqliteTable(
     valuePaise: integer("value_paise").notNull(),
     /** The rate typed (for the holding's rate quantity), when it is counted by quantity. */
     ratePaise: integer("rate_paise"),
+    /** Where it came from: typed by the person, or fetched automatically (a price feed). A fetch never replaces a typed value for the same day. */
+    source: text("source", { enum: ["typed", "auto"] }).notNull().default("typed"),
     createdAt: text("created_at").notNull(),
   },
   (t) => [uniqueIndex("holding_values_day_uq").on(t.holdingId, t.date), check("holding_values_nonnegative", sql`${t.valuePaise} >= 0`)],
@@ -845,3 +855,17 @@ export const demoItems = sqliteTable(
   },
   (t) => [uniqueIndex("demo_items_uq").on(t.userId, t.kind, t.refId)],
 );
+
+/**
+ * What a holding is, so its price can be fetched: an NSE or BSE symbol for Yahoo (`TATAPOWER.NS`), or a mutual fund's AMFI scheme
+ * code. One per holding; the person confirms it, Alfred only suggests.
+ */
+export const priceLinks = sqliteTable("price_links", {
+  holdingId: text("holding_id").primaryKey().references(() => holdings.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  feed: text("feed", { enum: ["yahoo", "amfi"] }).notNull(),
+  code: text("code").notNull(),
+  /** The name the feed gave it, shown so the person can tell it is the right one. */
+  label: text("label"),
+  createdAt: text("created_at").notNull(),
+});
