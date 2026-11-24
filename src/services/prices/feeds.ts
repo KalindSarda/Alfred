@@ -206,8 +206,7 @@ export async function ibjaRates(fetchFn: FetchFn): Promise<IbjaRates> {
   return parseIbja(await getText(fetchFn, IBJA_URL));
 }
 
-/** The rate for a kind's quantity (gold per 10 g, silver per kg; the kind may quote per gram or per 100 g), with the person's adjustment. */
-export function kindRatePaise(feed: "gold" | "silver", ratePer: number, rates: IbjaRates, adjustBp: number): number {
-  const base = feed === "gold" ? (rates.goldPer10gPaise * ratePer) / 10 : (rates.silverPerKgPaise * ratePer) / 1000;
-  return Math.round(base * (1 + adjustBp / 10_000));
+/** The rate for a kind's quantity (gold per 10 g, silver per kg; the kind may quote per gram or per 100 g), exactly as IBJA publishes it. */
+export function kindRatePaise(feed: "gold" | "silver", ratePer: number, rates: IbjaRates): number {
+  return Math.round(feed === "gold" ? (rates.goldPer10gPaise * ratePer) / 10 : (rates.silverPerKgPaise * ratePer) / 1000);
 }

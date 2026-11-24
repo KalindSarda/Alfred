@@ -15,9 +15,8 @@ export const UpdateHoldingKind = z
     ratePer: RatePer.optional(),
     archived: z.boolean().optional(),
     brokerUse: BrokerUse.optional(),
-    /** A price feed for holdings of this kind outside a broker, and what to add to its price (basis points, up to 50% either way). */
+    /** A price feed for holdings of this kind outside a broker: IBJA gold or silver, exactly as published. */
     feed: z.enum(["gold", "silver"]).nullable().optional(),
-    feedAdjustBp: z.number().int().min(-5000).max(5000).optional(),
   })
   .strict();
 export type UpdateHoldingKindData = z.output<typeof UpdateHoldingKind>;
@@ -42,7 +41,6 @@ export interface HoldingKindDto {
   holdingCount: number;
   /** A holding counted by quantity uses it, so its unit and rate cannot change. */
   locked: boolean;
-  /** The price feed (gold or silver from IBJA) and the adjustment to it, in basis points; the feed is null when rates are typed. */
+  /** The price feed (gold or silver from the IBJA benchmark); null when rates are typed. */
   feed: "gold" | "silver" | null;
-  feedAdjustBp: number;
 }

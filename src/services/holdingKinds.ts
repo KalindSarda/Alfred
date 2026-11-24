@@ -40,7 +40,6 @@ const toDto = (row: HoldingKindRow, usage?: Usage): HoldingKindDto => ({
   holdingCount: usage?.count ?? 0,
   locked: (usage?.counted ?? 0) > 0,
   feed: row.feed,
-  feedAdjustBp: row.feedAdjustBp,
 });
 
 export async function listKinds(db: Db, userId: string): Promise<HoldingKindDto[]> {
@@ -95,7 +94,6 @@ export async function updateKind(db: Db, userId: string, id: string, patch: Upda
     if (patch.feed !== null && !(set.unit ?? nextUnit)) throw invalid("feed", "A price feed needs a kind counted by weight, such as grams");
     set.feed = patch.feed;
   }
-  if (patch.feedAdjustBp !== undefined && patch.feedAdjustBp !== row.feedAdjustBp) set.feedAdjustBp = patch.feedAdjustBp;
 
   if (patch.archived !== undefined) {
     if (patch.archived && row.isSystem) throw new ConflictError("Built-in kinds cannot be archived");

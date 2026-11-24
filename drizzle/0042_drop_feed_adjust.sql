@@ -1,0 +1,1 @@
+ALTER TABLE `holding_kinds` DROP COLUMN `feed_adjust_bp`;

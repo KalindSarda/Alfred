@@ -214,27 +214,23 @@ export function LinkPriceSheet({ holding, onClose }: { holding: Holding; onClose
 }
 
 /**
- * Gold or silver outside a broker follows IBJA's benchmark. It is a market benchmark, not what a jeweller pays, so the person can
- * adjust it by a percentage; the sheet shows the gap to the rate they last typed to choose from.
+ * Gold or silver outside a broker can follow IBJA's benchmark exactly as published. It is a market benchmark, not what a jeweller
+ * quotes, so the sheet shows the gap to the rate last typed before the person chooses to follow it.
  */
 export function KindFeedSheet({ kind, onClose }: { kind: HoldingKind; onClose: () => void }) {
   const refresh = useRefreshMoney();
   const toast = useToast();
   const [feed, setFeed] = useState<"" | "gold" | "silver">(kind.feed ?? (/silver/i.test(kind.name) ? "silver" : /gold/i.test(kind.name) ? "gold" : ""));
-  const [percent, setPercent] = useState(String(kind.feedAdjustBp / 100));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const preview = useQuery({ queryKey: ["feed-preview", kind.id, feed], queryFn: () => api.get<FeedPreview>(`/api/prices/kinds/${kind.id}/preview?feed=${feed}`), enabled: feed !== "", retry: false });
   const per = kind.ratePer > 1 ? `${kind.ratePer} ${kind.unit ?? ""}`.trim() : (kind.unitOne ?? kind.unit ?? "unit");
-  const bp = Math.round(Number(percent) * 100);
-  const valid = percent.trim() !== "" && Number.isFinite(bp) && Math.abs(bp) <= 5000;
 
   const save = async () => {
-    if (feed !== "" && !valid) return setError("The adjustment looks wrong. Use a percentage such as 1.2, or 0.");
     setBusy(true);
     setError("");
     try {
-      await api.patch(`/api/holding-kinds/${kind.id}`, { feed: feed === "" ? null : feed, ...(feed !== "" ? { feedAdjustBp: bp } : {}) });
+      await api.patch(`/api/holding-kinds/${kind.id}`, { feed: feed === "" ? null : feed });
       if (feed !== "") {
         const r = await api.post<PriceRefresh>("/api/prices/refresh");
         toast.show(describeRefresh(r));
@@ -249,7 +245,8 @@ export function KindFeedSheet({ kind, onClose }: { kind: HoldingKind; onClose: (
     }
   };
 
-  const gap = preview.data && preview.data.lastTypedPaise !== null ? preview.data.suggestedAdjustBp / 100 : null;
+  const last = preview.data?.lastTypedPaise ?? null;
+  const gap = preview.data && last !== null && preview.data.ratePaise > 0 ? Math.round((last / preview.data.ratePaise - 1) * 1000) / 10 : null;
   return (
     <Sheet title={`${kind.name}: price feed`} onClose={onClose}>
       <form
@@ -259,7 +256,7 @@ export function KindFeedSheet({ kind, onClose }: { kind: HoldingKind; onClose: (
           void save();
         }}
       >
-        <p className="text-sm text-soft">Alfred can follow the IBJA benchmark, the rate jewellers across India go by, published each day. It applies to {kind.name} you hold outside a broker, every Saturday and when you press Refresh prices.</p>
+        <p className="text-sm text-soft">Alfred can follow the IBJA benchmark, the rate jewellers across India go by, published each day, exactly as it is published. It applies to {kind.name} you hold outside a broker, every Saturday and when you press Refresh prices.</p>
         <Field label="Follow">
           <select className={inputClass} value={feed} onChange={(e) => setFeed(e.target.value as "" | "gold" | "silver")}>
             <option value="">Nothing, I type the rate myself</option>
@@ -276,22 +273,13 @@ export function KindFeedSheet({ kind, onClose }: { kind: HoldingKind; onClose: (
                 <p>
                   IBJA {feed} now <span className="font-medium">{rupees(preview.data.ratePaise)}</span> per {per}, {shortDate(preview.data.date)} {preview.data.session}.
                 </p>
-                {preview.data.lastTypedPaise !== null && (
+                {last !== null && (
                   <p className="text-soft">
-                    Your last typed rate was {rupees(preview.data.lastTypedPaise)}, {gap !== null && gap !== 0 ? `${Math.abs(gap)}% ${gap > 0 ? "above" : "below"}` : "the same as"} IBJA.
-                    {gap !== null && gap !== 0 && (
-                      <button type="button" className="ml-1 text-brand underline" onClick={() => setPercent(String(gap))}>
-                        Use {gap > 0 ? "+" : ""}
-                        {gap}%
-                      </button>
-                    )}
+                    Your last typed rate was {rupees(last)}, {gap !== null && gap !== 0 ? `${Math.abs(gap)}% ${gap > 0 ? "above" : "below"}` : "the same as"} IBJA. Following it will move what you hold to IBJA&apos;s rate.
                   </p>
                 )}
               </div>
             )}
-            <Field label="Adjust by (%)" hint="Added to IBJA's rate. Use a positive figure if you are quoted more than the benchmark, a negative one if less. 0 uses IBJA as it is.">
-              <input className={inputClass} inputMode="decimal" autoComplete="off" value={percent} onChange={(e) => setPercent(e.target.value)} />
-            </Field>
           </>
         )}
         <ErrorText>{error}</ErrorText>

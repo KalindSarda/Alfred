@@ -621,8 +621,6 @@ export const holdingKinds = sqliteTable(
     brokerUse: text("broker_use", { enum: ["required", "optional", "never"] }).notNull().default("never"),
     /** A price feed for holdings of this kind outside a broker (gold or silver from the IBJA benchmark), or null for typed rates. */
     feed: text("feed", { enum: ["gold", "silver"] }),
-    /** What to add to the feed's price, in basis points, to match what the person is paid or pays (a jeweller's, say). Can be negative. */
-    feedAdjustBp: integer("feed_adjust_bp").notNull().default(0),
     archivedAt: text("archived_at"),
     createdAt: text("created_at").notNull(),
   },

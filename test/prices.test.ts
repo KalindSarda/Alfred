@@ -68,13 +68,13 @@ describe("the price feeds' adapters", () => {
     expect(() => parseIbja("<html><body>Nothing here</body></html>")).toThrow(/did not have rates/);
   });
 
-  it("works out gold and silver for the quantity a kind quotes, with the adjustment", () => {
+  it("works out gold and silver for the quantity a kind quotes, exactly as IBJA publishes", () => {
     const rates = parseIbja(IBJA_HTML);
-    expect(kindRatePaise("gold", 10, rates, 0)).toBe(124_945_00);
-    expect(kindRatePaise("gold", 1, rates, 0)).toBe(12_494_50);
-    expect(kindRatePaise("gold", 10, rates, 100)).toBe(Math.round(124_945_00 * 1.01));
-    expect(kindRatePaise("silver", 1000, rates, 0)).toBe(152_625_00);
-    expect(kindRatePaise("silver", 1, rates, -500)).toBe(Math.round(152_625_00 / 1000 * 0.95));
+    expect(kindRatePaise("gold", 10, rates)).toBe(124_945_00);
+    expect(kindRatePaise("gold", 1, rates)).toBe(12_494_50);
+    expect(kindRatePaise("gold", 100, rates)).toBe(1_249_450_00);
+    expect(kindRatePaise("silver", 1000, rates)).toBe(152_625_00);
+    expect(kindRatePaise("silver", 1, rates)).toBe(15_263);
   });
 
   it("refuses an AMFI file that is far too short", async () => {
@@ -173,12 +173,12 @@ describe("refreshing prices", () => {
     expect(await db.select().from(priceLinks).where(eq(priceLinks.holdingId, h.id))).toEqual([]);
   });
 
-  it("follows IBJA for gold held outside a broker, with your adjustment, and leaves other kinds alone", async () => {
+  it("follows IBJA exactly for gold held outside a broker, and leaves other kinds alone", async () => {
     const gold = await createHolding(db, userId, { name: "Gold coins", kind: "gold", tracking: "units", unitsE4: 8 * 10_000, ratePaise: 126_401_00, valueDate: "2026-11-05", investedPaise: 90_000_00 }, TODAY);
     const loose = await createHolding(db, userId, { name: "Plot", kind: "other", investedPaise: 1_000_00, valuePaise: 2_000_00, valueDate: "2026-11-05" }, TODAY);
     const goldKind = (await listKinds(db, userId)).find((k) => k.key === "gold");
     expect(goldKind?.feed).toBeNull();
-    await updateKind(db, userId, goldKind?.id as string, { feed: "gold", feedAdjustBp: 0 });
+    await updateKind(db, userId, goldKind?.id as string, { feed: "gold" });
 
     const feeds = fakeFetch({ ibjarates: IBJA_HTML });
     const first = await refreshPrices(db, userId, TODAY, feeds);
@@ -187,16 +187,28 @@ describe("refreshing prices", () => {
     expect((await getHolding(db, userId, gold.id, TODAY)).valuePaise).toBe(Math.round((8 * 124_945_00) / 10));
     expect((await getHolding(db, userId, loose.id, TODAY)).valueDate).toBe("2026-11-05");
 
-    await updateKind(db, userId, goldKind?.id as string, { feedAdjustBp: 100 });
-    const next = await refreshPrices(db, userId, "2026-11-25", feeds);
-    expect(next.items[0]?.ratePaise).toBe(Math.round(124_945_00 * 1.01));
+    // Another day's IBJA rate moves it, with nothing added or taken off.
+    const next = await refreshPrices(db, userId, "2026-11-25", fakeFetch({ ibjarates: IBJA_HTML_AM_ONLY }));
+    expect(next.items[0]?.ratePaise).toBe(125_500_00);
   });
 
-  it("shows the gap between IBJA and your last typed rate, to choose an adjustment from", async () => {
+  it("no longer takes an adjustment on a kind", async () => {
+    const app = makeApp();
+    const user = await registeredUser();
+    const cookie = await login(app, user.email);
+    const kinds = ((await (await app.call("GET", "/api/holding-kinds", { cookie })).json()) as { items: { id: string; key: string; feedAdjustBp?: number }[] }).items;
+    const gold = kinds.find((k) => k.key === "gold");
+    expect(gold).toBeDefined();
+    expect(gold).not.toHaveProperty("feedAdjustBp");
+    const res = await app.call("PATCH", `/api/holding-kinds/${gold?.id}`, { cookie, body: { feed: "gold", feedAdjustBp: 100 } });
+    expect(res.status).toBe(422);
+  });
+
+  it("shows the gap between IBJA and your last typed rate before you follow it", async () => {
     await createHolding(db, userId, { name: "Gold coins", kind: "gold", tracking: "units", unitsE4: 8 * 10_000, ratePaise: 126_401_00, valueDate: "2026-11-05" }, TODAY);
     const kind = (await listKinds(db, userId)).find((k) => k.key === "gold");
     const preview = await previewKindFeed(db, userId, kind?.id as string, "gold", TODAY, fakeFetch({ ibjarates: IBJA_HTML }));
-    expect(preview).toEqual({ ratePaise: 124_945_00, date: "2026-11-23", session: "PM", lastTypedPaise: 126_401_00, suggestedAdjustBp: 117 });
+    expect(preview).toEqual({ ratePaise: 124_945_00, date: "2026-11-23", session: "PM", lastTypedPaise: 126_401_00 });
   });
 
   it("skips closed investments", async () => {

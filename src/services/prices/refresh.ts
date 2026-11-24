@@ -53,7 +53,7 @@ interface Target {
   units: UnitsFacts;
   held: number;
   link: { feed: "yahoo" | "amfi"; code: string } | null;
-  kindFeed: { feed: "gold" | "silver"; adjustBp: number } | null;
+  kindFeed: { feed: "gold" | "silver" } | null;
 }
 
 /**
@@ -69,7 +69,7 @@ export async function refreshPrices(db: Db, userId: string, today: IstDate, fetc
     if (row.status !== "active" || row.tracking !== "units" || !f?.units) continue;
     const link = loaded.links.get(row.id) ?? null;
     const kind = loaded.kinds.get(row.kind);
-    const kindFeed = !link && kind?.feed && row.investmentAccountId === null ? { feed: kind.feed, adjustBp: kind.feedAdjustBp } : null;
+    const kindFeed = !link && kind?.feed && row.investmentAccountId === null ? { feed: kind.feed } : null;
     if (!link && !kindFeed) continue;
     targets.push({ id: row.id, name: row.name, units: f.units, held: unitsHeldE4(f.units, today), link: link ? { feed: link.feed, code: link.code } : null, kindFeed });
   }
@@ -121,7 +121,7 @@ export async function refreshPrices(db: Db, userId: string, today: IstDate, fetc
         fail(ibja instanceof FeedError ? ibja.message : "no price");
         continue;
       }
-      paise = kindRatePaise(t.kindFeed.feed, t.units.ratePer, ibja, t.kindFeed.adjustBp);
+      paise = kindRatePaise(t.kindFeed.feed, t.units.ratePer, ibja);
       date = ibja.date;
     } else if (t.link?.feed === "amfi") {
       const scheme = amfi instanceof Map ? amfi.get(t.link.code) : undefined;
@@ -253,23 +253,22 @@ export async function unlinkPrice(db: Db, userId: string, holdingId: string): Pr
 const invalid = (path: string, message: string) => new ValidationError("Request validation failed", [{ path, message }]);
 
 export interface FeedPreview {
-  /** Today's benchmark for the kind's quantity, with no adjustment, and the day and session it is for. */
+  /** Today's benchmark for the kind's quantity, exactly as IBJA publishes it, and the day and session it is for. */
   ratePaise: number;
   date: IstDate;
   session: "AM" | "PM";
-  /** The latest rate typed on a holding of the kind, and the adjustment that would make the benchmark equal it (basis points). */
+  /** The latest rate typed on a holding of the kind, to show the gap to the benchmark. */
   lastTypedPaise: number | null;
-  suggestedAdjustBp: number;
 }
 
-/** What IBJA shows now for a kind's quantity, beside the rate the person last typed: so they can see the gap and choose an adjustment. */
+/** What IBJA shows now for a kind's quantity, beside the rate the person last typed, so they can see the gap before following it. */
 export async function previewKindFeed(db: Db, userId: string, kindId: string, feed: "gold" | "silver", today: IstDate, fetchFn: FetchFn): Promise<FeedPreview> {
   const loaded = await loadHoldings(db, userId);
   const kind = [...loaded.kinds.values()].find((k) => k.id === kindId);
   if (!kind) throw new NotFoundError("Investment kind not found");
   if (!kind.unit) throw invalid("feed", "A price feed needs a kind counted by weight, such as grams");
   const rates = await ibjaRates(fetchFn);
-  const ratePaise = kindRatePaise(feed, kind.ratePer, rates, 0);
+  const ratePaise = kindRatePaise(feed, kind.ratePer, rates);
   let last: { date: IstDate; ratePaise: number } | null = null;
   for (const row of loaded.rows) {
     if (row.kind !== kind.key || row.status !== "active") continue;
@@ -277,5 +276,5 @@ export async function previewKindFeed(db: Db, userId: string, kindId: string, fe
     const r = u ? latestRate(u, today) : null;
     if (r && (!last || r.date > last.date)) last = r;
   }
-  return { ratePaise, date: rates.date, session: rates.session, lastTypedPaise: last?.ratePaise ?? null, suggestedAdjustBp: last && ratePaise > 0 ? Math.round((last.ratePaise / ratePaise - 1) * 10_000) : 0 };
+  return { ratePaise, date: rates.date, session: rates.session, lastTypedPaise: last?.ratePaise ?? null };
 }

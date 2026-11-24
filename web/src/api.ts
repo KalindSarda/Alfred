@@ -630,9 +630,8 @@ export interface HoldingKind {
   brokerUse: "required" | "optional" | "never";
   holdingCount: number;
   locked: boolean;
-  /** The price feed (gold or silver from IBJA) and the adjustment to it in basis points; null when rates are typed. */
+  /** The price feed (gold or silver from the IBJA benchmark); null when rates are typed. */
   feed: "gold" | "silver" | null;
-  feedAdjustBp: number;
 }
 
 /** What a holding is, so its price can be fetched. */
@@ -682,7 +681,6 @@ export interface FeedPreview {
   date: string;
   session: "AM" | "PM";
   lastTypedPaise: number | null;
-  suggestedAdjustBp: number;
 }
 
 /** A broker or demat account and what it holds. */
