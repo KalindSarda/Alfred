@@ -284,7 +284,7 @@ describe("the weekly price refresh", () => {
     const { user, h } = await person();
     const tg = new FakeTelegram();
     expect(await runPriceRefresh({ db, telegram: tg, now: at("2026-11-28"), fetch: feeds(120) })).toEqual({ refreshed: 1, sent: 1 });
-    expect(tg.last.text).toBe("Prices refreshed: 1 changed, 0 the same.\nTogether they are worth ₹2,000 more than at their last prices.");
+    expect(tg.last.text).toBe("Prices refreshed: 1 changed, 0 the same.\nTogether they are worth ₹2,000 more than at their last prices.\nBiggest moves: Tata Power +₹2,000.");
     expect((await getHolding(db, user.id, h.id, "2026-11-28")).ratePaise).toBe(12_000);
   });
 
@@ -363,6 +363,37 @@ describe("the price routes", () => {
     const res = await app.call("GET", "/api/prices/suggest?q=tata&kind=stock", { cookie });
     expect(res.status).toBe(409);
     expect(JSON.stringify(await res.json())).toContain("query2.finance.yahoo.com answered 503");
+  });
+
+  it("keeps the last refresh so what changed can be read later, with what each rate is quoted for", async () => {
+    const app = makeApp({ fetch: fakeFetch({ "chart/TATAPOWER.NS": yahooChart("TATAPOWER.NS", 120), ibjarates: IBJA_HTML }) });
+    const user = await registeredUser();
+    const cookie = await login(app, user.email);
+    expect(((await (await app.call("GET", "/api/prices/status", { cookie })).json()) as { last: unknown }).last).toBeNull();
+
+    const h = await stock(user.id);
+    await quietLink(user.id, h.id, "TATAPOWER.NS");
+    const gold = await createHolding(db, user.id, { name: "Gold coins", kind: "gold", tracking: "units", unitsE4: 8 * 10_000, ratePaise: 126_401_00, valueDate: "2026-10-05", investedPaise: 90_000_00 }, TODAY);
+    const goldKind = (await listKinds(db, user.id)).find((k) => k.key === "gold");
+    await updateKind(db, user.id, goldKind?.id as string, { feed: "gold" });
+    expect(gold.id).toBeTruthy();
+
+    expect((await app.call("POST", "/api/prices/refresh", { cookie })).status).toBe(200);
+    const status = (await (await app.call("GET", "/api/prices/status", { cookie })).json()) as { checkedAt: string; last: { updated: number; items: { name: string; per: string; changePaise: number }[] } };
+    expect(status.checkedAt).toBeTruthy();
+    expect(status.last.updated).toBe(2);
+    expect(status.last.items.map((i) => [i.name, i.per])).toEqual([
+      ["Gold coins", "10 g"],
+      ["Tata Power", "share"],
+    ]);
+  });
+
+  it("answers with no last result when the stored one cannot be read", async () => {
+    const app = makeApp();
+    const user = await registeredUser();
+    const cookie = await login(app, user.email);
+    await db.insert(appSettings).values({ userId: user.id, pricesLastResult: "{not json" }).onConflictDoUpdate({ target: appSettings.userId, set: { pricesLastResult: "{not json" } });
+    expect(((await (await app.call("GET", "/api/prices/status", { cookie })).json()) as { last: unknown }).last).toBeNull();
   });
 
   it("turns the weekly refresh on or off in settings", async () => {

@@ -652,6 +652,8 @@ export interface PriceOutcome {
   holdingId: string;
   name: string;
   source: "Yahoo" | "AMFI" | "IBJA";
+  /** What the rate is quoted for: share, unit, 10 g, kg. */
+  per: string;
   status: "updated" | "unchanged" | "typed_today" | "held" | "failed";
   ratePaise: number | null;
   previousPaise: number | null;
@@ -674,6 +676,32 @@ export interface PriceStatus {
   checkedAt: string | null;
   linked: number;
   kinds: number;
+  /** What the last refresh did, kept so it can be read after the weekly run. */
+  last: PriceRefresh | null;
+}
+
+/** One day of the investments series: your share of worth, what was put in and taken out, and since the point before, money added and market growth. */
+export interface TrendPoint {
+  asOf: string;
+  worthPaise: number;
+  putInPaise: number;
+  soldPaise: number;
+  addedPaise: number;
+  growthPaise: number;
+}
+
+export interface TrendSeries {
+  key: string;
+  name: string;
+  /** Your share of its worth at each point, in the order of the points. */
+  worthPaise: number[];
+}
+
+export interface InvestmentTrend {
+  range: "3m" | "1y" | "all";
+  points: TrendPoint[];
+  byKind: TrendSeries[];
+  byBroker: TrendSeries[];
 }
 
 export interface FeedPreview {

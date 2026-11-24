@@ -493,6 +493,8 @@ export const appSettings = sqliteTable("app_settings", {
   priceRefresh: integer("price_refresh", { mode: "boolean" }).notNull().default(true),
   /** When prices were last fetched, for "prices as of". */
   pricesCheckedAt: text("prices_checked_at"),
+  /** What the last price refresh did, as JSON, so the list of what changed can be read after the weekly run. */
+  pricesLastResult: text("prices_last_result"),
   /** The emergency fund: how many months of essential spending it should cover, an optional typed target, and the months to close a gap over. */
   emergencyMonths: integer("emergency_months").notNull().default(6),
   emergencyTargetPaise: integer("emergency_target_paise"),

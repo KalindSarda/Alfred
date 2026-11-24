@@ -836,6 +836,7 @@ interface PriceLine {
   status: "updated" | "unchanged" | "typed_today" | "held" | "failed";
   ratePaise: number | null;
   previousPaise: number | null;
+  changePaise: number;
   reason: string | null;
 }
 
@@ -850,6 +851,8 @@ export function priceRefreshText(r: { items: readonly PriceLine[]; updated: numb
   const failed = r.items.filter((i) => i.status === "failed");
   const lines = [`Prices refreshed: ${r.updated} changed, ${r.unchanged} the same.`];
   if (r.changePaise !== 0) lines.push(`Together they are worth ${rupees(Math.abs(r.changePaise))} ${r.changePaise > 0 ? "more" : "less"} than at their last prices.`);
+  const moves = r.items.filter((i) => i.status === "updated" && i.changePaise !== 0).sort((a, b) => Math.abs(b.changePaise) - Math.abs(a.changePaise)).slice(0, 3);
+  if (moves.length > 0) lines.push(`Biggest moves: ${moves.map((i) => `${i.name} ${i.changePaise > 0 ? "+" : "−"}${rupees(Math.abs(i.changePaise))}`).join(", ")}.`);
   if (held.length > 0) lines.push(`Left for you to check, because the price moved a lot: ${list(held, (i) => `${i.name} (now ${rupees(i.ratePaise ?? 0)}, was ${i.previousPaise === null ? "unknown" : rupees(i.previousPaise)})`)}.`);
   if (failed.length > 0) lines.push(`Could not get a price for: ${list(failed, (i) => `${i.name} (${i.reason ?? "no reason given"})`)}. They keep their last price.`);
   return lines.join("\n");

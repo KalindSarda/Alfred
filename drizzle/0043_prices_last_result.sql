@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `prices_last_result` text;

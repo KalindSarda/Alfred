@@ -25,10 +25,16 @@ export const priceRoutes = new Hono<AppEnv>()
   .get("/status", async (c) => {
     const { db } = c.var.auth;
     const userId = c.var.userId;
-    const [settings] = await db.select({ checkedAt: appSettings.pricesCheckedAt }).from(appSettings).where(eq(appSettings.userId, userId)).limit(1);
+    const [settings] = await db.select({ checkedAt: appSettings.pricesCheckedAt, last: appSettings.pricesLastResult }).from(appSettings).where(eq(appSettings.userId, userId)).limit(1);
+    let last: unknown = null;
+    try {
+      last = settings?.last ? JSON.parse(settings.last) : null;
+    } catch {
+      last = null;
+    }
     const [links] = await db.select({ n: count() }).from(priceLinks).where(eq(priceLinks.userId, userId));
     const [fed] = await db.select({ n: count() }).from(holdingKinds).where(and(eq(holdingKinds.userId, userId), isNotNull(holdingKinds.feed)));
-    return c.json({ checkedAt: settings?.checkedAt ?? null, linked: Number(links?.n ?? 0), kinds: Number(fed?.n ?? 0) });
+    return c.json({ checkedAt: settings?.checkedAt ?? null, linked: Number(links?.n ?? 0), kinds: Number(fed?.n ?? 0), last });
   })
   /** Fetches every price now. Limited, because each call goes out to other sites. */
   .post("/refresh", async (c) => {

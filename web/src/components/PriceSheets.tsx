@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { type FeedPreview, type Holding, type HoldingKind, type PriceCandidate, type PriceRefresh, api, describeError } from "../api";
+import { changeLines } from "../priceChanges";
 import { qtyToE4, rupees, shortDate } from "../format";
 import { usePriceStatus, useRefreshMoney } from "../queries";
 import { useToast } from "./toast";
@@ -20,7 +21,59 @@ export function describeRefresh(r: PriceRefresh): string {
   return parts.join(", ");
 }
 
-/** The button that fetches every linked price now, when they were last fetched, and what the last fetch did. */
+/** What a refresh found: how many changed, and each price that moved with its old and new rate and what it did to the worth. */
+function RefreshResultView({ result }: { result: PriceRefresh }) {
+  const [all, setAll] = useState(false);
+  const moved = changeLines(result.items);
+  const shown = all ? moved : moved.slice(0, 5);
+  const notes = result.items.filter((i) => i.status === "held" || i.status === "failed" || i.status === "typed_today");
+  return (
+    <div className="space-y-2 rounded-xl bg-sunk p-3 text-sm">
+      <p className="font-medium">
+        {describeRefresh(result)}
+        {result.changePaise !== 0 && <span className="font-normal text-soft"> · worth {signedRupees(result.changePaise)} since the last prices</span>}
+      </p>
+      {moved.length > 0 && (
+        <div>
+          <p className="text-xs tracking-wide text-soft uppercase">What changed</p>
+          <ul className="divide-y divide-line">
+            {shown.map((m) => (
+              <li key={m.id} className="flex items-start justify-between gap-3 py-1.5">
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{m.name}</span>
+                  <span className="block text-xs text-soft">
+                    {m.from !== null ? `${rupees(m.from)} → ` : "first price "}
+                    {rupees(m.to)} per {m.per}
+                  </span>
+                </span>
+                <span className={`shrink-0 text-right tabular-nums ${m.changePaise > 0 ? "text-good" : m.changePaise < 0 ? "text-bad" : "text-soft"}`}>
+                  {signedRupees(m.changePaise)}
+                  {m.ratePct !== null && <span className="block text-xs">{m.ratePct > 0 ? "+" : m.ratePct < 0 ? "−" : ""}{Math.abs(m.ratePct)}%</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {moved.length > 5 && (
+            <button type="button" className="min-h-11 text-sm text-brand" onClick={() => setAll((v) => !v)}>
+              {all ? "Show fewer" : `Show all ${moved.length}`}
+            </button>
+          )}
+        </div>
+      )}
+      {notes.length > 0 && (
+        <ul className="space-y-0.5 text-xs text-soft">
+          {notes.map((i) => (
+            <li key={i.holdingId}>
+              <span className="font-medium text-ink">{i.name}</span>: {i.reason}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** The button that fetches every linked price now, when they were last fetched, and what the last fetch did (kept, so Saturday's run can be read too). */
 export function RefreshPrices() {
   const status = usePriceStatus();
   const refresh = useRefreshMoney();
@@ -29,6 +82,7 @@ export function RefreshPrices() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const nothing = (status.data?.linked ?? 0) === 0 && (status.data?.kinds ?? 0) === 0;
+  const shown = result ?? status.data?.last ?? null;
 
   const run = async () => {
     setBusy(true);
@@ -45,7 +99,6 @@ export function RefreshPrices() {
     }
   };
 
-  const problems = (result?.items ?? []).filter((i) => i.status === "held" || i.status === "failed" || i.status === "typed_today");
   return (
     <Card className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -56,23 +109,7 @@ export function RefreshPrices() {
           {busy ? "Fetching…" : "Refresh prices"}
         </Button>
       </div>
-      {result && result.items.length > 0 && (
-        <div className="space-y-1 rounded-xl bg-sunk p-3 text-sm">
-          <p className="font-medium">
-            {describeRefresh(result)}
-            {result.changePaise !== 0 && <span className="font-normal text-soft"> · worth {signedRupees(result.changePaise)} since the last prices</span>}
-          </p>
-          {problems.length > 0 && (
-            <ul className="space-y-0.5 text-xs text-soft">
-              {problems.map((i) => (
-                <li key={i.holdingId}>
-                  <span className="font-medium text-ink">{i.name}</span>: {i.reason}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+      {shown && shown.items.length > 0 && <RefreshResultView result={shown} />}
       <ErrorText>{error}</ErrorText>
     </Card>
   );

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ActivityTabs } from "../components/ActivityTabs";
 import { Breakdown } from "../components/Breakdown";
 import { CashflowCard } from "../components/CashflowCard";
+import { InvestmentCharts } from "../components/InvestmentCharts";
 import { NetWorthTrend } from "../components/NetWorthTrend";
 import { SpendByAccount } from "../components/SpendByAccount";
 import { useSidebar, useWide } from "../useWide";
@@ -42,6 +43,7 @@ export function Trends() {
       <SpendByAccount period={period} />
       <Breakdown period={period} stacked={!wide} />
       <NetWorthTrend />
+      <InvestmentCharts />
     </div>
   );
 }

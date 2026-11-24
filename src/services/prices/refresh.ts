@@ -3,7 +3,7 @@ import { NotFoundError, ValidationError } from "../../config/errors";
 import type { Db } from "../../db/client";
 import { appSettings, holdingValues, priceLinks } from "../../db/schema";
 import type { IstDate } from "../../domain/dates";
-import { type UnitsFacts, latestRate, unitsHeldE4, valueAtRate } from "../../domain/holdings";
+import { type UnitsFacts, latestRate, unitOne, unitsHeldE4, valueAtRate } from "../../domain/holdings";
 import { nowIso } from "../../utils/id";
 import { applyAutoRates, convertToUnits, getHolding, loadHoldings, type HoldingDto } from "../holdings";
 import { type AmfiScheme, type Candidate, type FetchFn, FeedError, type IbjaRates, type Quote, amfiSchemes, ibjaRates, kindRatePaise, searchAmfi, yahooQuote, yahooSearch } from "./feeds";
@@ -24,6 +24,8 @@ export interface PriceOutcome {
   /** Where the price came from. */
   source: "Yahoo" | "AMFI" | "IBJA";
   status: PriceStatus;
+  /** What the rate is quoted for: "share", "unit", "10 g", "kg". */
+  per: string;
   /** The rate (per share, per NAV unit, or per the kind's quantity) now, and before. */
   ratePaise: number | null;
   previousPaise: number | null;
@@ -54,6 +56,7 @@ interface Target {
   held: number;
   link: { feed: "yahoo" | "amfi"; code: string } | null;
   kindFeed: { feed: "gold" | "silver" } | null;
+  per: string;
 }
 
 /**
@@ -71,7 +74,9 @@ export async function refreshPrices(db: Db, userId: string, today: IstDate, fetc
     const kind = loaded.kinds.get(row.kind);
     const kindFeed = !link && kind?.feed && row.investmentAccountId === null ? { feed: kind.feed } : null;
     if (!link && !kindFeed) continue;
-    targets.push({ id: row.id, name: row.name, units: f.units, held: unitsHeldE4(f.units, today), link: link ? { feed: link.feed, code: link.code } : null, kindFeed });
+    const unit = kind?.unit ? unitOne(kind.unit) : "unit";
+    const per = f.units.ratePer > 1 ? `${f.units.ratePer} ${unit}` : unit;
+    targets.push({ id: row.id, name: row.name, units: f.units, held: unitsHeldE4(f.units, today), link: link ? { feed: link.feed, code: link.code } : null, kindFeed, per });
   }
 
   // One request each for the whole of AMFI's file and IBJA's page; Yahoo one per symbol, a few at a time.
@@ -111,7 +116,7 @@ export async function refreshPrices(db: Db, userId: string, today: IstDate, fetc
   for (const t of targets) {
     const source: PriceOutcome["source"] = t.kindFeed ? "IBJA" : t.link?.feed === "amfi" ? "AMFI" : "Yahoo";
     const previous = latestRate(t.units, today)?.ratePaise ?? null;
-    const base = { holdingId: t.id, name: t.name, source, previousPaise: previous, ratePaise: null as number | null, changePaise: 0, reason: null as string | null };
+    const base = { holdingId: t.id, name: t.name, source, per: t.per, previousPaise: previous, ratePaise: null as number | null, changePaise: 0, reason: null as string | null };
     const fail = (reason: string) => items.push({ ...base, status: "failed", reason });
 
     let paise: number;
@@ -177,10 +182,14 @@ export async function refreshPrices(db: Db, userId: string, today: IstDate, fetc
   }
 
   const checkedAt = nowIso();
-  if (targets.length > 0) await db.insert(appSettings).values({ userId, pricesCheckedAt: checkedAt }).onConflictDoUpdate({ target: appSettings.userId, set: { pricesCheckedAt: checkedAt } });
   const count = (s: PriceStatus) => items.filter((i) => i.status === s).length;
   items.sort((a, b) => a.name.localeCompare(b.name));
-  return { checkedAt, items, updated: count("updated"), unchanged: count("unchanged"), typedToday: count("typed_today"), held: count("held"), failed: count("failed"), changePaise: items.reduce((s, i) => s + i.changePaise, 0) };
+  const result: RefreshResult = { checkedAt, items, updated: count("updated"), unchanged: count("unchanged"), typedToday: count("typed_today"), held: count("held"), failed: count("failed"), changePaise: items.reduce((s, i) => s + i.changePaise, 0) };
+  // Kept, so what changed can be read after the weekly run, not only right after pressing the button.
+  if (targets.length > 0) {
+    await db.insert(appSettings).values({ userId, pricesCheckedAt: checkedAt, pricesLastResult: JSON.stringify(result) }).onConflictDoUpdate({ target: appSettings.userId, set: { pricesCheckedAt: checkedAt, pricesLastResult: JSON.stringify(result) } });
+  }
+  return result;
 }
 
 /** Matches for a name to confirm: stocks and ETFs from Yahoo (with today's price for the first few), funds from AMFI's file. */

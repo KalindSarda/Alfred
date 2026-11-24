@@ -37,6 +37,7 @@ import { emiRoutes } from "./routes/emi";
 import { exportRoutes } from "./routes/export";
 import { holdRoutes } from "./routes/holds";
 import { me } from "./routes/me";
+import { investmentTrendRoutes } from "./routes/investmentTrend";
 import { peopleRoutes } from "./routes/people";
 import { priceRoutes } from "./routes/prices";
 import { recurringRoutes } from "./routes/recurring";
@@ -128,6 +129,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/partners", partnerRoutes);
   app.route("/api/allowance", allowanceRoutes);
   app.route("/api/prices", priceRoutes);
+  app.route("/api/investment-trend", investmentTrendRoutes);
   app.route("/api/contacts", contactRoutes);
   app.route("/api/goals", goalRoutes);
   app.route("/api/entry-hints", hintRoutes);
