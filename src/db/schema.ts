@@ -530,7 +530,7 @@ export const checkinLog = sqliteTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull().references(() => users.id),
-    kind: text("kind", { enum: ["evening", "balance", "none_today", "morning", "review", "prices"] }).notNull(),
+    kind: text("kind", { enum: ["evening", "balance", "none_today", "morning", "review", "review_pending", "prices"] }).notNull(),
     day: text("day").notNull(),
     createdAt: text("created_at").notNull(),
   },

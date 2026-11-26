@@ -10,13 +10,19 @@ export function activeHoldTotals(db: Db, userId: string): Promise<Map<string, nu
   return cachedRead(db, `holdTotals:${userId}`, () => loadActiveHoldTotals(db, userId));
 }
 
-async function loadActiveHoldTotals(db: Db, userId: string): Promise<Map<string, number>> {
-  const rows = await db
+/** The query behind `activeHoldTotals`, for callers that send several reads in one `db.batch()`. */
+export function holdTotalsQuery(db: Db, userId: string) {
+  return db
     .select({ accountId: holds.accountId, total: sql<number>`COALESCE(SUM(${holds.amountPaise}), 0)` })
     .from(holds)
     .where(and(eq(holds.userId, userId), eq(holds.status, "active")))
     .groupBy(holds.accountId);
-  return new Map(rows.map((r) => [r.accountId, Number(r.total)]));
+}
+
+export const toHoldTotals = (rows: { accountId: string; total: number }[]): Map<string, number> => new Map(rows.map((r) => [r.accountId, Number(r.total)]));
+
+async function loadActiveHoldTotals(db: Db, userId: string): Promise<Map<string, number>> {
+  return toHoldTotals(await holdTotalsQuery(db, userId));
 }
 
 export async function getHold(db: Db, userId: string, id: string): Promise<HoldRow | undefined> {

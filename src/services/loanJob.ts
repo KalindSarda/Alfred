@@ -7,6 +7,7 @@ import { todayIst } from "../domain/dates";
 import { logger } from "../utils/logger";
 import { materializeLoansFor } from "./loans";
 import { chatsFor } from "./recurringJob";
+import { takeUsers } from "./userCap";
 
 export interface LoanJobDeps {
   db: Db;
@@ -23,7 +24,7 @@ export interface LoanJobDeps {
 export async function runLoanCheckIns(deps: LoanJobDeps): Promise<{ added: number; asked: number }> {
   const { db, telegram } = deps;
   const today = todayIst(new Date(deps.now()));
-  const owners = await db.selectDistinct({ userId: loans.userId }).from(loans).where(eq(loans.status, "active"));
+  const owners = takeUsers(db, "loan", await db.selectDistinct({ userId: loans.userId }).from(loans).where(eq(loans.status, "active")), (o) => o.userId, today);
   const chats = await chatsFor(db);
   let added = 0;
   let asked = 0;

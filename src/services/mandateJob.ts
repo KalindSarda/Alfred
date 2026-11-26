@@ -10,6 +10,7 @@ import { logger } from "../utils/logger";
 import { collectCommitments } from "./commitments";
 import { listAccountsWithFigures } from "./ledger";
 import { chatsFor } from "./recurringJob";
+import { takeUsers } from "./userCap";
 
 export interface MandateJobDeps {
   db: Db;
@@ -32,7 +33,7 @@ export async function runMandateChecks(deps: MandateJobDeps): Promise<{ sent: nu
   const chats = await chatsFor(db);
   let sent = 0;
 
-  for (const [userId, chat] of chats) {
+  for (const [userId, chat] of takeUsers(db, "mandate", [...chats], ([id]) => id, today)) {
     try {
       const [items, figures] = await Promise.all([collectCommitments(db, userId, today, addDays(today, MANDATE_DAYS + 1), today), listAccountsWithFigures(db, userId, today)]);
       const available = new Map(figures.flatMap((a) => (a.kind === "bank" ? [[a.id, a.balancePaise - a.blockedPaise] as const] : [])));

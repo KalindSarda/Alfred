@@ -1,6 +1,7 @@
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
-import { getAccount, listAccounts, type AccountRow } from "../db/accounts";
+import { memoDb } from "../db/readCache";
+import { accountsQuery, getAccount, listAccounts, type AccountRow } from "../db/accounts";
 import { getCategory } from "../db/categories";
 import { NETTED_INCOME_CATEGORIES } from "../db/defaultCategories";
 import {
@@ -9,6 +10,7 @@ import {
   listTotals,
   type ListTotals,
   listTransactionRows,
+  ledgerTxnsQuery,
   loadLedgerTxns,
   toDto,
   updateTransactionRow,
@@ -23,9 +25,9 @@ import {
   safeToSpend,
 } from "../domain/balances";
 import { type IstDate, isValidIstDate } from "../domain/dates";
-import { emiToComeByCard } from "../db/emi";
-import { goalsSetAside } from "../db/goals";
-import { activeHoldTotals } from "../db/holds";
+import { emiRowsQuery, emiToComeFromRows, emiToComeByCard } from "../db/emi";
+import { goalsSetAsideQuery, setAsideFromRow } from "../db/goals";
+import { activeHoldTotals, holdTotalsQuery, toHoldTotals } from "../db/holds";
 import { hasNoCategory, isDebtType, isMovement, isPartnerType } from "../domain/txnTypes";
 import { getHoldingRow } from "../db/holdings";
 import {
@@ -319,18 +321,17 @@ export function toLedgerAccount(row: AccountRow): LedgerAccount {
  * Accounts with derived figures. Loads only the columns the ledger math needs and computes in the
  * domain layer; fine at personal scale (thousands of rows a year), revisit with SQL aggregation if slow.
  */
-export async function listAccountsWithFigures(
+export const listAccountsWithFigures = memoDb("listAccountsWithFigures", listAccountsWithFiguresUncached);
+async function listAccountsWithFiguresUncached(
   db: Db,
   userId: string,
   today: IstDate,
   options: { includeArchived?: boolean } = {},
 ): Promise<AccountWithFigures[]> {
-  const [rows, txns, blocked, emiToCome] = await Promise.all([
-    listAccounts(db, userId, options),
-    loadLedgerTxns(db, userId),
-    activeHoldTotals(db, userId),
-    emiToComeByCard(db, userId, today),
-  ]);
+  // The four reads go in one batch, which D1 counts as a single query.
+  const [rows, txns, blockedRows, emiRows] = await db.batch([accountsQuery(db, userId, options), ledgerTxnsQuery(db, userId), holdTotalsQuery(db, userId), emiRowsQuery(db, userId)]);
+  const blocked = toHoldTotals(blockedRows);
+  const emiToCome = emiToComeFromRows(emiRows, today);
   return rows.map((row): AccountWithFigures => {
     const ledger = toLedgerAccount(row);
     if (ledger.kind === "bank") {
@@ -341,6 +342,6 @@ export async function listAccountsWithFigures(
 }
 
 export async function getSafeToSpend(db: Db, userId: string, today: IstDate): Promise<number> {
-  const [rows, txns, blocked, setAside] = await Promise.all([listAccounts(db, userId), loadLedgerTxns(db, userId), activeHoldTotals(db, userId), goalsSetAside(db, userId)]);
-  return safeToSpend(rows.map(toLedgerAccount), txns, today, blocked) - setAside;
+  const [rows, txns, blockedRows, [setAsideRow]] = await db.batch([accountsQuery(db, userId), ledgerTxnsQuery(db, userId), holdTotalsQuery(db, userId), goalsSetAsideQuery(db, userId)]);
+  return safeToSpend(rows.map(toLedgerAccount), txns, today, toHoldTotals(blockedRows)) - setAsideFromRow(setAsideRow);
 }

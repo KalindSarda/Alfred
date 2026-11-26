@@ -1,12 +1,13 @@
 import { and, eq, isNull, min } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { memoDb } from "../db/readCache";
+import { firstConfirmedDay } from "../db/transactions";
 import { transactions } from "../db/schema";
 import { addDays, cycleRange, type IstDate } from "../domain/dates";
 import { type EmergencyFund, emergencyFund } from "../domain/emergency";
 import { type CycleFacts, MAX_CYCLES, type Pace, paceFromCycles, paceFromWindow } from "../domain/pace";
 import type { PeriodFacts } from "../domain/health";
-import { healthRange, periodFacts } from "./health";
+import { healthRange, periodFacts, periodFactsMany } from "./health";
 import { loadHoldings, myValueAt } from "./holdings";
 import { listAccountsWithFigures } from "./ledger";
 import { getRunway } from "./runway";
@@ -30,18 +31,19 @@ const cycleOf = (f: PeriodFacts): CycleFacts => ({ incomePaise: f.incomePaise, s
  */
 export const getPace = memoDb("getPace", getPaceUncached);
 async function getPaceUncached(db: Db, userId: string, today: IstDate, periodStartDay: number, window: { from: IstDate; days: number }): Promise<Pace | null> {
-  const [first] = await db.select({ day: min(transactions.txnDate) }).from(transactions).where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt), eq(transactions.status, "confirmed")));
-  const firstDay = first?.day ?? null;
+  const firstDay = await firstConfirmedDay(db, userId);
   if (firstDay === null) return null;
 
   const ranges = [healthRange(today, periodStartDay, "last")];
   while (ranges.length < MAX_CYCLES) ranges.push(cycleRange(addDays((ranges.at(-1) as { from: IstDate }).from, -1), periodStartDay));
   const complete = ranges.filter((r) => firstDay <= r.from);
-  const cycles = (await Promise.all(complete.map((r) => periodFacts(db, userId, r)))).map(cycleOf).filter((c) => c.incomePaise > 0 || c.spentPaise > 0);
+  // The complete months and the recent window are read in one batch (a single D1 query); the window is only used when the months say too little.
+  const facts = await periodFactsMany(db, userId, [...complete, { from: window.from, to: today }]);
+  const cycles = facts.slice(0, complete.length).map(cycleOf).filter((c) => c.incomePaise > 0 || c.spentPaise > 0);
   const fromCycles = paceFromCycles(cycles);
   if (fromCycles) return fromCycles;
   if (window.days < 14) return null;
-  return paceFromWindow(cycleOf(await periodFacts(db, userId, { from: window.from, to: today })), window.days);
+  return paceFromWindow(cycleOf(facts[complete.length] as PeriodFacts), window.days);
 }
 
 /**

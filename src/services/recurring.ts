@@ -1,7 +1,8 @@
-import { and, count, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, count, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
-import { memoDb } from "../db/readCache";
+import { cachedRead, memoDb } from "../db/readCache";
+import { takeUsers } from "./userCap";
 import { getHoldingRow } from "../db/holdings";
 import { getAccount } from "../db/accounts";
 import { getCategory } from "../db/categories";
@@ -69,7 +70,7 @@ async function madeDates(db: Db, userId: string, ruleId: string): Promise<Set<st
  * the rule), but for all of a person's rules in two queries instead of two per rule.
  */
 async function madeDatesByRule(db: Db, userId: string): Promise<Map<string, Set<string>>> {
-  const [rows, contributions] = await Promise.all([
+  const [rows, contributions] = await db.batch([
     db.select({ ruleId: transactions.recurringRuleId, on: transactions.recurringOn }).from(transactions).where(and(eq(transactions.userId, userId), isNotNull(transactions.recurringRuleId))),
     db.select({ ruleId: holdingContributions.recurringRuleId, on: holdingContributions.recurringOn }).from(holdingContributions).where(and(eq(holdingContributions.userId, userId), isNotNull(holdingContributions.recurringRuleId))),
   ]);
@@ -79,14 +80,27 @@ async function madeDatesByRule(db: Db, userId: string): Promise<Map<string, Set<
 }
 
 /** Every rule's made due dates: the bank entries it added, and the contributions it added. */
-async function madeByRule(db: Db, userId: string): Promise<Map<string, Set<string>>> {
-  const [made, contributions] = await Promise.all([
+function madeByRule(db: Db, userId: string): Promise<Map<string, Set<string>>> {
+  return cachedRead(db, `madeByRule:${userId}`, () => loadMadeByRule(db, userId));
+}
+
+/** The two reads behind `madeByRule`, for callers that send several reads in one `db.batch()`. */
+function madeByRuleQueries(db: Db, userId: string) {
+  return [
     db.select({ ruleId: transactions.recurringRuleId, on: transactions.recurringOn }).from(transactions).where(and(eq(transactions.userId, userId), eq(transactions.source, "recurring"))),
     db.select({ ruleId: holdingContributions.recurringRuleId, on: holdingContributions.recurringOn }).from(holdingContributions).where(and(eq(holdingContributions.userId, userId), isNotNull(holdingContributions.recurringRuleId))),
-  ]);
+  ] as const;
+}
+
+function foldMade(...lists: { ruleId: string | null; on: string | null }[][]): Map<string, Set<string>> {
   const byRule = new Map<string, Set<string>>();
-  for (const m of [...made, ...contributions]) if (m.ruleId && m.on) (byRule.get(m.ruleId) ?? byRule.set(m.ruleId, new Set()).get(m.ruleId)!).add(m.on);
+  for (const m of lists.flat()) if (m.ruleId && m.on) (byRule.get(m.ruleId) ?? byRule.set(m.ruleId, new Set()).get(m.ruleId)!).add(m.on);
   return byRule;
+}
+
+async function loadMadeByRule(db: Db, userId: string): Promise<Map<string, Set<string>>> {
+  const [made, contributions] = await db.batch(madeByRuleQueries(db, userId));
+  return foldMade(made, contributions);
 }
 
 /** Due dates from today on that have no entry yet. */
@@ -107,20 +121,22 @@ function upcomingFor(row: RuleRow, made: Set<string>, today: IstDate, count: num
  * Every due date from `from` up to, not including, `to` that has no entry yet, for each running rule that spends or invests.
  * Skipped dates and paused rules are left out. Income rules are not commitments.
  */
-export async function outflowOccurrences(
+export const outflowOccurrences = memoDb("outflowOccurrences", outflowOccurrencesUncached);
+async function outflowOccurrencesUncached(
   db: Db,
   userId: string,
   from: IstDate,
   to: IstDate,
 ): Promise<{ id: string; title: string; amountPaise: number; accountId: string; accountName: string; dates: IstDate[] }[]> {
-  const [rows, byRule] = await Promise.all([
+  const [rows, made, madeContributions] = await db.batch([
     db
       .select({ rule: recurringRules, accountName: accounts.name })
       .from(recurringRules)
       .innerJoin(accounts, eq(accounts.id, recurringRules.accountId))
       .where(and(eq(recurringRules.userId, userId), isNull(recurringRules.pausedAt))),
-    madeByRule(db, userId),
+    ...madeByRuleQueries(db, userId),
   ]);
+  const byRule = foldMade(made, madeContributions);
   // A contribution has no account (the join leaves it out): it adds to an investment and is no money leaving a bank.
   return rows
     .filter((r) => r.rule.type !== "income" && r.rule.type !== "contribution")
@@ -179,16 +195,18 @@ function toDto(row: RuleRow, accountName: string | null, categoryName: string | 
 /** Running rules first, soonest due first; then paused; then ended. */
 export const listRules = memoDb("listRules", listRulesUncached);
 async function listRulesUncached(db: Db, userId: string, today: IstDate): Promise<RecurringDto[]> {
-  const [rows, byRule, held] = await Promise.all([
+  const [rows, made, madeContributions, held] = await db.batch([
     db
-      .select({ rule: recurringRules, accountName: accounts.name, categoryName: categories.name })
+      // Aliased: inside a D1 batch rows come back keyed by column name, so two columns both called "name" would overwrite each other.
+      .select({ rule: recurringRules, accountName: sql<string | null>`${accounts.name}`.as("account_name"), categoryName: sql<string | null>`${categories.name}`.as("category_name") })
       .from(recurringRules)
       .leftJoin(accounts, eq(accounts.id, recurringRules.accountId))
       .leftJoin(categories, eq(categories.id, recurringRules.categoryId))
       .where(eq(recurringRules.userId, userId)),
-    madeByRule(db, userId),
+    ...madeByRuleQueries(db, userId),
     db.select({ id: holdings.id, name: holdings.name }).from(holdings).where(eq(holdings.userId, userId)),
   ]);
+  const byRule = foldMade(made, madeContributions);
   const holdingNames = new Map(held.map((h) => [h.id, h.name]));
   const rank = { active: 0, paused: 1, ended: 2 } as const;
   return rows
@@ -540,7 +558,8 @@ export async function materializeRules(db: Db, userId: string, today: IstDate): 
 
 /** The daily job: everyone's rules. One person failing does not stop the rest. */
 export async function materializeAllRules(db: Db, today: IstDate, onError: (error: unknown) => void = () => undefined): Promise<{ added: number; drafts: NewDraft[]; contributions: NewContribution[] }> {
-  const owners = await db.selectDistinct({ userId: recurringRules.userId }).from(recurringRules).where(isNull(recurringRules.pausedAt));
+  // At most USER_CAP.recurring people a run (see userCap.ts); a rule's missed dates are added on a later run, up to MAX_BACKFILL.
+  const owners = takeUsers(db, "recurring", await db.selectDistinct({ userId: recurringRules.userId }).from(recurringRules).where(isNull(recurringRules.pausedAt)), (o) => o.userId, today);
   let added = 0;
   const drafts: NewDraft[] = [];
   const contributions: NewContribution[] = [];

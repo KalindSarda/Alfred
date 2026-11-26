@@ -3,7 +3,7 @@ import type { BatchItem } from "drizzle-orm/batch";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
 import { memoDb } from "../db/readCache";
-import { getAccount } from "../db/accounts";
+import { accountNames, getAccount } from "../db/accounts";
 import { getDebtRow, paidByDebt } from "../db/debts";
 import { accounts, contacts, debtPayments, debts, transactions } from "../db/schema";
 import { type IstDate, isValidIstDate } from "../domain/dates";
@@ -61,13 +61,15 @@ const tidy = (name: string) => name.trim().replace(/\s+/g, " ");
 /** People first by what they owe or are owed, then by name; each person's loans newest first. */
 export const listDebts = memoDb("listDebts", listDebtsUncached);
 async function listDebtsUncached(db: Db, userId: string, today: IstDate, status: "open" | "all"): Promise<DebtsOverview> {
-  const [contactRows, debtRows, paymentRows, accountRows, paid] = await Promise.all([
+  // All the reads in one batch. What each debt has been paid is the sum of its payments, added up here rather than in another query.
+  const [contactRows, debtRows, paymentRows, accountRows] = await db.batch([
     db.select().from(contacts).where(eq(contacts.userId, userId)),
     db.select().from(debts).where(status === "open" ? and(eq(debts.userId, userId), eq(debts.status, "open")) : eq(debts.userId, userId)),
     db.select().from(debtPayments).where(eq(debtPayments.userId, userId)),
     db.select({ id: accounts.id, name: accounts.name }).from(accounts).where(eq(accounts.userId, userId)),
-    paidByDebt(db, userId),
   ]);
+  const paid = new Map<string, number>();
+  for (const p of paymentRows) paid.set(p.debtId, (paid.get(p.debtId) ?? 0) + p.amountPaise);
   const accountName = new Map(accountRows.map((a) => [a.id, a.name]));
   const byDebt = new Map<string, PaymentDto[]>();
   for (const p of [...paymentRows].sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt))) {

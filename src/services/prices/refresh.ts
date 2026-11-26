@@ -9,7 +9,7 @@ import { applyAutoRates, convertToUnits, getHolding, loadHoldings, type HoldingD
 import { type AmfiScheme, type Candidate, type FetchFn, FeedError, type IbjaRates, type Quote, amfiSchemes, ibjaRates, kindRatePaise, searchAmfi, yahooQuote, yahooSearch } from "./feeds";
 
 /** At most this many symbols from Yahoo in one run: a Worker may make only so many outside requests, and a weekly refresh does not need more. */
-const MAX_SYMBOLS = 40;
+export const MAX_SYMBOLS = 40;
 /** A price older than this many days is not used (a market holiday or two is fine). */
 const STALE_AFTER_DAYS = 10;
 /** A move of more than this since the last price is held back and shown for the person to check, not written. */

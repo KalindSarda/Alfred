@@ -8,6 +8,7 @@ import { logger } from "../utils/logger";
 import { botVoice } from "../alfred/botVoice";
 import { listHoldings } from "./holdings";
 import { chatsFor } from "./recurringJob";
+import { takeUsers } from "./userCap";
 
 export interface HoldingsJobDeps {
   db: Db;
@@ -25,7 +26,7 @@ export async function runHoldingNudges(deps: HoldingsJobDeps): Promise<{ sent: n
   const { db, telegram } = deps;
   const today = todayIst(new Date(deps.now()));
   if (today.slice(8, 10) !== "01") return { sent: 0 };
-  const owners = await db.selectDistinct({ userId: holdings.userId }).from(holdings).where(eq(holdings.status, "active"));
+  const owners = takeUsers(db, "holdingNudges", await db.selectDistinct({ userId: holdings.userId }).from(holdings).where(eq(holdings.status, "active")), (o) => o.userId, today);
   const chats = await chatsFor(db);
   let sent = 0;
   for (const { userId } of owners) {
@@ -82,11 +83,17 @@ export async function unitsQuestionFor(db: Db, userId: string, txnId: string): P
 export async function runUnitsCheckIns(deps: HoldingsJobDeps): Promise<{ asked: number }> {
   const { db, telegram } = deps;
   const today = todayIst(new Date(deps.now()));
-  const due = await db
-    .select({ id: transactions.id, userId: transactions.userId })
-    .from(transactions)
-    .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
-    .where(and(eq(transactions.source, "recurring"), eq(transactions.txnDate, today), eq(holdings.tracking, "units")));
+  const due = takeUsers(
+    db,
+    "units",
+    await db
+      .select({ id: transactions.id, userId: transactions.userId })
+      .from(transactions)
+      .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
+      .where(and(eq(transactions.source, "recurring"), eq(transactions.txnDate, today), eq(holdings.tracking, "units"))),
+    (t) => t.userId,
+    today,
+  );
   const chats = await chatsFor(db);
   let asked = 0;
   for (const t of due) {

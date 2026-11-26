@@ -37,12 +37,20 @@ export function emiToComeByCard(db: Db, userId: string, today: IstDate): Promise
   return cachedRead(db, `emiToCome:${userId}:${today}`, () => loadEmiToComeByCard(db, userId, today));
 }
 
-async function loadEmiToComeByCard(db: Db, userId: string, today: IstDate): Promise<Map<string, number>> {
-  const rows = await db
+/** The query behind `emiToComeByCard`, for callers that send several reads in one `db.batch()`. */
+export function emiRowsQuery(db: Db, userId: string) {
+  return db
     .select({ plan: emiPlans, statementDay: accounts.statementDay, dueDay: accounts.dueDay })
     .from(emiPlans)
     .innerJoin(accounts, eq(accounts.id, emiPlans.cardAccountId))
     .where(and(eq(emiPlans.userId, userId), isNull(emiPlans.cancelledAt)));
+}
+
+async function loadEmiToComeByCard(db: Db, userId: string, today: IstDate): Promise<Map<string, number>> {
+  return emiToComeFromRows(await emiRowsQuery(db, userId), today);
+}
+
+export function emiToComeFromRows(rows: { plan: EmiPlanRow; statementDay: number | null; dueDay: number | null }[], today: IstDate): Map<string, number> {
   const totals = new Map<string, number>();
   for (const { plan, statementDay, dueDay } of rows) {
     const remaining = emiToCome(toShape(plan), { statementDay: statementDay ?? 1, dueDay: dueDay ?? 1 }, today);

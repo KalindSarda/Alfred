@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, lt, notInArray, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, min, notInArray, or, sql, type SQL } from "drizzle-orm";
 import type { LedgerTxn } from "../domain/balances";
 import type { ListTransactionsData, TransactionDto } from "../schemas/transaction";
 import { ValidationError } from "../config/errors";
@@ -72,6 +72,11 @@ export function loadLedgerTxns(db: Db, userId: string): Promise<LedgerTxn[]> {
 }
 
 async function queryLedgerTxns(db: Db, userId: string): Promise<LedgerTxn[]> {
+  return ledgerTxnsQuery(db, userId);
+}
+
+/** The query behind `loadLedgerTxns`, for callers that send several reads in one `db.batch()`. */
+export function ledgerTxnsQuery(db: Db, userId: string) {
   return db
     .select({
       type: transactions.type,
@@ -216,4 +221,12 @@ export async function lastTransactionRowBySource(
     .orderBy(desc(transactions.createdAt), desc(transactions.id))
     .limit(1);
   return row;
+}
+
+/** The date of the person's earliest confirmed entry, or null when they have none. */
+export function firstConfirmedDay(db: Db, userId: string): Promise<string | null> {
+  return cachedRead(db, `firstDay:${userId}`, async () => {
+    const [first] = await db.select({ day: min(transactions.txnDate) }).from(transactions).where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt), eq(transactions.status, "confirmed")));
+    return first?.day ?? null;
+  });
 }

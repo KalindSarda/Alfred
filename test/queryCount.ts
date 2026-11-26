@@ -10,31 +10,44 @@ import { getDb } from "../src/db/client";
 /**
  * Counting harness for the Workers Free query budget (50 D1 queries per invocation).
  *
- * It wraps the D1 binding so that every `prepare()` (and `exec()`) is counted. Drizzle prepares one statement per
- * query, and a statement inside `batch()` is prepared too, so a batch of N statements counts as N: that is the
- * pessimistic reading of Cloudflare's limit (assumed: Cloudflare may count a whole batch as one), so a run that is
- * under 50 here is under 50 on either reading.
+ * It wraps the D1 binding and counts queries the way Cloudflare's D1 limits page describes them (confirmed from the docs on
+ * 2026-11-26): each `prepare()` that is run on its own is one query, and a whole `batch()` call is ONE query however many
+ * statements it holds. `strict` counts every statement, a batch's too, for comparison: a run that is under the limit on
+ * `strict` is under it however the plan counts a batch.
  */
 export interface QueryLog {
+  /** Queries as Cloudflare counts them: a batch is one. */
   count: number;
+  /** Every statement prepared, a batch's included. */
+  strict: number;
   /** The SQL of every counted statement, in order (parameters are never recorded). */
   sql: string[];
 }
 
 export function countingD1(real: D1Database): { d1: D1Database; log: QueryLog } {
-  const log: QueryLog = { count: 0, sql: [] };
+  const log: QueryLog = { count: 0, strict: 0, sql: [] };
   const d1 = new Proxy(real, {
     get(target, prop, receiver) {
       if (prop === "prepare") {
         return (query: string) => {
           log.count += 1;
+          log.strict += 1;
           log.sql.push(query);
           return target.prepare(query);
+        };
+      }
+      if (prop === "batch") {
+        // The statements in a batch were counted when prepared; the batch itself is one query.
+        return (statements: D1PreparedStatement[]) => {
+          log.count -= Math.max(0, statements.length - 1);
+          log.sql.push(`-- batch of ${statements.length}`);
+          return target.batch(statements);
         };
       }
       if (prop === "exec") {
         return (query: string) => {
           log.count += 1;
+          log.strict += 1;
           log.sql.push(query);
           return target.exec(query);
         };
@@ -68,6 +81,8 @@ const TEST_SECRETS = {
 export interface ScheduledRun {
   /** D1 statements prepared by this one invocation. */
   queries: number;
+  /** Every statement counted, a batch's too. */
+  strict: number;
   sql: string[];
   /** Outbound fetches made (Telegram sends and price feeds), by host. */
   fetches: string[];
@@ -103,7 +118,7 @@ export async function runScheduledCounted(cron: string, iso: string, hour = "05:
     Date.now = realNow;
     vi.unstubAllGlobals();
   }
-  return { queries: log.count, sql: log.sql, fetches, messages };
+  return { queries: log.count, strict: log.strict, sql: log.sql, fetches, messages };
 }
 
 /** A user with the sample life loaded (accounts, rules, EMI, loan, holdings, debts, policies, goals) and a linked chat. */

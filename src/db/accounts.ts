@@ -66,20 +66,24 @@ export async function getAccount(db: Db, userId: string, id: string): Promise<Ac
   return row;
 }
 
+/** The query behind `listAccounts`, for callers that send several reads in one `db.batch()`. */
+export function accountsQuery(db: Db, userId: string, options: { includeArchived?: boolean } = {}) {
+  return db
+    .select()
+    .from(accounts)
+    .where(options.includeArchived ? eq(accounts.userId, userId) : and(eq(accounts.userId, userId), isNull(accounts.archivedAt)))
+    .orderBy(accounts.createdAt, accounts.id);
+}
+
 export async function listAccounts(
   db: Db,
   userId: string,
   options: { includeArchived?: boolean } = {},
 ): Promise<AccountRow[]> {
-  return cachedRead(db, `accounts:${userId}:${options.includeArchived ? "all" : "live"}`, () =>
-    db
-      .select()
-      .from(accounts)
-      .where(
-        options.includeArchived
-          ? eq(accounts.userId, userId)
-          : and(eq(accounts.userId, userId), isNull(accounts.archivedAt)),
-      )
-      .orderBy(accounts.createdAt, accounts.id),
-  );
+  return cachedRead(db, `accounts:${userId}:${options.includeArchived ? "all" : "live"}`, async () => accountsQuery(db, userId, options));
+}
+
+/** Every account's id and name, archived ones too: the lookup the loan, debt and holding views use to name an account. */
+export function accountNames(db: Db, userId: string): Promise<{ id: string; name: string }[]> {
+  return cachedRead(db, `accountNames:${userId}`, async () => db.select({ id: accounts.id, name: accounts.name }).from(accounts).where(eq(accounts.userId, userId)));
 }

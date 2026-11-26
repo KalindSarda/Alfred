@@ -148,7 +148,8 @@ export async function deletePolicy(db: Db, userId: string, id: string): Promise<
 }
 
 /** Premiums due from `from` up to, not including, `to`, for active personal policies: what the commitments timeline lists. */
-export async function premiumsDue(db: Db, userId: string, from: IstDate, to: IstDate): Promise<{ id: string; insurer: string; kind: PolicyKind; date: IstDate; amountPaise: number }[]> {
+export const premiumsDue = memoDb("premiumsDue", premiumsDueUncached);
+async function premiumsDueUncached(db: Db, userId: string, from: IstDate, to: IstDate): Promise<{ id: string; insurer: string; kind: PolicyKind; date: IstDate; amountPaise: number }[]> {
   const rows = await db.select().from(insurancePolicies).where(and(eq(insurancePolicies.userId, userId), eq(insurancePolicies.status, "active"), eq(insurancePolicies.source, "personal")));
   return rows.filter((r) => r.premiumPaise > 0).flatMap((r) => dueDatesBetween(r.renewalDate, r.frequency, from, to).map((date) => ({ id: r.id, insurer: r.insurer, kind: r.kind, date, amountPaise: r.premiumPaise })));
 }

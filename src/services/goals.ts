@@ -68,11 +68,13 @@ function toDto(row: GoalRow, saved: number, contributions: ContributionDto[], to
 /** Active goals first (soonest date, then name), then achieved and archived ones when asked for. */
 export const listGoals = memoDb("listGoals", listGoalsUncached);
 async function listGoalsUncached(db: Db, userId: string, today: IstDate, status: "active" | "all"): Promise<GoalsOverview> {
-  const [rows, saved, contribs] = await Promise.all([
+  // Both reads in one batch. What each goal has saved is the sum of its contributions, added up here rather than in a third query.
+  const [rows, contribs] = await db.batch([
     db.select().from(goals).where(status === "active" ? and(eq(goals.userId, userId), eq(goals.status, "active")) : eq(goals.userId, userId)),
-    savedByGoal(db, userId),
     db.select().from(goalContributions).where(eq(goalContributions.userId, userId)),
   ]);
+  const saved = new Map<string, number>();
+  for (const c of contribs) saved.set(c.goalId, (saved.get(c.goalId) ?? 0) + c.amountPaise);
   const byGoal = new Map<string, ContributionDto[]>();
   for (const c of [...contribs].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))) {
     const list = byGoal.get(c.goalId) ?? [];

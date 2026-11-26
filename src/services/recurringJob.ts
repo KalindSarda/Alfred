@@ -7,6 +7,7 @@ import { accounts, recurringRules, telegramLinks, users } from "../db/schema";
 import { todayIst } from "../domain/dates";
 import { logger } from "../utils/logger";
 import { madeDatesForUser, materializeAllRules, nextDue } from "./recurring";
+import { takeUsers } from "./userCap";
 
 export interface RecurringJobDeps {
   db: Db;
@@ -69,11 +70,17 @@ export async function runRecurring(deps: RecurringJobDeps): Promise<RecurringJob
     }
   }
 
-  const due = await db
-    .select({ rule: recurringRules, accountName: accounts.name })
-    .from(recurringRules)
-    .innerJoin(accounts, eq(accounts.id, recurringRules.accountId))
-    .where(and(isNull(recurringRules.pausedAt), isNotNull(recurringRules.remindDaysBefore)));
+  const due = takeUsers(
+    db,
+    "recurring",
+    await db
+      .select({ rule: recurringRules, accountName: accounts.name })
+      .from(recurringRules)
+      .innerJoin(accounts, eq(accounts.id, recurringRules.accountId))
+      .where(and(isNull(recurringRules.pausedAt), isNotNull(recurringRules.remindDaysBefore))),
+    (r) => r.rule.userId,
+    today,
+  );
   // What each person's rules have made, read once per person and only when one of their rules has a reminder to check.
   const madeBy = new Map<string, Map<string, Set<string>>>();
   for (const { rule, accountName } of due) {

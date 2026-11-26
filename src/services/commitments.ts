@@ -1,4 +1,5 @@
 import type { Db } from "../db/client";
+import { memoDb } from "../db/readCache";
 import { addDays, type IstDate } from "../domain/dates";
 import { type Commitment, freeToSpend, horizonDate, shortfalls, type Shortfall, sortCommitments, uncountedPaise, within } from "../domain/commitments";
 import { dueDatesUpTo } from "../domain/loans";
@@ -27,7 +28,8 @@ export interface CommitmentsView {
 }
 
 /** Every dated outflow from `from` up to, not including, `to`, from what Alfred already tracks. */
-export async function collectCommitments(db: Db, userId: string, from: IstDate, to: IstDate, today: IstDate): Promise<Commitment[]> {
+export const collectCommitments = memoDb("collectCommitments", collectCommitmentsUncached);
+async function collectCommitmentsUncached(db: Db, userId: string, from: IstDate, to: IstDate, today: IstDate): Promise<Commitment[]> {
   const [figures, plans, loanOverview, debtOverview, outflows, premiums] = await Promise.all([
     listAccountsWithFigures(db, userId, today),
     listPlans(db, userId, today),
@@ -86,7 +88,8 @@ export async function collectCommitments(db: Db, userId: string, from: IstDate, 
  * What is coming up before the next salary, and what is free to spend after it. The window ends at `until` when given
  * (a number of days from today), otherwise at the next recurring salary, otherwise at the next month start.
  */
-export async function getCommitments(db: Db, userId: string, today: IstDate, options: { days?: number | undefined } = {}): Promise<CommitmentsView> {
+export const getCommitments = memoDb("getCommitments", getCommitmentsUncached);
+async function getCommitmentsUncached(db: Db, userId: string, today: IstDate, options: { days?: number | undefined } = {}): Promise<CommitmentsView> {
   const [rules, settings] = await Promise.all([listRules(db, userId, today), getSettings(db, userId)]);
   const salary = rules
     .filter((r) => r.type === "income" && r.status === "active")

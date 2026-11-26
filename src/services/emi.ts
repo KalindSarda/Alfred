@@ -1,4 +1,4 @@
-import { and, count, eq, isNull } from "drizzle-orm";
+import { and, count, eq, isNull, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
@@ -80,12 +80,19 @@ async function requireCategory(db: Db, userId: string, id: string | null | undef
   if (category.archivedAt) throw invalid("categoryId", "That category is archived");
 }
 
-async function entryCounts(db: Db, userId: string): Promise<Map<string, number>> {
-  const rows = await db
+function entryCountsQuery(db: Db, userId: string) {
+  return db
     .select({ id: transactions.emiPlanId, n: count() })
     .from(transactions)
     .where(and(eq(transactions.userId, userId), eq(transactions.source, "emi")))
     .groupBy(transactions.emiPlanId);
+}
+
+async function entryCounts(db: Db, userId: string): Promise<Map<string, number>> {
+  return countsFrom(await entryCountsQuery(db, userId));
+}
+
+function countsFrom(rows: { id: string | null; n: number }[]): Map<string, number> {
   return new Map(rows.flatMap((r) => (r.id ? [[r.id, r.n] as const] : [])));
 }
 
@@ -121,15 +128,17 @@ function toDto(row: EmiPlanRow, cardName: string, statement: { statementDay: num
 /** Running plans first (soonest next instalment), then finished and cancelled ones. */
 export const listPlans = memoDb("listPlans", listPlansUncached);
 async function listPlansUncached(db: Db, userId: string, today: IstDate): Promise<EmiPlanDto[]> {
-  const [rows, entries] = await Promise.all([
+  const [rows, entryRows] = await db.batch([
     db
-      .select({ plan: emiPlans, cardName: accounts.name, statementDay: accounts.statementDay, dueDay: accounts.dueDay, categoryName: categories.name })
+      // Aliased: inside a D1 batch rows come back keyed by column name, so two columns both called "name" would overwrite each other.
+      .select({ plan: emiPlans, cardName: sql<string>`${accounts.name}`.as("card_name"), statementDay: accounts.statementDay, dueDay: accounts.dueDay, categoryName: sql<string | null>`${categories.name}`.as("category_name") })
       .from(emiPlans)
       .innerJoin(accounts, eq(accounts.id, emiPlans.cardAccountId))
       .leftJoin(categories, eq(categories.id, emiPlans.categoryId))
       .where(eq(emiPlans.userId, userId)),
-    entryCounts(db, userId),
+    entryCountsQuery(db, userId),
   ]);
+  const entries = countsFrom(entryRows);
   const dtos = rows.map((r) =>
     toDto(r.plan, r.cardName, { statementDay: r.statementDay ?? 1, dueDay: r.dueDay ?? 1 }, r.categoryName, entries.get(r.plan.id) ?? 0, today),
   );

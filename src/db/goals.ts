@@ -1,5 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "./client";
+import { memoDb } from "./readCache";
 import { goalContributions, goals } from "./schema";
 
 export type GoalRow = typeof goals.$inferSelect;
@@ -20,11 +21,19 @@ export async function savedByGoal(db: Db, userId: string): Promise<Map<string, n
 }
 
 /** Money set aside for active goals: taken off safe-to-spend. Achieved and archived goals release theirs. */
-export async function goalsSetAside(db: Db, userId: string): Promise<number> {
-  const [row] = await db
+export const goalsSetAside = memoDb("goalsSetAside", goalsSetAsideUncached);
+async function goalsSetAsideUncached(db: Db, userId: string): Promise<number> {
+  const [row] = await goalsSetAsideQuery(db, userId);
+  return setAsideFromRow(row);
+}
+
+/** The query behind `goalsSetAside`, for callers that send several reads in one `db.batch()`. */
+export function goalsSetAsideQuery(db: Db, userId: string) {
+  return db
     .select({ total: sql<number>`COALESCE(SUM(${goalContributions.amountPaise}), 0)` })
     .from(goalContributions)
     .innerJoin(goals, eq(goals.id, goalContributions.goalId))
     .where(and(eq(goalContributions.userId, userId), eq(goals.status, "active")));
-  return Math.max(0, Number(row?.total ?? 0));
 }
+
+export const setAsideFromRow = (row: { total: number } | undefined): number => Math.max(0, Number(row?.total ?? 0));

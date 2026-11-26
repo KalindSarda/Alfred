@@ -1,6 +1,7 @@
 import { and, eq, gte, inArray, isNotNull, isNull, lte, min, or } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { memoDb } from "../db/readCache";
+import { firstConfirmedDay } from "../db/transactions";
 import { categories, transactions } from "../db/schema";
 import { addDays, type IstDate } from "../domain/dates";
 import { WINDOW_DAYS, type Runway, runway } from "../domain/runway";
@@ -14,12 +15,9 @@ import { listAccountsWithFigures } from "./ledger";
  */
 export const getRunway = memoDb("getRunway", getRunwayUncached);
 async function getRunwayUncached(db: Db, userId: string, today: IstDate): Promise<Runway> {
-  const [figures, [first]] = await Promise.all([
-    listAccountsWithFigures(db, userId, today),
-    db.select({ day: min(transactions.txnDate) }).from(transactions).where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt), eq(transactions.status, "confirmed"))),
-  ]);
+  const [figures, firstDay] = await Promise.all([listAccountsWithFigures(db, userId, today), firstConfirmedDay(db, userId)]);
   const overview = balanceOverview(figures);
-  const firstEntryDate = (first?.day ?? null) as IstDate | null;
+  const firstEntryDate = firstDay as IstDate | null;
   const from = addDays(today, -(WINDOW_DAYS - 1));
 
   const rows = await db

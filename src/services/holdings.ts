@@ -2,9 +2,9 @@ import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
 import { memoDb } from "../db/readCache";
-import { getAccount } from "../db/accounts";
+import { accountNames, getAccount } from "../db/accounts";
 import { getHoldingRow, type HoldingRow } from "../db/holdings";
-import { getKindByKey, getKindRow, type HoldingKindRow, kindsByKey } from "../db/holdingKinds";
+import { getKindByKey, getKindRow, type HoldingKindRow, kindRowsQuery, kindsByKey } from "../db/holdingKinds";
 import { getRuleRow, parseSkips } from "../db/recurring";
 import { accounts, contacts, holdingContributions, holdingLots, holdingPartnerEntries, holdings, holdingValues, investmentAccounts, priceLinks, recurringRules, transactions } from "../db/schema";
 import { type Stake, splitHolding } from "../domain/partners";
@@ -211,7 +211,8 @@ export interface LoadedHoldings {
 /** Everything about a person's holdings in three queries: the holdings, their typed values, and their linked entries. */
 export const loadHoldings = memoDb("loadHoldings", loadHoldingsUncached);
 async function loadHoldingsUncached(db: Db, userId: string): Promise<LoadedHoldings> {
-  const [rows, values, txns, accountRows, lotRows, kinds, brokerRows, contributionRows, partnerRows, contactRows, linkRows] = await Promise.all([
+  // The eleven reads go in one batch, which D1 counts as a single query.
+  const [rows, values, txns, accountRows, lotRows, kindRows, brokerRows, contributionRows, partnerRows, contactRows, linkRows] = await db.batch([
     db.select().from(holdings).where(eq(holdings.userId, userId)),
     db.select().from(holdingValues).where(eq(holdingValues.userId, userId)),
     db
@@ -220,13 +221,14 @@ async function loadHoldingsUncached(db: Db, userId: string): Promise<LoadedHoldi
       .where(and(eq(transactions.userId, userId), isNotNull(transactions.holdingId), isNull(transactions.deletedAt), eq(transactions.status, "confirmed"), inArray(transactions.type, ["investment", "investment_sale"]))),
     db.select({ id: accounts.id, name: accounts.name }).from(accounts).where(eq(accounts.userId, userId)),
     db.select().from(holdingLots).where(eq(holdingLots.userId, userId)),
-    kindsByKey(db, userId),
+    kindRowsQuery(db, userId),
     db.select({ id: investmentAccounts.id, name: investmentAccounts.name }).from(investmentAccounts).where(eq(investmentAccounts.userId, userId)),
     db.select().from(holdingContributions).where(eq(holdingContributions.userId, userId)),
     db.select().from(holdingPartnerEntries).where(eq(holdingPartnerEntries.userId, userId)),
     db.select({ id: contacts.id, name: contacts.name }).from(contacts).where(eq(contacts.userId, userId)),
     db.select().from(priceLinks).where(eq(priceLinks.userId, userId)),
   ]);
+  const kinds = new Map(kindRows.map((k) => [k.key, k]));
   const accountName = new Map(accountRows.map((a) => [a.id, a.name]));
   type Mutable = {
     openingInvestedPaise: number;

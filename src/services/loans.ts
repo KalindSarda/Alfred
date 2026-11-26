@@ -3,7 +3,7 @@ import type { BatchItem } from "drizzle-orm/batch";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
 import { memoDb } from "../db/readCache";
-import { getAccount } from "../db/accounts";
+import { accountNames, getAccount } from "../db/accounts";
 import { getCategoryByName } from "../db/categories";
 import { getLoanRow, type LoanRow } from "../db/loans";
 import { accounts, loans, transactions } from "../db/schema";
@@ -75,11 +75,18 @@ function checkDate(path: string, date: string, today: IstDate) {
   if (date > today) throw invalid(path, "That date is in the future");
 }
 
-async function loadEntries(db: Db, userId: string, loanIds?: string[]): Promise<Map<string, Entry[]>> {
-  const rows = await db
+function entriesQuery(db: Db, userId: string, loanIds?: string[]) {
+  return db
     .select({ id: transactions.id, type: transactions.type, amountPaise: transactions.amountPaise, date: transactions.txnDate, loanId: transactions.loanId, loanOn: transactions.loanOn, deletedAt: transactions.deletedAt })
     .from(transactions)
     .where(and(eq(transactions.userId, userId), isNotNull(transactions.loanId), ...(loanIds ? [inArray(transactions.loanId, loanIds)] : [])));
+}
+
+async function loadEntries(db: Db, userId: string, loanIds?: string[]): Promise<Map<string, Entry[]>> {
+  return entriesFrom(await entriesQuery(db, userId, loanIds));
+}
+
+function entriesFrom(rows: { id: string; type: string; amountPaise: number; date: string; loanId: string | null; loanOn: string | null; deletedAt: string | null }[]): Map<string, Entry[]> {
   const out = new Map<string, Entry[]>();
   for (const r of rows) {
     const list = out.get(r.loanId as string) ?? [];
@@ -144,11 +151,12 @@ function toDto(row: LoanRow, accountName: string, entries: readonly Entry[]): Lo
 /** Active loans first, the biggest debt first; closed ones after when asked for. */
 export const listLoans = memoDb("listLoans", listLoansUncached);
 async function listLoansUncached(db: Db, userId: string, status: "active" | "all"): Promise<LoansOverview> {
-  const [rows, entries, accountRows] = await Promise.all([
+  const [rows, entryRows, accountRows] = await db.batch([
     db.select().from(loans).where(eq(loans.userId, userId)),
-    loadEntries(db, userId),
+    entriesQuery(db, userId),
     db.select({ id: accounts.id, name: accounts.name }).from(accounts).where(eq(accounts.userId, userId)),
   ]);
+  const entries = entriesFrom(entryRows);
   const name = new Map(accountRows.map((a) => [a.id, a.name]));
   const dtos = rows
     .filter((r) => status === "all" || r.status === "active")

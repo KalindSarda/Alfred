@@ -1,7 +1,7 @@
-import { and, desc, eq, gte, isNull, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import { commitmentsLines, salaryPlanLines } from "../alfred/botVoice";
 import type { Db } from "../db/client";
-import { categories, transactions } from "../db/schema";
+import { categories, salaryLog, transactions } from "../db/schema";
 import { addDays, type IstDate } from "../domain/dates";
 import { formatRupees } from "../domain/money";
 import { goalAsks, perDayPaise } from "../domain/salaryPlan";
@@ -30,6 +30,38 @@ export async function salaryEntries(db: Db, userId: string, from: IstDate, today
     .where(and(eq(transactions.userId, userId), eq(transactions.type, "income"), eq(transactions.status, "confirmed"), isNull(transactions.deletedAt), eq(categories.name, "Salary"), gte(transactions.txnDate, from), lte(transactions.txnDate, today)))
     .orderBy(desc(transactions.txnDate), desc(transactions.createdAt));
   return rows.map((r) => ({ id: r.id, amountPaise: r.amountPaise, date: r.date as IstDate }));
+}
+
+/**
+ * Salary credits between `from` and today that no salary plan has been sent for, newest first, for each of these people: two
+ * queries for everyone (a few more beyond ninety people), where asking person by person costs two each. People with none are
+ * left out. The same rule as `salaryEntries` and the salary log, applied to many people at once.
+ */
+export async function unplannedSalaryByUser(db: Db, userIds: readonly string[], from: IstDate, today: IstDate): Promise<Map<string, SalaryEntry[]>> {
+  const out = new Map<string, SalaryEntry[]>();
+  for (let i = 0; i < userIds.length; i += 90) {
+    const ids = userIds.slice(i, i + 90);
+    const rows = await db
+      .select({ id: transactions.id, userId: transactions.userId, amountPaise: transactions.amountPaise, date: transactions.txnDate })
+      .from(transactions)
+      .innerJoin(categories, eq(categories.id, transactions.categoryId))
+      .where(and(inArray(transactions.userId, ids), eq(transactions.type, "income"), eq(transactions.status, "confirmed"), isNull(transactions.deletedAt), eq(categories.name, "Salary"), gte(transactions.txnDate, from), lte(transactions.txnDate, today)))
+      .orderBy(desc(transactions.txnDate), desc(transactions.createdAt));
+    if (rows.length === 0) continue;
+    // A transaction belongs to one person, so its id alone says whether a plan was sent for it. Chunked: D1 allows 100 bound variables.
+    const seen = new Set<string>();
+    for (let j = 0; j < rows.length; j += 90) {
+      const done = await db.select({ txnId: salaryLog.txnId }).from(salaryLog).where(inArray(salaryLog.txnId, rows.slice(j, j + 90).map((r) => r.id)));
+      for (const d of done) seen.add(d.txnId);
+    }
+    for (const r of rows) {
+      if (seen.has(r.id)) continue;
+      const list = out.get(r.userId) ?? [];
+      list.push({ id: r.id, amountPaise: r.amountPaise, date: r.date as IstDate });
+      out.set(r.userId, list);
+    }
+  }
+  return out;
 }
 
 /** The latest salary credit in the last 60 days, or null. */

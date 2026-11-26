@@ -10,6 +10,7 @@ import { logger } from "../utils/logger";
 import { balanceOverview } from "./accounts";
 import { listAccountsWithFigures } from "./ledger";
 import { getSettings } from "./settings";
+import { takeUsers } from "./userCap";
 
 /** What the counted accounts could pay a card with right now: their balances less any blocked amounts. */
 function availableToPay(figures: Parameters<typeof balanceOverview>[0]): number {
@@ -43,11 +44,17 @@ export async function runNudges(deps: NudgeDeps): Promise<NudgeResult> {
   const today = todayIst(new Date(deps.now()));
   const result: NudgeResult = { sent: 0, announced: 0 };
 
-  const links = await db
-    .select({ userId: telegramLinks.userId, chatId: telegramLinks.chatId })
-    .from(telegramLinks)
-    .innerJoin(users, eq(users.id, telegramLinks.userId))
-    .where(isNull(users.disabledAt));
+  const links = takeUsers(
+    db,
+    "nudges",
+    await db
+      .select({ userId: telegramLinks.userId, chatId: telegramLinks.chatId })
+      .from(telegramLinks)
+      .innerJoin(users, eq(users.id, telegramLinks.userId))
+      .where(isNull(users.disabledAt)),
+    (l) => l.userId,
+    today,
+  );
   for (const link of links) {
     try {
       const settings = await getSettings(db, link.userId);
@@ -107,13 +114,14 @@ export async function runHoldReminders(deps: NudgeDeps): Promise<HoldReminderRes
   const today = todayIst(new Date(deps.now()));
   const result: HoldReminderResult = { sent: 0 };
 
-  const due = await db
+  const dueAll = await db
     .select({ hold: holds, accountName: accounts.name, chatId: telegramLinks.chatId })
     .from(holds)
     .innerJoin(accounts, eq(accounts.id, holds.accountId))
     .innerJoin(telegramLinks, eq(telegramLinks.userId, holds.userId))
     .innerJoin(users, eq(users.id, holds.userId))
     .where(and(eq(holds.status, "active"), isNull(holds.remindedOn), isNotNull(holds.expectedDate), lte(holds.expectedDate, today), isNull(users.disabledAt)));
+  const due = takeUsers(db, "holds", dueAll, (r) => r.hold.userId, today);
 
   for (const { hold, accountName, chatId } of due) {
     try {

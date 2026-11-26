@@ -7,6 +7,7 @@ import { todayIst } from "../domain/dates";
 import { logger } from "../utils/logger";
 import { materializeEmiEntries } from "./emi";
 import { chatsFor } from "./recurringJob";
+import { takeUsers } from "./userCap";
 
 export interface EmiJobDeps {
   db: Db;
@@ -23,7 +24,7 @@ export interface EmiJobDeps {
 export async function runEmiCheckIns(deps: EmiJobDeps): Promise<{ added: number; asked: number }> {
   const { db, telegram } = deps;
   const today = todayIst(new Date(deps.now()));
-  const owners = await db.selectDistinct({ userId: emiPlans.userId }).from(emiPlans);
+  const owners = takeUsers(db, "emi", await db.selectDistinct({ userId: emiPlans.userId }).from(emiPlans), (o) => o.userId, today);
   const chats = await chatsFor(db);
   let added = 0;
   let asked = 0;

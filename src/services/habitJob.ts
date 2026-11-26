@@ -13,6 +13,7 @@ import { lastLoggedDate, recentManualEntries } from "./habit";
 import { listAccountsWithFigures } from "./ledger";
 import { chatsFor } from "./recurringJob";
 import { getSettings } from "./settings";
+import { takeUsers } from "./userCap";
 
 /** 17:15 UTC is 22:45 in India: late enough that the day's spending is done. */
 export const EVENING_CRON = "15 17 * * *";
@@ -69,7 +70,7 @@ export async function runEveningCheckIns(deps: HabitJobDeps): Promise<{ nudged: 
   let nudged = 0;
   let balanceAsks = 0;
 
-  for (const [userId, chat] of chats) {
+  for (const [userId, chat] of takeUsers(db, "evening", [...chats], ([id]) => id, today)) {
     try {
       const settings = await getSettings(db, userId);
       if (sunday && settings.balanceCheck) {

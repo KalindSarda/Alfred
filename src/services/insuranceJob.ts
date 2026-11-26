@@ -9,6 +9,7 @@ import { newId, nowIso } from "../utils/id";
 import { logger } from "../utils/logger";
 import { listPolicies } from "./protection";
 import { chatsFor } from "./recurringJob";
+import { takeUsers } from "./userCap";
 
 export interface InsuranceJobDeps {
   db: Db;
@@ -28,7 +29,7 @@ export async function runInsuranceReminders(deps: InsuranceJobDeps): Promise<{ s
   const chats = await chatsFor(db);
   let sent = 0;
 
-  for (const [userId, chat] of chats) {
+  for (const [userId, chat] of takeUsers(db, "insurance", [...chats], ([id]) => id, today)) {
     try {
       for (const p of await listPolicies(db, userId, today)) {
         if (p.status !== "active" || p.source !== "personal" || p.daysToDue > RENEWAL_LEAD_DAYS) continue;

@@ -8,6 +8,7 @@ import { todayIst } from "../domain/dates";
 import { followUpDue, outstandingPaise, repayReminderStage } from "../domain/debts";
 import { logger } from "../utils/logger";
 import { chatsFor } from "./recurringJob";
+import { takeUsers } from "./userCap";
 
 export interface DebtJobDeps {
   db: Db;
@@ -27,11 +28,17 @@ export async function runDebtReminders(deps: DebtJobDeps): Promise<{ sent: numbe
   const chats = await chatsFor(db);
   let sent = 0;
 
-  const open = await db
-    .select({ debt: debts, name: contacts.name, trusted: contacts.trusted })
-    .from(debts)
-    .innerJoin(contacts, eq(contacts.id, debts.contactId))
-    .where(eq(debts.status, "open"));
+  const open = takeUsers(
+    db,
+    "debt",
+    await db
+      .select({ debt: debts, name: contacts.name, trusted: contacts.trusted })
+      .from(debts)
+      .innerJoin(contacts, eq(contacts.id, debts.contactId))
+      .where(eq(debts.status, "open")),
+    (r) => r.debt.userId,
+    today,
+  );
   const paidByUser = new Map<string, Map<string, number>>();
 
   for (const { debt, name, trusted } of open) {

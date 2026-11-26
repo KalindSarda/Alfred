@@ -4,8 +4,13 @@ import { holdingKinds } from "./schema";
 
 export type HoldingKindRow = typeof holdingKinds.$inferSelect;
 
-export async function listKindRows(db: Db, userId: string): Promise<HoldingKindRow[]> {
+/** The query behind `listKindRows`, for callers that send several reads in one `db.batch()`. */
+export function kindRowsQuery(db: Db, userId: string) {
   return db.select().from(holdingKinds).where(eq(holdingKinds.userId, userId)).orderBy(holdingKinds.name);
+}
+
+export async function listKindRows(db: Db, userId: string): Promise<HoldingKindRow[]> {
+  return kindRowsQuery(db, userId);
 }
 
 /** A person's kinds by key (what `holdings.kind` stores). */

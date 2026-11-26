@@ -21,9 +21,11 @@ database_name = "finance-tracker"
 database_id = "dc4a17c4-8278-4ead-8d66-409831138889"
 migrations_dir = "drizzle"
 
-# One daily run: 04:30 UTC = 10:00 IST.
+# Morning work in three runs, minutes apart so each stays under the Free plan's 50 D1 queries (see src/services/cronPlan.ts):
+#   04:30 UTC = 10:00 IST data, 04:35 reminders and salary plans, 04:40 prices, review and the briefing; then the 22:45 IST evening check-in.
+# Four of the five triggers the Free plan allows; one is kept spare.
 [triggers]
-crons = ["30 4 * * *", "15 17 * * *"]
+crons = ["30 4 * * *", "35 4 * * *", "40 4 * * *", "15 17 * * *"]
 
 [observability]
 enabled = true

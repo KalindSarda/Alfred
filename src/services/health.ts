@@ -38,7 +38,19 @@ export function healthRange(today: IstDate, startDay: number, which: HealthPerio
  */
 export const periodFacts = memoDb("periodFacts", periodFactsUncached);
 async function periodFactsUncached(db: Db, userId: string, range: DateRange): Promise<PeriodFacts> {
-  const rows = await db
+  return foldPeriodFacts(await periodFactsQuery(db, userId, range), range);
+}
+
+/** The facts of several periods from one batch of reads (one D1 query), in the order given. */
+export async function periodFactsMany(db: Db, userId: string, ranges: readonly DateRange[]): Promise<PeriodFacts[]> {
+  const [first, ...rest] = ranges;
+  if (!first) return [];
+  const results = await db.batch([periodFactsQuery(db, userId, first), ...rest.map((r) => periodFactsQuery(db, userId, r))]);
+  return results.map((rows, i) => foldPeriodFacts(rows, ranges[i] as DateRange));
+}
+
+function periodFactsQuery(db: Db, userId: string, range: DateRange) {
+  return db
     .select({ type: transactions.type, source: transactions.source, amountPaise: transactions.amountPaise, loanOn: transactions.loanOn, txnDate: transactions.txnDate, countsForDate: transactions.countsForDate, category: categories.name, essential: categories.isEssential })
     .from(transactions)
     .leftJoin(categories, eq(categories.id, transactions.categoryId))
@@ -51,7 +63,11 @@ async function periodFactsUncached(db: Db, userId: string, range: DateRange): Pr
         or(and(gte(transactions.txnDate, range.from), lte(transactions.txnDate, range.to)), and(isNotNull(transactions.countsForDate), gte(transactions.countsForDate, range.from), lte(transactions.countsForDate, range.to))),
       ),
     );
+}
 
+type PeriodRows = Awaited<ReturnType<typeof periodFactsQuery>>;
+
+function foldPeriodFacts(rows: PeriodRows, range: DateRange): PeriodFacts {
   const f: PeriodFacts = { incomePaise: 0, needsPaise: 0, wantsPaise: 0, investedPaise: 0, principalRepaidPaise: 0, emiPaise: 0, reimbursedPaise: 0 };
   for (const r of rows) {
     const netted = r.type === "income" && r.category !== null && NETTED_INCOME_CATEGORIES.includes(r.category);

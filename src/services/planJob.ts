@@ -10,8 +10,9 @@ import { logger } from "../utils/logger";
 import { getAllowance } from "./allowance";
 import { getBriefing } from "./alfred";
 import { chatsFor } from "./recurringJob";
-import { buildSalaryPlan, salaryEntries } from "./salary";
-import { getSettings } from "./settings";
+import { buildSalaryPlan, unplannedSalaryByUser } from "./salary";
+import { getSettings, getSettingsMany } from "./settings";
+import { takeUsers } from "./userCap";
 
 export interface PlanJobDeps {
   db: Db;
@@ -34,16 +35,15 @@ export async function runSalaryPlans(deps: PlanJobDeps): Promise<{ sent: number 
   const chats = await chatsFor(db);
   let sent = 0;
 
-  for (const [userId, chat] of chats) {
+  // Who has an unplanned salary is found for everyone in two queries, and only those people count against the per-run cap.
+  // A salary stays plannable for PLAN_WITHIN_DAYS, so someone left out today is first in line again on the next runs.
+  const waiting = await unplannedSalaryByUser(db, [...chats.keys()], addDays(today, -PLAN_WITHIN_DAYS), today);
+  for (const [userId, fresh] of takeUsers(db, "salary", [...waiting], ([id]) => id, today)) {
+    const chat = chats.get(userId);
+    if (!chat) continue;
     try {
-      const entries = await salaryEntries(db, userId, addDays(today, -PLAN_WITHIN_DAYS), today);
-      if (entries.length === 0) continue;
-      const done = await db.select({ txnId: salaryLog.txnId }).from(salaryLog).where(and(eq(salaryLog.userId, userId), inArray(salaryLog.txnId, entries.map((e) => e.id))));
-      const seen = new Set(done.map((d) => d.txnId));
-      const fresh = entries.filter((e) => !seen.has(e.id));
-      if (fresh.length === 0) continue;
       // Claimed before sending, so a retried run never plans twice.
-      for (const e of fresh) await db.insert(salaryLog).values({ id: newId(), userId, txnId: e.id, sentAt: nowIso() }).onConflictDoNothing();
+      await db.insert(salaryLog).values(fresh.map((e) => ({ id: newId(), userId, txnId: e.id, sentAt: nowIso() }))).onConflictDoNothing();
       const plan = await buildSalaryPlan(db, userId, today, fresh[0] ?? null, { chatId: chat, nowMs: deps.now() });
       try {
         await telegram.sendMessage(chat, plan.text, plan.buttons.length > 0 ? plan.buttons : undefined);
@@ -69,10 +69,12 @@ export async function runMorningPush(deps: PlanJobDeps): Promise<{ sent: number 
   const chats = await chatsFor(db);
   let sent = 0;
 
-  for (const [userId, chat] of chats) {
+  // The people with the briefing switched on are found in one query; only they count against the per-run cap. A day's briefing
+  // that is left out is not sent late: it is a once-a-day message, and the next day's window moves on to the others.
+  const settingsOf = await getSettingsMany(db, [...chats.keys()]);
+  const wanting = [...chats].filter(([id]) => settingsOf.get(id)?.morningPush === true);
+  for (const [userId, chat] of takeUsers(db, "push", wanting, ([id]) => id, today)) {
     try {
-      const settings = await getSettings(db, userId);
-      if (!settings.morningPush) continue;
       const briefing = await getBriefing(db, userId, today, now, { compact: false });
       const attention = pushLines(briefing.lines);
       if (attention.length === 0) continue;

@@ -7,6 +7,7 @@ import { logger } from "../utils/logger";
 import { hasCheck, recordCheck, statementFacts } from "./cardTools";
 import { listAccountsWithFigures, toLedgerAccount } from "./ledger";
 import { chatsFor } from "./recurringJob";
+import { takeUsers } from "./userCap";
 
 export interface StatementJobDeps {
   db: Db;
@@ -28,7 +29,7 @@ export async function runStatementChecks(deps: StatementJobDeps): Promise<{ aske
   const chats = await chatsFor(db);
   let asked = 0;
 
-  for (const [userId, chat] of chats) {
+  for (const [userId, chat] of takeUsers(db, "statement", [...chats], ([id]) => id, today)) {
     try {
       const figures = await listAccountsWithFigures(db, userId, today);
       for (const a of figures) {
