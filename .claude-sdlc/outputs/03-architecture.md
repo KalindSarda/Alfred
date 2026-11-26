@@ -11,12 +11,12 @@ status: draft
 # Architecture — Personal Finance App
 
 ## Overview
-A single-user (multi-user-ready) personal finance system deployed as **one Cloudflare Worker** that does three jobs: serves the JSON API and the static React PWA, receives the Telegram webhook, and runs one daily cron for due-date nudges. All state lives in **D1 (SQLite)**. Web and Telegram are two front doors onto the same service layer, so there is exactly one way to create a transaction.
+A single-user (multi-user-ready) personal finance system deployed as **one Cloudflare Worker** that does three jobs: serves the JSON API and the static React PWA, receives the Telegram webhook, and runs scheduled jobs (due-date nudges and more, see "Scheduled work"). All state lives in **D1 (SQLite)**. Web and Telegram are two front doors onto the same service layer, so there is exactly one way to create a transaction.
 
 ```
 iPhone PWA (React) ──HTTPS──┐
                             ▼
-Telegram ──webhook──►  Cloudflare Worker (Hono)  ◄── Cron Trigger (daily, 04:30 UTC = 10:00 IST)
+Telegram ──webhook──►  Cloudflare Worker (Hono)  ◄── Cron Triggers (three morning runs from 04:30 UTC = 10:00 IST, one evening run)
                        routes (thin, Zod-validated)
                             │
                        services (business logic)
@@ -192,24 +192,28 @@ The original design above still holds: one Cloudflare Worker (Hono) serving the 
 7. **One list of places.** `web/src/features.ts` lists every feature once; the Everything page, the find-anything search and the Home shortcuts all read it. A section on a page is reached with a `#section` in the address.
 8. **Views by address.** Accounts (`accounts`, `commitments`, `investments`) and Plan (`budgets`, `recurring`, `goals`) keep their view in `?view=`, so any link, briefing line or search result can open them.
 
-### The evening job (cron 17:15 UTC, 22:45 IST)
-A separate trigger runs only `runEveningCheckIns`: the Sunday balance check, or the "nothing logged today" check-in with usual spends as buttons. The `scheduled` handler branches on `controller.cron`.
+### Scheduled work: four cron triggers, each under the Free plan's budget
+Workers Free allows **50 D1 queries and 50 outside fetches per invocation** and 5 cron triggers an account. The morning work no longer runs as one job (it needed 89 queries for one person and about 700 on the 1st of the month); it is split over three triggers a few minutes apart, so each run sees what the one before wrote. The groups and their order live in one place, `src/services/cronPlan.ts`.
 
-### The daily job (cron 04:30 UTC, 10:00 IST), in order
-1. EMI check-ins: add due instalments, ask whether they agree.
-2. Loan check-ins: the same for loan instalments (interest expense and principal payment).
-2b. Statement checks: the day after a card statement, ask what it says and name any gap.
-3. Recurring: add due entries (drafts for the person to confirm), send reminders.
-3b. Mandate checks: warn when a bank cannot cover a debit due in the next two days.
-4. Lent and borrowed: follow up on money lent (not to trusted people), remind about money borrowed.
-5. Card due-date nudges (once per due date, recorded in `nudge_log`).
-6. Investment value nudge (the 1st of the month only).
-7. IPO outcome reminders.
-7b. Salary day plan: plan for any new salary credit.
-7c. Morning briefing on Telegram, for people who switched it on, when something needs attention.
-7d. Monthly review, on the first morning of the person's month.
-8. Maintenance: purge expired codes, sessions and pending rows.
-Each step is isolated: one failing never stops the rest, and a person who fails never stops the others. Messages are best effort; the work itself (adding entries) is not tied to a message being delivered.
+| Cron (UTC) | IST | Run | Jobs, in order | Worst run measured |
+|---|---|---|---|---|
+| `30 4 * * *` | 10:00 | data | EMI check-ins, loan check-ins, statement checks, recurring entries and reminders, units check-ins | 33 queries |
+| `35 4 * * *` | 10:05 | reminders | payment-shortfall (mandate) checks, card due-date nudges, insurance reminders, lent and borrowed follow-ups, IPO outcome reminders, salary day plans | 40 queries (2 people) |
+| `40 4 * * *` | 10:10 | review | weekly price refresh (Saturdays), investment value nudge (1st), monthly review, morning briefing, housekeeping | 30 queries |
+| `15 17 * * *` | 22:45 | evening | evening check-in or Sunday balance check, then any salary logged during the day | 27 queries |
+
+One trigger is kept spare. An unknown cron expression (a local `__scheduled?cron=` call) runs all the morning work.
+
+**How a run stays under 50, and keeps doing so as people are invited**
+1. **Few queries per person.** The reads that used to run once per rule, plan or loan (recurring, EMI, loans) now run once per person. The views a salary plan or monthly review is built from (accounts and ledger, holdings, runway, period facts, commitments, goals, debts, loans) are read once per run through `withReadCache` (`src/db/readCache.ts`), and the reads of one view go in a single `db.batch()`, which D1 counts as **one** query (confirmed in the D1 limits page, 2026-11-26). The cache is switched on only by the cron runner and only around jobs that read; web requests never open one. A batched query that joins two tables must not return two columns with the same name (D1 batch rows are keyed by column name); alias them, as `listRules` and `listPlans` do.
+2. **A cap on people per run** (`USER_CAP` in `src/services/userCap.ts`), set from what a person costs in each job. People are put in id order and the cap is a window that moves along that order each day (`pickUsers`, pure and tested), so nobody is skipped for good: with `n` people everyone has a turn within `ceil(n / cap)` days. The weekly price refresh moves once a week, not once a day. A job logs `<job>_deferred` when it leaves anyone out. The caps apply only to scheduled runs; a job called on its own looks after everyone.
+3. **What happens to the people left out.** They are first in line again as the window moves on, and each job catches up by its own design: instalments and recurring entries are added when their date has passed (up to the 36-entry catch-up); card, statement, payment and insurance reminders look several days ahead and are claimed once, so a later run still sends them; a salary stays plannable for 3 days; the monthly review marks a person the cap left out (`checkin_log` kind `review_pending`) and sends it on one of the next two mornings, claimed against the month-start day so it is still once a month. The morning briefing and the units question are once-a-day messages and are not sent late.
+4. **A permanent budget test**, `test/cronBudget.test.ts`, runs every cron expression through `scheduled()` over a counting D1 (`test/queryCount.ts`) for one person on an ordinary day, a Saturday and a Sunday, for one and two people on the 1st of the month and the days after, and for eight people over four days. It fails if any run makes 50 or more queries or fetches (and for one or two people, more than 40). It also checks that the cache returns the same answers as no cache, and that the review catch-up works. Add a job to `cronPlan.ts` and the test covers it.
+5. **Outside fetches.** The Saturday price refresh makes at most `MAX_SYMBOLS` (40) Yahoo requests, one for AMFI, one for IBJA and one Telegram message, for one person a run; the jobs after it send at most their capped messages. Under 50 by arithmetic, which the test asserts.
+
+Each step is isolated: one failing is logged as `<name>_failed` and never stops the rest, and a person who fails never stops the others. Messages are best effort; the work itself (adding entries) is not tied to a message being delivered.
+
+**Limits to know.** With more than about three people, the capped jobs reach each person less often than daily (the payment-shortfall check matters most: it looks three days ahead, so beyond about three people a debit can be missed). The options then are the spare trigger, a lighter per-person read, or Workers Paid. A person with far more data than the sample life (many cards, rules or loans) costs more per person; the budget test is the alarm.
 
 ### Telegram surface
 25 commands (listed once in `src/bot/commands.ts`, the single source for the bot's menu and the identity test). Plain sentences are read by the parser first, then confirmed or completed with buttons. Callback families are short single letters: pending entry (`p`), undo (`u`), category (`c`, `k`), archive (`a`), IPO holds (`h`), recurring drafts (`r`), lent and borrowed (`f`), goals (`g`), investment values (`i`), EMI check (`e`), loan check (`l`), menu (`m`).
@@ -232,6 +236,7 @@ The voice modules already separate facts from wording, the bot has a parser-firs
 - 2026-11-05: addendum "the architecture as built" added: layers, the 28-table data model, entry types and money rules (safe-to-spend, net worth), the recurring patterns (materialisation, truth from entries, managed entries, check-ins, pending state, shared hints, one feature list, views by address), the daily job order, the Telegram surface, testing and release, known limits, and where the AI phase attaches.
 - 2026-11-06: slice 21 noted: holdings counted by quantity (migration 0019, `holding_lots`, rate snapshots).
 - 2026-11-06: slice 22 noted: investment kinds are per-person rows (`holding_kinds`) that carry unit and rate quantity; `holdings.kind` stores the kind key.
+- 2026-11-26: scheduled work split into four cron triggers with a per-run cap on people, batched reads and a permanent query-budget test (see "Scheduled work: four cron triggers").
 - 2026-11-07: slice 23 noted: the commitments timeline (`domain/commitments.ts`, `services/commitments.ts`) joins cards, EMIs, loans, recurring rules and borrowed money; free to spend is a second figure beside safe-to-spend.
 - 2026-11-11: slice 24 noted: the logging habit (last-logged in the briefing, the evening cron, usual spends, the weekly balance check booking gaps as source `check`).
 - 2026-11-12: slice 25 noted: card float ranking (`domain/cardFloat.ts`) and statement checks (`domain/statementGap.ts`, `services/cardTools.ts`, `statementJob.ts`).
