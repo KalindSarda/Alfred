@@ -2,6 +2,7 @@ import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
+import { memoDb } from "../db/readCache";
 import { getAccount } from "../db/accounts";
 import { getCategoryByName } from "../db/categories";
 import { getLoanRow, type LoanRow } from "../db/loans";
@@ -141,7 +142,8 @@ function toDto(row: LoanRow, accountName: string, entries: readonly Entry[]): Lo
 }
 
 /** Active loans first, the biggest debt first; closed ones after when asked for. */
-export async function listLoans(db: Db, userId: string, status: "active" | "all"): Promise<LoansOverview> {
+export const listLoans = memoDb("listLoans", listLoansUncached);
+async function listLoansUncached(db: Db, userId: string, status: "active" | "all"): Promise<LoansOverview> {
   const [rows, entries, accountRows] = await Promise.all([
     db.select().from(loans).where(eq(loans.userId, userId)),
     loadEntries(db, userId),
@@ -246,12 +248,12 @@ async function closeIfClear(db: Db, userId: string, row: LoanRow) {
  * interest", principal as a loan payment, both from the paying bank. Safe to run as often as you like: a due date gets
  * one pair, and a removed one is not brought back. Returns what was added.
  */
-export async function materializeLoan(db: Db, row: LoanRow, today: IstDate): Promise<NewInstalment[]> {
+export async function materializeLoan(db: Db, row: LoanRow, today: IstDate, shared?: { entries: Entry[]; interestCategory: string | null }): Promise<NewInstalment[]> {
   if (row.status !== "active") return [];
-  const entries = (await loadEntries(db, row.userId, [row.id])).get(row.id) ?? [];
+  const entries = shared ? shared.entries : ((await loadEntries(db, row.userId, [row.id])).get(row.id) ?? []);
   let outstanding = outstandingOf(row, entries);
   let due = nextDueOf(row, entries);
-  const interestCategory = await categoryId(db, row.userId, INTEREST_CATEGORY, true);
+  const interestCategory = shared ? shared.interestCategory : await categoryId(db, row.userId, INTEREST_CATEGORY, true);
   const added: NewInstalment[] = [];
   for (let i = 0; i < MAX_CATCH_UP && due <= today && outstanding > 0; i++) {
     const split = nextInstalment(outstanding, row.ratePctBp, row.emiPaise);
@@ -273,8 +275,12 @@ export async function materializeLoan(db: Db, row: LoanRow, today: IstDate): Pro
 /** One person's instalments that have come due (for the daily job and for creating a loan). */
 export async function materializeLoansFor(db: Db, userId: string, today: IstDate): Promise<NewInstalment[]> {
   const rows = await db.select().from(loans).where(and(eq(loans.userId, userId), eq(loans.status, "active")));
+  if (rows.length === 0) return [];
+  // Every loan's entries and the interest category are read once, instead of once a loan.
+  const entriesByLoan = await loadEntries(db, userId, rows.map((r) => r.id));
+  const interestCategory = await categoryId(db, userId, INTEREST_CATEGORY, true);
   const added: NewInstalment[] = [];
-  for (const row of rows) added.push(...(await materializeLoan(db, row, today)));
+  for (const row of rows) added.push(...(await materializeLoan(db, row, today, { entries: entriesByLoan.get(row.id) ?? [], interestCategory })));
   return added;
 }
 

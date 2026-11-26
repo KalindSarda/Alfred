@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
+import { memoDb } from "../db/readCache";
 import { getAccount } from "../db/accounts";
 import { getDebtRow, paidByDebt } from "../db/debts";
 import { accounts, contacts, debtPayments, debts, transactions } from "../db/schema";
@@ -58,7 +59,8 @@ const keyOf = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
 const tidy = (name: string) => name.trim().replace(/\s+/g, " ");
 
 /** People first by what they owe or are owed, then by name; each person's loans newest first. */
-export async function listDebts(db: Db, userId: string, today: IstDate, status: "open" | "all"): Promise<DebtsOverview> {
+export const listDebts = memoDb("listDebts", listDebtsUncached);
+async function listDebtsUncached(db: Db, userId: string, today: IstDate, status: "open" | "all"): Promise<DebtsOverview> {
   const [contactRows, debtRows, paymentRows, accountRows, paid] = await Promise.all([
     db.select().from(contacts).where(eq(contacts.userId, userId)),
     db.select().from(debts).where(status === "open" ? and(eq(debts.userId, userId), eq(debts.status, "open")) : eq(debts.userId, userId)),

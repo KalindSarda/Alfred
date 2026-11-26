@@ -4,6 +4,7 @@ import type { ListTransactionsData, TransactionDto } from "../schemas/transactio
 import { ValidationError } from "../config/errors";
 import { DEBT_TYPES, FLOW_TYPES, PARTNER_TYPES } from "../domain/txnTypes";
 import type { Db } from "./client";
+import { cachedRead } from "./readCache";
 import { transactions } from "./schema";
 
 export type TransactionRow = typeof transactions.$inferSelect;
@@ -66,7 +67,11 @@ export async function updateTransactionRow(
 }
 
 /** Transactions that count toward balances: confirmed and not deleted, only the columns the ledger math needs. */
-export async function loadLedgerTxns(db: Db, userId: string): Promise<LedgerTxn[]> {
+export function loadLedgerTxns(db: Db, userId: string): Promise<LedgerTxn[]> {
+  return cachedRead(db, `ledgerTxns:${userId}`, () => queryLedgerTxns(db, userId));
+}
+
+async function queryLedgerTxns(db: Db, userId: string): Promise<LedgerTxn[]> {
   return db
     .select({
       type: transactions.type,

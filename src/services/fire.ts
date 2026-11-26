@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
+import { memoDb } from "../db/readCache";
 import { firePlan } from "../db/schema";
 import type { IstDate } from "../domain/dates";
 import { coastNumber, fireNumber, monthsToFire, type ProjectionInput, progressPct, requiredSaving, type Sensitivity, sensitivity } from "../domain/fire";
@@ -85,7 +86,8 @@ function yearAfter(today: IstDate, months: number): number {
  * Where the person stands on financial independence. The corpus is every investment that counts (and is not part of the
  * emergency fund) plus bank money beyond the emergency fund. Spending and saving default to the recent average when not typed.
  */
-export async function getFire(db: Db, userId: string, today: IstDate): Promise<FireView> {
+export const getFire = memoDb("getFire", getFireUncached);
+async function getFireUncached(db: Db, userId: string, today: IstDate): Promise<FireView> {
   const [rows, runway, figures, loaded] = await Promise.all([db.select().from(firePlan).where(eq(firePlan.userId, userId)).limit(1), getRunway(db, userId, today), listAccountsWithFigures(db, userId, today), loadHoldings(db, userId)]);
   const plan = rows[0];
 

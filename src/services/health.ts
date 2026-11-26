@@ -1,5 +1,6 @@
 import { and, eq, gte, isNotNull, isNull, lte, or } from "drizzle-orm";
 import type { Db } from "../db/client";
+import { memoDb } from "../db/readCache";
 import { NETTED_INCOME_CATEGORIES } from "../db/defaultCategories";
 import { categories, transactions } from "../db/schema";
 import { addDays, cycleRange, type DateRange, type IstDate } from "../domain/dates";
@@ -35,7 +36,8 @@ export function healthRange(today: IstDate, startDay: number, which: HealthPerio
  * the essential categories plus card EMIs and loan interest, each counted once; wants are every other expense, including
  * "Unlogged spending". Investing and loan principal are not spending: they are part of what was saved.
  */
-export async function periodFacts(db: Db, userId: string, range: DateRange): Promise<PeriodFacts> {
+export const periodFacts = memoDb("periodFacts", periodFactsUncached);
+async function periodFactsUncached(db: Db, userId: string, range: DateRange): Promise<PeriodFacts> {
   const rows = await db
     .select({ type: transactions.type, source: transactions.source, amountPaise: transactions.amountPaise, loanOn: transactions.loanOn, txnDate: transactions.txnDate, countsForDate: transactions.countsForDate, category: categories.name, essential: categories.isEssential })
     .from(transactions)
@@ -80,7 +82,8 @@ export async function periodFacts(db: Db, userId: string, range: DateRange): Pro
   return f;
 }
 
-export async function getHealth(db: Db, userId: string, today: IstDate, which: HealthPeriod): Promise<HealthView> {
+export const getHealth = memoDb("getHealth", getHealthUncached);
+async function getHealthUncached(db: Db, userId: string, today: IstDate, which: HealthPeriod): Promise<HealthView> {
   const { periodStartDay } = await getSettings(db, userId);
   const range = healthRange(today, periodStartDay, which);
   const [facts, figures, runway, nw] = await Promise.all([

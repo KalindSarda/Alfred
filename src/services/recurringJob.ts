@@ -6,7 +6,7 @@ import type { Db } from "../db/client";
 import { accounts, recurringRules, telegramLinks, users } from "../db/schema";
 import { todayIst } from "../domain/dates";
 import { logger } from "../utils/logger";
-import { materializeAllRules, nextDue } from "./recurring";
+import { madeDatesForUser, materializeAllRules, nextDue } from "./recurring";
 
 export interface RecurringJobDeps {
   db: Db;
@@ -74,11 +74,15 @@ export async function runRecurring(deps: RecurringJobDeps): Promise<RecurringJob
     .from(recurringRules)
     .innerJoin(accounts, eq(accounts.id, recurringRules.accountId))
     .where(and(isNull(recurringRules.pausedAt), isNotNull(recurringRules.remindDaysBefore)));
+  // What each person's rules have made, read once per person and only when one of their rules has a reminder to check.
+  const madeBy = new Map<string, Map<string, Set<string>>>();
   for (const { rule, accountName } of due) {
     const chat = chats.get(rule.userId);
     if (!chat || rule.remindDaysBefore === null) continue;
     try {
-      const next = await nextDue(db, rule, today);
+      let made = madeBy.get(rule.userId);
+      if (!made) madeBy.set(rule.userId, (made = await madeDatesForUser(db, rule.userId)));
+      const next = await nextDue(db, rule, today, made.get(rule.id) ?? new Set<string>());
       if (!next || rule.lastRemindedFor === next || daysBetween(today, next) !== rule.remindDaysBefore) continue;
       await telegram.sendMessage(chat, botVoice.recurringReminder(rule.title, rule.amountPaise, accountName, next, rule.remindDaysBefore));
       await db.update(recurringRules).set({ lastRemindedFor: next }).where(eq(recurringRules.id, rule.id));

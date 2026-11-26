@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
+import { memoDb } from "../db/readCache";
 import { getAccount } from "../db/accounts";
 import { getHoldingRow, type HoldingRow } from "../db/holdings";
 import { getKindByKey, getKindRow, type HoldingKindRow, kindsByKey } from "../db/holdingKinds";
@@ -208,7 +209,8 @@ export interface LoadedHoldings {
 }
 
 /** Everything about a person's holdings in three queries: the holdings, their typed values, and their linked entries. */
-export async function loadHoldings(db: Db, userId: string): Promise<LoadedHoldings> {
+export const loadHoldings = memoDb("loadHoldings", loadHoldingsUncached);
+async function loadHoldingsUncached(db: Db, userId: string): Promise<LoadedHoldings> {
   const [rows, values, txns, accountRows, lotRows, kinds, brokerRows, contributionRows, partnerRows, contactRows, linkRows] = await Promise.all([
     db.select().from(holdings).where(eq(holdings.userId, userId)),
     db.select().from(holdingValues).where(eq(holdingValues.userId, userId)),

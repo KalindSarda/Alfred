@@ -1,5 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "./client";
+import { cachedRead } from "./readCache";
 import { accounts } from "./schema";
 import { newId, nowIso } from "../utils/id";
 
@@ -70,13 +71,15 @@ export async function listAccounts(
   userId: string,
   options: { includeArchived?: boolean } = {},
 ): Promise<AccountRow[]> {
-  return db
-    .select()
-    .from(accounts)
-    .where(
-      options.includeArchived
-        ? eq(accounts.userId, userId)
-        : and(eq(accounts.userId, userId), isNull(accounts.archivedAt)),
-    )
-    .orderBy(accounts.createdAt, accounts.id);
+  return cachedRead(db, `accounts:${userId}:${options.includeArchived ? "all" : "live"}`, () =>
+    db
+      .select()
+      .from(accounts)
+      .where(
+        options.includeArchived
+          ? eq(accounts.userId, userId)
+          : and(eq(accounts.userId, userId), isNull(accounts.archivedAt)),
+      )
+      .orderBy(accounts.createdAt, accounts.id),
+  );
 }

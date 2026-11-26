@@ -1,5 +1,6 @@
 import { and, eq, isNull, min } from "drizzle-orm";
 import type { Db } from "../db/client";
+import { memoDb } from "../db/readCache";
 import { transactions } from "../db/schema";
 import { addDays, cycleRange, type IstDate } from "../domain/dates";
 import { type EmergencyFund, emergencyFund } from "../domain/emergency";
@@ -27,7 +28,8 @@ const cycleOf = (f: PeriodFacts): CycleFacts => ({ incomePaise: f.incomePaise, s
  * their first entry is not complete, and a month with nothing in it says nothing). With none yet, the recent window scaled to a
  * month, which is only an estimate.
  */
-export async function getPace(db: Db, userId: string, today: IstDate, periodStartDay: number, window: { from: IstDate; days: number }): Promise<Pace | null> {
+export const getPace = memoDb("getPace", getPaceUncached);
+async function getPaceUncached(db: Db, userId: string, today: IstDate, periodStartDay: number, window: { from: IstDate; days: number }): Promise<Pace | null> {
   const [first] = await db.select({ day: min(transactions.txnDate) }).from(transactions).where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt), eq(transactions.status, "confirmed")));
   const firstDay = first?.day ?? null;
   if (firstDay === null) return null;
@@ -48,7 +50,8 @@ export async function getPace(db: Db, userId: string, today: IstDate, periodStar
  * essentials only, both with the medical amount on top, and how long closing each gap takes at their usual pace. Safe-to-spend does
  * not change; a flagged account is still money in the bank.
  */
-export async function getEmergencyFund(db: Db, userId: string, today: IstDate): Promise<EmergencyView> {
+export const getEmergencyFund = memoDb("getEmergencyFund", getEmergencyFundUncached);
+async function getEmergencyFundUncached(db: Db, userId: string, today: IstDate): Promise<EmergencyView> {
   const [settings, runway, figures, loaded] = await Promise.all([getSettings(db, userId), getRunway(db, userId, today), listAccountsWithFigures(db, userId, today), loadHoldings(db, userId)]);
 
   const accounts = figures

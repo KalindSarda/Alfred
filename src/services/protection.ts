@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
+import { memoDb } from "../db/readCache";
 import { insurancePolicies, protectionProfile } from "../db/schema";
 import { daysBetween as dayDiff } from "../alfred/voice";
 import { isValidIstDate, type IstDate } from "../domain/dates";
@@ -56,7 +57,8 @@ function toDto(row: Row, today: IstDate): PolicyDto {
   };
 }
 
-export async function listPolicies(db: Db, userId: string, today: IstDate): Promise<PolicyDto[]> {
+export const listPolicies = memoDb("listPolicies", listPoliciesUncached);
+async function listPoliciesUncached(db: Db, userId: string, today: IstDate): Promise<PolicyDto[]> {
   const rows = await db.select().from(insurancePolicies).where(eq(insurancePolicies.userId, userId));
   return rows.map((r) => toDto(r, today)).sort((a, b) => (a.status === b.status ? 0 : a.status === "active" ? -1 : 1) || a.nextDueDate.localeCompare(b.nextDueDate) || a.insurer.localeCompare(b.insurer));
 }
@@ -73,7 +75,8 @@ export async function updateProfile(db: Db, userId: string, patch: UpdateProfile
 }
 
 /** Where the cover stands: the answers, the policies and the gaps. Income for the term comparison is the recent rate, from 30 days of entries. */
-export async function getProtection(db: Db, userId: string, today: IstDate): Promise<ProtectionView> {
+export const getProtection = memoDb("getProtection", getProtectionUncached);
+async function getProtectionUncached(db: Db, userId: string, today: IstDate): Promise<ProtectionView> {
   const [profile, policies, runway] = await Promise.all([getProfile(db, userId), listPolicies(db, userId, today), getRunway(db, userId, today)]);
   let annualIncomePaise: number | null = null;
   if (runway.basedOnDays >= 30) {

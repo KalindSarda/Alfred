@@ -1,5 +1,6 @@
 import { and, eq, gte, inArray, isNotNull, isNull, lte, min, or } from "drizzle-orm";
 import type { Db } from "../db/client";
+import { memoDb } from "../db/readCache";
 import { categories, transactions } from "../db/schema";
 import { addDays, type IstDate } from "../domain/dates";
 import { WINDOW_DAYS, type Runway, runway } from "../domain/runway";
@@ -11,7 +12,8 @@ import { listAccountsWithFigures } from "./ledger";
  * essential, every card EMI instalment, and every loan instalment (its interest and its principal), over the last 90 days
  * or as far back as the person has entries. Prepayments and foreclosure are choices, not burn, and are left out.
  */
-export async function getRunway(db: Db, userId: string, today: IstDate): Promise<Runway> {
+export const getRunway = memoDb("getRunway", getRunwayUncached);
+async function getRunwayUncached(db: Db, userId: string, today: IstDate): Promise<Runway> {
   const [figures, [first]] = await Promise.all([
     listAccountsWithFigures(db, userId, today),
     db.select({ day: min(transactions.txnDate) }).from(transactions).where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt), eq(transactions.status, "confirmed"))),

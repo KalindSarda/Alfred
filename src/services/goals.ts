@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
+import { memoDb } from "../db/readCache";
 import { getGoalRow, type GoalRow, savedByGoal } from "../db/goals";
 import { goalContributions, goals } from "../db/schema";
 import { type IstDate, isValidIstDate } from "../domain/dates";
@@ -65,7 +66,8 @@ function toDto(row: GoalRow, saved: number, contributions: ContributionDto[], to
 }
 
 /** Active goals first (soonest date, then name), then achieved and archived ones when asked for. */
-export async function listGoals(db: Db, userId: string, today: IstDate, status: "active" | "all"): Promise<GoalsOverview> {
+export const listGoals = memoDb("listGoals", listGoalsUncached);
+async function listGoalsUncached(db: Db, userId: string, today: IstDate, status: "active" | "all"): Promise<GoalsOverview> {
   const [rows, saved, contribs] = await Promise.all([
     db.select().from(goals).where(status === "active" ? and(eq(goals.userId, userId), eq(goals.status, "active")) : eq(goals.userId, userId)),
     savedByGoal(db, userId),

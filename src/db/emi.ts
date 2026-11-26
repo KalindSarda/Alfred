@@ -1,5 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "./client";
+import { cachedRead } from "./readCache";
 import { accounts, emiPlans } from "./schema";
 import { type IstDate } from "../domain/dates";
 import { emiToCome } from "../domain/emi";
@@ -32,7 +33,11 @@ export const toShape = (row: EmiPlanRow) => ({
 });
 
 /** What is still to be billed on each card, from its running plans: part of the debt, not yet on a statement. */
-export async function emiToComeByCard(db: Db, userId: string, today: IstDate): Promise<Map<string, number>> {
+export function emiToComeByCard(db: Db, userId: string, today: IstDate): Promise<Map<string, number>> {
+  return cachedRead(db, `emiToCome:${userId}:${today}`, () => loadEmiToComeByCard(db, userId, today));
+}
+
+async function loadEmiToComeByCard(db: Db, userId: string, today: IstDate): Promise<Map<string, number>> {
   const rows = await db
     .select({ plan: emiPlans, statementDay: accounts.statementDay, dueDay: accounts.dueDay })
     .from(emiPlans)

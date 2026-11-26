@@ -1,5 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
+import { memoDb } from "../db/readCache";
 import { listAccounts } from "../db/accounts";
 import { toShape } from "../db/emi";
 import { accounts, debtPayments, debts, emiPlans } from "../db/schema";
@@ -27,7 +28,8 @@ export async function getNetWorthTrend(db: Db, userId: string, today: IstDate, m
 }
 
 /** Net worth as of each of the given days, with the day of the person's earliest entry (null when there is none). */
-export async function getNetWorthAt(db: Db, userId: string, days: IstDate[]): Promise<{ values: Map<IstDate, number>; firstDate: IstDate | null }> {
+export const getNetWorthAt = memoDb("getNetWorthAt", getNetWorthAtUncached);
+async function getNetWorthAtUncached(db: Db, userId: string, days: IstDate[]): Promise<{ values: Map<IstDate, number>; firstDate: IstDate | null }> {
   const { points, firstDate } = await computePoints(db, userId, days.map((asOf) => ({ month: asOf.slice(0, 7), asOf })));
   return { values: new Map(points.map((p) => [p.asOf, p.netWorthPaise])), firstDate };
 }

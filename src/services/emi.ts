@@ -2,6 +2,7 @@ import { and, count, eq, isNull } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
+import { memoDb } from "../db/readCache";
 import { getAccount } from "../db/accounts";
 import { getCategory } from "../db/categories";
 import { type EmiPlanRow, getPlanRow, parseAmounts, toShape } from "../db/emi";
@@ -118,7 +119,8 @@ function toDto(row: EmiPlanRow, cardName: string, statement: { statementDay: num
 }
 
 /** Running plans first (soonest next instalment), then finished and cancelled ones. */
-export async function listPlans(db: Db, userId: string, today: IstDate): Promise<EmiPlanDto[]> {
+export const listPlans = memoDb("listPlans", listPlansUncached);
+async function listPlansUncached(db: Db, userId: string, today: IstDate): Promise<EmiPlanDto[]> {
   const [rows, entries] = await Promise.all([
     db
       .select({ plan: emiPlans, cardName: accounts.name, statementDay: accounts.statementDay, dueDay: accounts.dueDay, categoryName: categories.name })
@@ -186,9 +188,14 @@ async function materializeById(db: Db, userId: string, id: string, today: IstDat
 
 /** One person's instalments that have come due; returns the entries newly added (to ask whether they match the statement). */
 export async function materializeEmiEntries(db: Db, userId: string, today: IstDate): Promise<string[]> {
-  const rows = await db.select({ id: emiPlans.id }).from(emiPlans).where(and(eq(emiPlans.userId, userId), isNull(emiPlans.cancelledAt)));
+  // The plan and its card's statement and due days in one read, instead of three reads a plan.
+  const rows = await db
+    .select({ plan: emiPlans, statementDay: accounts.statementDay, dueDay: accounts.dueDay })
+    .from(emiPlans)
+    .leftJoin(accounts, and(eq(accounts.id, emiPlans.cardAccountId), eq(accounts.userId, userId)))
+    .where(and(eq(emiPlans.userId, userId), isNull(emiPlans.cancelledAt)));
   const added: string[] = [];
-  for (const { id } of rows) added.push(...(await materializeById(db, userId, id, today)));
+  for (const { plan, statementDay, dueDay } of rows) added.push(...(await materializePlan(db, plan, { statementDay: statementDay ?? 1, dueDay: dueDay ?? 1 }, today)));
   return added;
 }
 

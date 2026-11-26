@@ -1,6 +1,7 @@
 import { and, count, eq, isNotNull, isNull } from "drizzle-orm";
 import { ConflictError, NotFoundError, ValidationError } from "../config/errors";
 import type { Db } from "../db/client";
+import { memoDb } from "../db/readCache";
 import { getHoldingRow } from "../db/holdings";
 import { getAccount } from "../db/accounts";
 import { getCategory } from "../db/categories";
@@ -63,6 +64,20 @@ async function madeDates(db: Db, userId: string, ruleId: string): Promise<Set<st
   return new Set([...rows, ...contributions].flatMap((r) => (r.on ? [r.on] : [])));
 }
 
+/**
+ * Every rule's made due dates, counting exactly what `madeDates` counts for one rule (any entry or contribution that names
+ * the rule), but for all of a person's rules in two queries instead of two per rule.
+ */
+async function madeDatesByRule(db: Db, userId: string): Promise<Map<string, Set<string>>> {
+  const [rows, contributions] = await Promise.all([
+    db.select({ ruleId: transactions.recurringRuleId, on: transactions.recurringOn }).from(transactions).where(and(eq(transactions.userId, userId), isNotNull(transactions.recurringRuleId))),
+    db.select({ ruleId: holdingContributions.recurringRuleId, on: holdingContributions.recurringOn }).from(holdingContributions).where(and(eq(holdingContributions.userId, userId), isNotNull(holdingContributions.recurringRuleId))),
+  ]);
+  const byRule = new Map<string, Set<string>>();
+  for (const r of [...rows, ...contributions]) if (r.ruleId && r.on) (byRule.get(r.ruleId) ?? byRule.set(r.ruleId, new Set()).get(r.ruleId)!).add(r.on);
+  return byRule;
+}
+
 /** Every rule's made due dates: the bank entries it added, and the contributions it added. */
 async function madeByRule(db: Db, userId: string): Promise<Map<string, Set<string>>> {
   const [made, contributions] = await Promise.all([
@@ -118,8 +133,13 @@ export async function outflowOccurrences(
 }
 
 /** The next due date that has no entry yet, or null. */
-export async function nextDue(db: Db, row: RuleRow, today: IstDate): Promise<IstDate | null> {
-  return upcomingFor(row, await madeDates(db, row.userId, row.id), today, 1)[0] ?? null;
+export async function nextDue(db: Db, row: RuleRow, today: IstDate, madeFor?: Set<string>): Promise<IstDate | null> {
+  return upcomingFor(row, madeFor ?? (await madeDates(db, row.userId, row.id)), today, 1)[0] ?? null;
+}
+
+/** Per-person made dates for many rules at once, so the daily reminder pass costs two queries a person, not two a rule. */
+export async function madeDatesForUser(db: Db, userId: string): Promise<Map<string, Set<string>>> {
+  return madeDatesByRule(db, userId);
 }
 
 function toDto(row: RuleRow, accountName: string | null, categoryName: string | null, holdingNames: Map<string, string>, made: Set<string>, today: IstDate): RecurringDto {
@@ -157,7 +177,8 @@ function toDto(row: RuleRow, accountName: string | null, categoryName: string | 
 }
 
 /** Running rules first, soonest due first; then paused; then ended. */
-export async function listRules(db: Db, userId: string, today: IstDate): Promise<RecurringDto[]> {
+export const listRules = memoDb("listRules", listRulesUncached);
+async function listRulesUncached(db: Db, userId: string, today: IstDate): Promise<RecurringDto[]> {
   const [rows, byRule, held] = await Promise.all([
     db
       .select({ rule: recurringRules, accountName: accounts.name, categoryName: categories.name })
@@ -215,10 +236,10 @@ function checkSchedule(r: { frequency: RuleRow["frequency"]; day: number; month:
  * for "draft" rules. Safe to run as often as you like: a due date gets one entry, and a deleted one is not brought back.
  * Returns what was added.
  */
-async function materializeRule(db: Db, row: RuleRow, today: IstDate): Promise<{ id: string; date: IstDate }[]> {
-  if (row.type === "contribution") return (await materializeContribution(db, row, today)).map((m) => ({ id: m.id, date: m.date }));
+async function materializeRule(db: Db, row: RuleRow, today: IstDate, madeAlready?: Set<string>): Promise<{ id: string; date: IstDate }[]> {
+  if (row.type === "contribution") return (await materializeContribution(db, row, today, madeAlready)).map((m) => ({ id: m.id, date: m.date }));
   if (row.pausedAt) return [];
-  const made = await madeDates(db, row.userId, row.id);
+  const made = madeAlready ?? (await madeDates(db, row.userId, row.id));
   const missing = occurrencesBetween(toRuleShape(row), row.startDate, today).filter((d) => !made.has(d)).slice(-MAX_BACKFILL);
   if (missing.length === 0) return [];
   const now = nowIso();
@@ -269,11 +290,11 @@ export interface NewContribution {
  * as a linked entry on its investment. A closed investment is left alone. A due day gets one entry, and one the person removed is
  * skipped, not brought back.
  */
-async function materializeContribution(db: Db, row: RuleRow, today: IstDate): Promise<NewContribution[]> {
+async function materializeContribution(db: Db, row: RuleRow, today: IstDate, madeAlready?: Set<string>): Promise<NewContribution[]> {
   if (row.pausedAt || !row.holdingId) return [];
   const holding = await getHoldingRow(db, row.userId, row.holdingId);
   if (!holding || holding.status !== "active" || holding.tracking !== "value") return [];
-  const made = await madeDates(db, row.userId, row.id);
+  const made = madeAlready ?? (await madeDates(db, row.userId, row.id));
   const missing = occurrencesBetween(toRuleShape(row), row.startDate, today).filter((d) => !made.has(d)).slice(-MAX_BACKFILL);
   if (missing.length === 0) return [];
   let target = row.pensionPaise > 0 && row.pensionHoldingId ? ((await getHoldingRow(db, row.userId, row.pensionHoldingId)) ?? null) : null;
@@ -499,10 +520,13 @@ export async function materializeRules(db: Db, userId: string, today: IstDate): 
     .from(recurringRules)
     .innerJoin(accounts, eq(accounts.id, recurringRules.accountId))
     .where(and(eq(recurringRules.userId, userId), isNull(recurringRules.pausedAt)));
+  // One read of what each rule has already made, instead of two reads per rule.
+  const madeAll = await madeDatesByRule(db, userId);
+  const none = new Set<string>();
   let added = 0;
   const drafts: NewDraft[] = [];
   for (const { rule, accountName } of rows) {
-    const made = await materializeRule(db, rule, today);
+    const made = await materializeRule(db, rule, today, madeAll.get(rule.id) ?? none);
     added += made.length;
     if (rule.mode === "draft") {
       for (const m of made) drafts.push({ userId, txnId: m.id, date: m.date, title: rule.title, amountPaise: rule.amountPaise, accountName });
@@ -510,7 +534,7 @@ export async function materializeRules(db: Db, userId: string, today: IstDate): 
   }
   const contributionRules = await db.select().from(recurringRules).where(and(eq(recurringRules.userId, userId), eq(recurringRules.type, "contribution"), isNull(recurringRules.pausedAt)));
   const contributions: NewContribution[] = [];
-  for (const rule of contributionRules) contributions.push(...(await materializeContribution(db, rule, today)));
+  for (const rule of contributionRules) contributions.push(...(await materializeContribution(db, rule, today, madeAll.get(rule.id) ?? none)));
   return { added: added + contributions.length, drafts, contributions };
 }
 
